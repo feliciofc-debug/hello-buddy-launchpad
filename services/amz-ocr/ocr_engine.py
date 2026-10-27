@@ -14,6 +14,7 @@ Reader = Callable[[np.ndarray], tuple[str, float]]
 Progress = Callable[[str, str, int], None]
 
 _PADDLE = None
+_PADDLE_FULL = None
 _PADDLE_LOCK = threading.Lock()
 
 
@@ -228,28 +229,34 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
     ]
 
 
-def _paddle_engine():
-    global _PADDLE
-    if _PADDLE is not None:
-        return _PADDLE
+def _paddle_engine(full_document: bool = False):
+    global _PADDLE, _PADDLE_FULL
+    cached = _PADDLE_FULL if full_document else _PADDLE
+    if cached is not None:
+        return cached
     with _PADDLE_LOCK:
-        if _PADDLE is None:
+        cached = _PADDLE_FULL if full_document else _PADDLE
+        if cached is None:
             from paddleocr import PaddleOCR
 
-            _PADDLE = PaddleOCR(
+            engine = PaddleOCR(
                 device="cpu",
                 # O PP-OCRv6 small usa o reconhecedor multilíngue que cobre
                 # português e demais idiomas latinos.
                 text_detection_model_name="PP-OCRv6_small_det",
                 text_recognition_model_name="PP-OCRv6_small_rec",
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
+                use_doc_orientation_classify=full_document,
+                use_doc_unwarping=full_document,
+                use_textline_orientation=full_document,
                 # Paddle 3.3.1 falha em alguns CPUs com atributos PIR/oneDNN.
                 enable_mkldnn=False,
                 cpu_threads=max(1, int(os.environ.get("AMZ_OCR_CPU_THREADS", "4"))),
             )
-    return _PADDLE
+            if full_document:
+                _PADDLE_FULL = engine
+            else:
+                _PADDLE = engine
+    return _PADDLE_FULL if full_document else _PADDLE
 
 
 def preload_paddle() -> None:
@@ -266,11 +273,15 @@ def _paddle_input(image: np.ndarray) -> np.ndarray:
     return image
 
 
-def _paddle_reader(image: np.ndarray) -> tuple[str, float]:
+def _paddle_reader(
+    image: np.ndarray,
+    *,
+    full_document: bool = False,
+) -> tuple[str, float]:
     image = _paddle_input(image)
     texts: list[str] = []
     scores: list[float] = []
-    for result in _paddle_engine().predict(image):
+    for result in _paddle_engine(full_document).predict(image):
         recognized = list(result["rec_texts"])
         confidences = [float(value) for value in result["rec_scores"]]
         texts.extend(
@@ -333,12 +344,15 @@ def recognize_crlv_image(
     paddle_reader: Reader | None = None,
     tesseract_reader: Reader | None = None,
     timeout_seconds: float = 18,
+    full_document: bool = False,
     progress_callback: Callable[[OcrResult], None] | None = None,
 ) -> OcrResult:
     started = time.monotonic()
     deadline = started + timeout_seconds
     variants = preprocessing_variants(image)
-    paddle = paddle_reader or _paddle_reader
+    paddle = paddle_reader or (
+        lambda value: _paddle_reader(value, full_document=full_document)
+    )
     fallback = tesseract_reader or _tesseract_reader
     engine = "paddleocr"
     def progress(text: str, variant: str, fields: int) -> None:

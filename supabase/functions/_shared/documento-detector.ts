@@ -11,6 +11,69 @@ function normalize(value: string): string {
     .trim();
 }
 
+const STRONG_DOCUMENT_PHRASES = [
+  ["DETRAN"],
+  ["RENAVAM"],
+  ["CHASSI"],
+  ["CERTIFICADO", "DE", "REGISTRO"],
+  ["LICENCIAMENTO"],
+  ["REPUBLICA", "FEDERATIVA"],
+  ["MINISTERIO", "DAS", "CIDADES"],
+  ["SECRETARIA", "NACIONAL", "DE", "TRANSITO"],
+  ["HABILITACAO"],
+  ["CARTEIRA", "NACIONAL"],
+  ["REGISTRO", "GERAL"],
+  ["CPF"],
+  ["DOCUMENTO", "DE", "IDENTIDADE"],
+  ["PROPRIETARIO"],
+] as const;
+
+function oneEditOrLess(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    return [...left].filter((char, index) => char !== right[index]).length <= 1;
+  }
+  let shorter = left;
+  let longer = right;
+  if (shorter.length > longer.length) [shorter, longer] = [longer, shorter];
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < shorter.length && j < longer.length) {
+    if (shorter[i] === longer[j]) {
+      i++;
+      j++;
+    } else {
+      edits++;
+      j++;
+      if (edits > 1) return false;
+    }
+  }
+  return true;
+}
+
+function hasStrongDocumentPhrase(text: string): boolean {
+  const tokens = normalize(text).match(/[A-Z0-9]+/g) ?? [];
+  return STRONG_DOCUMENT_PHRASES.some((phrase) =>
+    tokens.some((_, offset) =>
+      offset + phrase.length <= tokens.length &&
+      phrase.every((expected, index) =>
+        oneEditOrLess(tokens[offset + index], expected)
+      )
+    )
+  );
+}
+
+function hasDocumentPattern(text: string): boolean {
+  const normalized = normalize(text);
+  const digitRuns = normalized.match(/\b[\d./-]{11,18}\b/g) ?? [];
+  if (
+    digitRuns.some((raw) => [11, 14].includes(raw.replace(/\D/g, "").length))
+  ) return true;
+  return /\b[A-HJ-NPR-Z0-9]{17}\b/.test(normalized);
+}
+
 function cpfValid(value: string): boolean {
   if (!/^\d{11}$/.test(value) || /^(\d)\1{10}$/.test(value)) return false;
   const digit = (length: number) => {
@@ -122,10 +185,17 @@ export function classificarTextoDocumentoProtegido(
     return { documento: true, tipo: "cnh" };
   }
 
+  if (hasStrongDocumentPhrase(text) || hasDocumentPattern(text)) {
+    return { documento: true, tipo: "outro" };
+  }
+
   return { documento: false, tipo: null };
 }
 
 export const documentoDetectorInternals = {
   cpfValid,
   cnpjValid,
+  hasDocumentPattern,
+  hasStrongDocumentPhrase,
+  oneEditOrLess,
 };

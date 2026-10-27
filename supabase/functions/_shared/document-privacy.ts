@@ -1,4 +1,4 @@
-import { classificarDocumentoIdentidade } from "./documento-detector.ts";
+import { classificarTextoDocumentoProtegido } from "./documento-detector.ts";
 
 export const DOCUMENT_AI_GATEWAY_URL =
   "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -99,7 +99,7 @@ export function prepareDocumentTextForExternalAi(input: {
   if (input.audience !== "gestao") {
     return { allowed: false, reason: "client_document" };
   }
-  if (classificarDocumentoIdentidade(input.text).documento) {
+  if (classificarTextoDocumentoProtegido(input.text).documento) {
     return { allowed: false, reason: "identity_document" };
   }
 

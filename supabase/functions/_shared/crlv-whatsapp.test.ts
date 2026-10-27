@@ -7,6 +7,7 @@ import {
   autoLinkCrlvToStock,
   crlvWhatsappActionButtons,
 } from "./crlv-whatsapp.ts";
+import { respostaCrlvWhatsApp } from "./documento-portao.ts";
 import {
   CRLV_NAO_LIDO_MENSAGEM,
   relerCrlvDocumentoCofre,
@@ -19,6 +20,12 @@ CHASSI: 9BWZZZ377VT004251
 MARCA/MODELO/VERSAO: VOLKSWAGEN GOL CL 1.6
 ANO FABRICACAO: 1998
 ANO MODELO: 1999
+COR: VERDE
+COMBUSTIVEL: GASOLINA
+CATEGORIA: PARTICULAR
+MUNICIPIO/UF: SAO PAULO/SP
+PROPRIETARIO: PESSOA EXEMPLO
+CPF/CNPJ: 52998224725
 `;
 
 function updateChain(data: unknown = null) {
@@ -171,6 +178,31 @@ Deno.test("VEIC-WPP-1 — placa antiga vincula estoque Mercosul e oferece desfaz
   assertEquals(linked, { id: "v1", label: "Volkswagen Gol CL" });
   assertEquals(updates[0], { veiculo_id: "v1" });
   const buttons = crlvWhatsappActionButtons("d1", "v1");
-  assertStringIncludes(buttons.buttons[0].id, "cofre_doc_desvincular");
-  assertEquals(buttons.buttons[0].title, "Desfazer vínculo");
+  assertEquals(buttons.buttons.map((button) => button.title), [
+    "Salvar na plataforma",
+    "Vistoria",
+    "Desfazer vínculo",
+  ]);
+  assertStringIncludes(buttons.buttons[2].id, "cofre_doc_desvincular");
+});
+
+Deno.test("DOC-SEG-2 — resposta lista todos os campos e mascara CPF", () => {
+  const reply = respostaCrlvWhatsApp(parseCrlvText(OCR_TEXT, "ocr"));
+  for (const label of [
+    "✅ CRLV lido",
+    "Placa:",
+    "Renavam:",
+    "Chassi:",
+    "Marca/modelo/versão:",
+    "Ano fabricação/modelo:",
+    "Cor:",
+    "Combustível:",
+    "Categoria:",
+    "Município/UF:",
+    "Proprietário:",
+    "CPF/CNPJ:",
+  ]) {
+    assertStringIncludes(reply, label);
+  }
+  assertEquals(reply.includes("52998224725"), false);
 });

@@ -1,38 +1,82 @@
 import re
+import unicodedata
 
 _REAL_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
-_DOCUMENT_TEXT_HINT_RE = re.compile(
-    r"\b(?:PLACA|RENAVAM|CHASSI|PROPRIETARIO|PROPRIETÁRIO|"
-    r"CPF|CNPJ|DETRAN|REGISTRO|LICENCIAMENTO|HABILITACAO|HABILITAÇÃO|"
-    r"VALIDADE|NASCIMENTO|FILIACAO|FILIAÇÃO|CATEGORIA|COMBUSTIVEL|"
-    r"COMBUSTÍVEL|MUNICIPIO|MUNICÍPIO)\b",
-    re.IGNORECASE,
+_STRONG_TERMS = (
+    ("DETRAN",),
+    ("RENAVAM",),
+    ("CHASSI",),
+    ("CERTIFICADO", "DE", "REGISTRO"),
+    ("LICENCIAMENTO",),
+    ("REPUBLICA", "FEDERATIVA"),
+    ("MINISTERIO", "DAS", "CIDADES"),
+    ("SECRETARIA", "NACIONAL", "DE", "TRANSITO"),
+    ("HABILITACAO",),
+    ("CARTEIRA", "NACIONAL"),
+    ("REGISTRO", "GERAL"),
+    ("CPF",),
+    ("DOCUMENTO", "DE", "IDENTIDADE"),
+    ("PROPRIETARIO",),
 )
 
 
-def possible_document_text(text: str, colored_background: bool) -> bool:
-    real_word_lines: list[list[str]] = []
-    for raw_line in text.splitlines():
-        words = _REAL_WORD_RE.findall(raw_line)
-        if len(words) >= 2:
-            real_word_lines.append(words)
+def _normalize(value: str) -> str:
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFD", str(value).upper())
+        if unicodedata.category(char) != "Mn"
+    )
 
-    words = [word for line in real_word_lines for word in line]
-    letter_count = sum(len(word) for word in words)
-    dense_text = (
-        len(real_word_lines) >= 12
-        and len(words) >= 24
-        and letter_count >= 100
+
+def _one_edit_or_less(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    if len(left) == len(right):
+        return sum(a != b for a, b in zip(left, right)) <= 1
+    short_index = 0
+    long_index = 0
+    edits = 0
+    while short_index < len(left) and long_index < len(right):
+        if left[short_index] == right[long_index]:
+            short_index += 1
+            long_index += 1
+            continue
+        edits += 1
+        long_index += 1
+        if edits > 1:
+            return False
+    return True
+
+
+def _has_strong_term(text: str) -> bool:
+    tokens = re.findall(r"[A-Z0-9]+", _normalize(text))
+    for phrase in _STRONG_TERMS:
+        width = len(phrase)
+        for offset in range(0, len(tokens) - width + 1):
+            if all(
+                _one_edit_or_less(tokens[offset + index], expected)
+                for index, expected in enumerate(phrase)
+            ):
+                return True
+    return False
+
+
+def possible_document_text(text: str, colored_background: bool) -> bool:
+    if _has_strong_term(text) or _has_document_pattern(text):
+        return True
+
+    real_words = _REAL_WORD_RE.findall(text)
+    if len(real_words) < 3:
+        return False
+    text_lines = sum(1 for line in text.splitlines() if line.strip())
+    old_layout_rule = text_lines >= 25 or (
+        colored_background and text_lines >= 8
     )
-    hint_count = len(_DOCUMENT_TEXT_HINT_RE.findall(text))
-    old_colored_document = (
-        colored_background
-        and len(real_word_lines) >= 6
-        and len(words) >= 12
-        and letter_count >= 55
-        and hint_count >= 2
-    )
-    return dense_text or old_colored_document
+    return old_layout_rule
 
 
 def _cpf_valid(value: str) -> bool:
@@ -69,6 +113,15 @@ def _renavam_valid(value: str) -> bool:
     remainder = (total * 10) % 11
     digit = 0 if remainder == 10 else remainder
     return digit == int(value[10])
+
+
+def _has_document_pattern(text: str) -> bool:
+    text = _normalize(text)
+    for raw in re.findall(r"\b[\d./-]{11,18}\b", text):
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) in (11, 14):
+            return True
+    return bool(re.search(r"\b[A-HJ-NPR-Z0-9]{17}\b", text))
 
 
 def _has_valid_pattern(text: str) -> bool:

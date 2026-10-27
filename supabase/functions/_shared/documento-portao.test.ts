@@ -151,7 +151,7 @@ OBSERVACOES: ALIENACAO FIDUCIARIA: BANCO SINTETICO
 `);
   const reply = respostaCrlvWhatsApp(parsed);
   assertEquals(
-    reply.startsWith("✅ CRLV lido e guardado na plataforma."),
+    reply.startsWith("✅ CRLV lido"),
     true,
   );
   assertEquals(reply.includes("PESSOA SINTETICA COMPLETA"), true);
@@ -261,8 +261,13 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   assertEquals(fullOcr.includes("_resize_max(rgb, 1600)"), true);
   assertEquals(source.includes("_resize(image, 1400)"), true);
   assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
-  assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);
+  assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 4"), true);
   assertEquals(source.includes("image_to_osd"), true);
+  assertEquals(source.includes("oriented.rotate(90"), true);
+  assertEquals(source.includes("ImageOps.autocontrast"), true);
+  assertEquals(fullOcr.includes("use_doc_orientation_classify=full_document"), true);
+  assertEquals(fullOcr.includes("use_doc_unwarping=full_document"), true);
+  assertEquals(fullOcr.includes("use_textline_orientation=full_document"), true);
   assertEquals(
     source.includes("_pil_images(raw, content_type, first_page_only=True)"),
     true,
@@ -323,7 +328,7 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
   assertEquals(possibleFlow.includes("callGemini("), false);
   assertEquals(
     source.includes(
-      '/^cofre_doc_(?:cadastrar|vincular|guardar|link|troca|desvincular):/i',
+      '/^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i',
     ),
     true,
   );

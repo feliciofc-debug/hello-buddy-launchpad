@@ -27,7 +27,7 @@ async function ocrLocal(
       "X-OCR-Token": token,
     },
     body: new Uint8Array(bytes),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(40_000),
   });
   if (!response.ok) {
     throw new Error(`OCR local indisponível (${response.status})`);
@@ -83,7 +83,7 @@ function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
     ? raw.motor
     : null;
   const variante = String(raw.variante_vencedora ?? "");
-  const tempo = Math.max(0, Math.min(25_000, Math.round(Number(raw.tempo_ms))));
+  const tempo = Math.max(0, Math.min(40_000, Math.round(Number(raw.tempo_ms))));
   const fields = Math.max(
     0,
     Math.min(3, Math.round(Number(raw.n_campos_validos))),

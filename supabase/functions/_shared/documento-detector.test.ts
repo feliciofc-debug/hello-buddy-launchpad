@@ -80,7 +80,7 @@ Deno.test("DOC-0.1 — CPF e CNPJ só são padrões quando o DV é válido", () 
   );
 });
 
-Deno.test("PRIV-1.1 — OCR protege CPF, RG e CNH sem bloquear CNPJ de orçamento", () => {
+Deno.test("DOC-SEG-2 — OCR protege palavras fortes e identificadores mesmo degradados", () => {
   for (
     const [text, tipo] of [
       ["CPF 529.982.247-25", "outro"],
@@ -93,10 +93,18 @@ Deno.test("PRIV-1.1 — OCR protege CPF, RG e CNH sem bloquear CNPJ de orçament
       tipo,
     });
   }
-  assertEquals(
-    classificarTextoDocumentoProtegido(
-      "ORCAMENTO CNPJ 04.252.011/0001-10 TOTAL R$ 3.800,00 PRAZO 7 DIAS",
-    ),
-    { documento: false, tipo: null },
-  );
+  for (const text of [
+    "DETRAM",
+    "RENAVAN",
+    "CHASS1",
+    "PROPRIETAR1O",
+    "ORCAMENTO CNPJ 04.252.011/0001-10 TOTAL R$ 3.800,00",
+    "9BWZZZ377VT004251",
+  ]) {
+    assertEquals(
+      classificarTextoDocumentoProtegido(text).documento,
+      true,
+      text,
+    );
+  }
 });

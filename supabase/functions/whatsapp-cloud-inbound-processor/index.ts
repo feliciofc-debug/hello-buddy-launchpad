@@ -786,6 +786,7 @@ import {
   savedVisionDescription,
 } from "../_shared/media-received-copy.ts";
 import {
+  ownerAutomotivePhotoConfirmButtons,
   ownerPhotoConfirmButtons,
   ownerPhotoConfirmedProductTitle,
   ownerPhotoCorrectionPrompt,
@@ -20325,7 +20326,9 @@ async function callGemini(
           text: ownerUncertainVisionConfirmMessage(
             storedRoute?.vision_description || "",
           ),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       const state = await startVehicleCarouselFlow(
@@ -20411,7 +20414,9 @@ async function callGemini(
             text: ownerUncertainVisionConfirmMessage(
               storedRoute?.vision_description || "",
             ),
-            interactiveButtons: ownerPhotoConfirmButtons(),
+            interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+              ? ownerAutomotivePhotoConfirmButtons()
+              : ownerPhotoConfirmButtons(),
           };
         }
         await saveAgentState(sb, conversation, {
@@ -20476,7 +20481,9 @@ async function callGemini(
           text: ownerProductVisionConfirmMessage(
             pendingSinglePhoto.vision_description || "",
           ),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       pendingSinglePhoto = null;
@@ -20530,7 +20537,9 @@ async function callGemini(
         await persistSinglePhoto(next);
         return {
           text: ownerProductVisionConfirmMessage(corrected),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       if (ownerPhotoConfirmChoice === "confirm_product") {
@@ -20622,7 +20631,9 @@ async function callGemini(
       if (!ownerPhotoConfirmChoice) {
         return {
           text: ownerProductVisionConfirmMessage(vision),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
     }
@@ -25208,7 +25219,7 @@ async function processOne(queueId: string) {
 
     // DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.
     if (
-      /^cofre_doc_(?:cadastrar|vincular|guardar|link|troca|desvincular):/i.test(
+      /^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i.test(
         String(interactiveId ?? ""),
       )
     ) {
@@ -25217,17 +25228,39 @@ async function processOne(queueId: string) {
         const [, action, documentoId, veiculoId] = String(
           interactiveId ?? "",
         ).match(
-          /^cofre_doc_(cadastrar|vincular|guardar|link|troca|desvincular):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
+          /^cofre_doc_(salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
         ) ?? [];
         let reply = "Documento mantido com segurança no cofre.";
         let interactiveList: WhatsAppInteractiveList | undefined;
-        if (action === "cadastrar") {
+        if (action === "salvar") {
+          const { data: document, error } = await sb.from("gestao_documento")
+            .update({ status: "confirmado" })
+            .eq("id", documentoId)
+            .eq("user_id", userId)
+            .is("deleted_at", null)
+            .select("veiculo_id")
+            .maybeSingle();
+          if (error) throw error;
+          await auditGestaoDocumento(sb, documentoId, userId, "confirmar", {
+            origem: "whatsapp",
+            vinculado: Boolean(document?.veiculo_id || veiculoId),
+          });
+          const linkedId = String(document?.veiculo_id || veiculoId || "")
+            .trim();
+          const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
+            Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
+          reply = linkedId
+            ? "CRLV confirmado e dados salvos. O documento ficou vinculado ao veículo correspondente do estoque."
+            : appUrl
+            ? `CRLV confirmado e dados salvos. Deixei a entrada de estoque preparada no painel:\n${appUrl}/gestao?aba=estoque&entrada_documento=${documentoId}`
+            : "CRLV confirmado e dados salvos. A entrada de estoque ficou preparada em Gestão → Estoque.";
+        } else if (action === "cadastrar") {
           const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
             Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
           reply = appUrl
             ? `Abra a entrada já preparada pelo documento:\n${appUrl}/gestao?aba=estoque&entrada_documento=${documentoId}`
             : "Documento guardado. Abra Gestão → Estoque → Entrada de veículo para continuar.";
-        } else if (action === "troca") {
+        } else if (action === "vistoria" || action === "troca") {
           const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
             Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
           reply = appUrl
@@ -27415,7 +27448,9 @@ async function processOne(queueId: string) {
             ownerUncertainVisionConfirmMessage(visionDescription),
             verticalDecision,
           ),
-          buttons: ownerPhotoConfirmButtons(),
+          buttons: automotiveTenant
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         });
         await doneQueue(row.id);
         return { ok: true, vertical_confirmation: true };
@@ -27523,7 +27558,7 @@ async function processOne(queueId: string) {
             userId,
             to: row.from_number,
             text: withDemoModeLabel(automotive.text, verticalDecision),
-            buttons: ownerPhotoConfirmButtons(),
+            buttons: ownerAutomotivePhotoConfirmButtons(),
           });
         }
         await doneQueue(row.id);
@@ -27804,7 +27839,7 @@ async function processOne(queueId: string) {
                   ),
                   buttons: alreadyConfirmed
                     ? generalSpecialistPhotoButtons()
-                    : ownerPhotoConfirmButtons(),
+                    : ownerAutomotivePhotoConfirmButtons(),
                 });
               } else if (batchMediaRoute === "incerto") {
                 const description = repeatedVision ||
@@ -27817,7 +27852,7 @@ async function processOne(queueId: string) {
                     ownerUncertainVisionConfirmMessage(description),
                     verticalDecision,
                   ),
-                  buttons: ownerPhotoConfirmButtons(),
+                  buttons: ownerAutomotivePhotoConfirmButtons(),
                 });
               } else {
                 const identification = await beginVehicleIdentification(
@@ -29545,7 +29580,7 @@ async function processOne(queueId: string) {
       }, agentState);
       verticalChoiceResolution = {
         text: ownerUncertainVisionConfirmMessage(corrected),
-        buttons: ownerPhotoConfirmButtons(),
+        buttons: ownerAutomotivePhotoConfirmButtons(),
       };
     } else if (
       fromIsOwner &&

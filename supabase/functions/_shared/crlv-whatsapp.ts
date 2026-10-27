@@ -56,19 +56,21 @@ export function crlvWhatsappActionButtons(
     buttons: linkedVehicleId
       ? [
         {
+          id: `cofre_doc_salvar:${documentoId}:${linkedVehicleId}`,
+          title: "Salvar na plataforma",
+        },
+        { id: `cofre_doc_vistoria:${documentoId}`, title: "Vistoria" },
+        {
           id: `cofre_doc_desvincular:${documentoId}:${linkedVehicleId}`,
           title: "Desfazer vínculo",
         },
-        { id: `cofre_doc_troca:${documentoId}`, title: "Usar na troca" },
-        { id: `cofre_doc_guardar:${documentoId}`, title: "Só guardar" },
       ]
       : [
         {
-          id: `cofre_doc_cadastrar:${documentoId}`,
-          title: "Cadastrar estoque",
+          id: `cofre_doc_salvar:${documentoId}`,
+          title: "Salvar na plataforma",
         },
-        { id: `cofre_doc_troca:${documentoId}`, title: "Usar na troca" },
-        { id: `cofre_doc_guardar:${documentoId}`, title: "Só guardar" },
+        { id: `cofre_doc_vistoria:${documentoId}`, title: "Vistoria" },
       ],
   };
 }

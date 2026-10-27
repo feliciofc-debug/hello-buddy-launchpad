@@ -93,7 +93,7 @@ export function respostaCrlvWhatsApp(parser: CrlvParserResultado): string {
     parser.proprietario.cpf_cnpj.valor,
   ) ?? "não lido";
   const lines = [
-    "✅ CRLV lido e guardado na plataforma.",
+    "✅ CRLV lido",
     `Placa: ${read(vehicle.placa.valor)}`,
     `Renavam: ${read(vehicle.renavam.valor)}`,
     `Chassi: ${read(vehicle.chassi.valor)}`,

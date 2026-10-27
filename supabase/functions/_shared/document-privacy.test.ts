@@ -95,8 +95,26 @@ Deno.test("PRIV-1 — classificador local bloqueia identidade antes do gateway",
   assertEquals(calls, 0);
 });
 
-Deno.test("PRIV-1 — contrato do responsável envia somente texto mascarado", async () => {
-  let payload = "";
+Deno.test("DOC-SEG-2 — OCR degradado de CRLV nunca chama gateway externo", async () => {
+  let calls = 0;
+  const result = await commentOnLocallyExtractedDocument({
+    audience: "gestao",
+    text: "PROPRIETAR1O PESSOA EXEMPLO\nRENAVAN 12345678901",
+    filename: "foto.jpg",
+    kind: "imagem",
+    apiKey: "test",
+    model: "test",
+    fetchFn: (() => {
+      calls++;
+      throw new Error("não pode chamar IA externa");
+    }) as typeof fetch,
+  });
+  assertEquals(result, { sent: false, reason: "identity_document" });
+  assertEquals(calls, 0);
+});
+
+Deno.test("DOC-SEG-2 — contrato com identificadores fica local", async () => {
+  let calls = 0;
   const result = await commentOnLocallyExtractedDocument({
     audience: "gestao",
     text: [
@@ -115,36 +133,14 @@ Deno.test("PRIV-1 — contrato do responsável envia somente texto mascarado", a
     kind: "pdf",
     apiKey: "test",
     model: "test",
-    fetchFn: (async (_url, init) => {
-      payload = String(init?.body || "");
-      if (
-        /data:[^;,]+;base64,/i.test(payload) ||
-        /file_data|image_url|inline_data/i.test(payload)
-      ) {
-        throw new Error("gateway recebeu bytes de documento");
-      }
-      for (const raw of Object.values(RAW_PII)) {
-        if (payload.includes(raw)) {
-          throw new Error(`gateway recebeu PII: ${raw}`);
-        }
-      }
-      return new Response(
-        JSON.stringify({
-          choices: [{ message: { content: "Comentário seguro." } }],
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+    fetchFn: (() => {
+      calls++;
+      throw new Error("gateway não pode receber documento");
     }) as typeof fetch,
   });
 
-  assert(result.sent);
-  assertEquals(result.reply, "Comentário seguro.");
-  assertStringIncludes(payload, "[CPF/CNPJ]");
-  assertStringIncludes(payload, "[PLACA]");
-  assertStringIncludes(payload, "Valor total R$ 90.000,00.");
+  assertEquals(result, { sent: false, reason: "identity_document" });
+  assertEquals(calls, 0);
 });
 
 Deno.test("PRIV-1 — conteúdo só de PII fica no cofre sem chamada externa", () => {
@@ -153,7 +149,7 @@ Deno.test("PRIV-1 — conteúdo só de PII fica no cofre sem chamada externa", (
       audience: "gestao",
       text: `${RAW_PII.cpf}\n${RAW_PII.email}\n${RAW_PII.endereco}`,
     }),
-    { allowed: false, reason: "empty_after_masking" },
+    { allowed: false, reason: "identity_document" },
   );
 });
 

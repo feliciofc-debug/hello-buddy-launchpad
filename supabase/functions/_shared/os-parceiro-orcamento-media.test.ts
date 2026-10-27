@@ -129,7 +129,7 @@ function fakeCotacaoSupabase() {
 
 Deno.test({
   name:
-    "PRIV-1.1 — foto de orçamento possível usa OCR local e extrai total/prazo",
+    "DOC-SEG-2 — foto com CNPJ fica protegida após OCR local",
   permissions: { env: true },
   fn: () =>
     withOcrEnv(async () => {
@@ -144,17 +144,15 @@ Deno.test({
         media("image", "image/jpeg", "orcamento.jpg"),
         localOcrFetch(quote),
       );
-      assertEquals(result.documentoProtegido, false);
+      assertEquals(result.documentoProtegido, true);
       assertEquals(result.ocrFalhou, false);
-      const parsed = parseOrcamentoFromExtractedText(result.texto);
-      assertEquals(parsed.valor, 3800);
-      assertEquals(parsed.prazoDias, 7);
+      assertEquals(result.texto, "");
     }),
 });
 
 Deno.test({
   name:
-    "PRIV-1.1 — foto com cotação ativa entra no fluxo com valor e prazo do OCR",
+    "DOC-SEG-2 — cotação com CNPJ não é consumida como orçamento",
   permissions: { env: true },
   fn: () =>
     withOcrEnv(async () => {
@@ -173,18 +171,8 @@ Deno.test({
           "ORCAMENTO COMPLETO COM MUITOS ITENS CNPJ 04.252.011/0001-10 TOTAL R$ 3.800,00 PRAZO 7 DIAS",
         ),
       });
-      assertEquals(result.handled, true);
-      assertStringIncludes(result.reply ?? "", "OS #42");
-      const saved = fake.sessionWrites.at(-1);
-      assertEquals(saved?.fase, "confirmar_midia");
-      assertEquals(
-        (saved?.draft_json as Record<string, unknown>)?.valor,
-        3800,
-      );
-      assertEquals(
-        (saved?.draft_json as Record<string, unknown>)?.prazo_dias,
-        7,
-      );
+      assertEquals(result.handled, false);
+      assertEquals(fake.sessionWrites.length, 0);
     }),
 });
 
