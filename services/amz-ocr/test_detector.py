@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 import unittest.mock
 
-from detector import classify_document
+from detector import classify_document, possible_document_text
 
 try:
     from PIL import Image, ImageDraw
@@ -62,6 +62,38 @@ class DetectorTest(unittest.TestCase):
             classify_document(f"{prefix} CPF 111.111.111-11"),
             (False, None),
         )
+
+    def test_possible_document_requires_dense_real_text(self) -> None:
+        car_scene = "\n".join(
+            [
+                "RENAULT KWID",
+                "CARRO BRANCO",
+                "ARVORES AO FUNDO",
+                "OFERTA DA LOJA",
+                "VEICULO NO PATIO",
+                "MODELO COMPACTO",
+                "FOTO EXTERNA",
+                "CEU AZUL",
+            ]
+        )
+        old_crlv = "\n".join(
+            [
+                "REGISTRO NACIONAL",
+                "PLACA VEICULO",
+                "RENAVAM NUMERO",
+                "MARCA MODELO",
+                "ANO FABRICACAO",
+                "COR PREDOMINANTE",
+                "COMBUSTIVEL CATEGORIA",
+                "PROPRIETARIO NOME",
+            ]
+        )
+        dense_document = "\n".join(
+            f"campo sintetico linha {index:02d}" for index in range(14)
+        )
+        self.assertFalse(possible_document_text(car_scene, True))
+        self.assertTrue(possible_document_text(old_crlv, True))
+        self.assertTrue(possible_document_text(dense_document, False))
 
 
 @unittest.skipUnless(

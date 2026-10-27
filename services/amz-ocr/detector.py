@@ -1,5 +1,39 @@
 import re
 
+_REAL_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
+_DOCUMENT_TEXT_HINT_RE = re.compile(
+    r"\b(?:PLACA|RENAVAM|CHASSI|PROPRIETARIO|PROPRIETÁRIO|"
+    r"CPF|CNPJ|DETRAN|REGISTRO|LICENCIAMENTO|HABILITACAO|HABILITAÇÃO|"
+    r"VALIDADE|NASCIMENTO|FILIACAO|FILIAÇÃO|CATEGORIA|COMBUSTIVEL|"
+    r"COMBUSTÍVEL|MUNICIPIO|MUNICÍPIO)\b",
+    re.IGNORECASE,
+)
+
+
+def possible_document_text(text: str, colored_background: bool) -> bool:
+    real_word_lines: list[list[str]] = []
+    for raw_line in text.splitlines():
+        words = _REAL_WORD_RE.findall(raw_line)
+        if len(words) >= 2:
+            real_word_lines.append(words)
+
+    words = [word for line in real_word_lines for word in line]
+    letter_count = sum(len(word) for word in words)
+    dense_text = (
+        len(real_word_lines) >= 12
+        and len(words) >= 24
+        and letter_count >= 100
+    )
+    hint_count = len(_DOCUMENT_TEXT_HINT_RE.findall(text))
+    old_colored_document = (
+        colored_background
+        and len(real_word_lines) >= 6
+        and len(words) >= 12
+        and letter_count >= 55
+        and hint_count >= 2
+    )
+    return dense_text or old_colored_document
+
 
 def _cpf_valid(value: str) -> bool:
     if not re.fullmatch(r"\d{11}", value) or len(set(value)) == 1:
