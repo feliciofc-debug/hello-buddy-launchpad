@@ -158,8 +158,8 @@ export async function buildJarvisCartilhaPdfBytes(input: {
   const audiencia = input.audiencia ?? "dono";
   const itens = JARVIS_AJUDA_CATALOGO.filter((item) =>
     audiencia === "dono"
-      ? item.publico !== "vendedor"
-      : item.publico === "dono_gestor"
+      ? item.menu.audiences.includes("owner")
+      : item.menu.audiences.includes("manager")
   );
   for (
     const secao of JARVIS_AJUDA_SECOES.filter((secao) =>

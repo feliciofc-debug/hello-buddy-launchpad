@@ -14,11 +14,11 @@ import {
 
 Deno.test("AJUDA-1 — todas as frases gestao_intent acionam o kind prometido", () => {
   for (const item of JARVIS_AJUDA_CATALOGO) {
-    if (item.rota.tipo !== "gestao_intent") continue;
+    if (item.route.type !== "gestao_intent") continue;
     for (const frase of item.comoPedir) {
       assertEquals(
         classifyGestaoIntent(frase).kind,
-        item.rota.kind,
+        item.route.kind,
         `${item.id}: “${frase}”`,
       );
     }
@@ -27,11 +27,11 @@ Deno.test("AJUDA-1 — todas as frases gestao_intent acionam o kind prometido", 
 
 Deno.test("AJUDA-1 — todas as frases owner_media acionam o classificador real", () => {
   for (const item of JARVIS_AJUDA_CATALOGO) {
-    if (item.rota.tipo !== "owner_media") continue;
+    if (item.route.type !== "owner_media") continue;
     for (const frase of item.comoPedir) {
       assertEquals(
         classifyOwnerMediaIntent(frase).action,
-        item.rota.action,
+        item.route.action,
         `${item.id}: “${frase}”`,
       );
     }
@@ -46,10 +46,10 @@ Deno.test("AJUDA-1 — cada llm_tool consta na lista real de tools do dono", asy
     ),
   );
   for (const item of JARVIS_AJUDA_CATALOGO) {
-    if (item.rota.tipo !== "llm_tool") continue;
+    if (item.route.type !== "llm_tool") continue;
     assert(
-      processor.includes(`name: "${item.rota.nome}"`),
-      `${item.id}: tool ${item.rota.nome} não existe no processor`,
+      processor.includes(`name: "${item.route.name}"`),
+      `${item.id}: tool ${item.route.name} não existe no processor`,
     );
   }
 });
@@ -68,7 +68,7 @@ Deno.test("AJUDA-1 — estoque de revenda usa o estoque de veículos", async () 
   );
 });
 
-Deno.test("AJUDA-1 — catálogo cobre as nove seções e painel informa caminho", () => {
+Deno.test("AJUDA-1 — catálogo cobre as seções e painel informa link e caminho", () => {
   for (const secao of JARVIS_AJUDA_SECOES) {
     assert(
       JARVIS_AJUDA_CATALOGO.some((item) => item.secao === secao),
@@ -78,8 +78,10 @@ Deno.test("AJUDA-1 — catálogo cobre as nove seções e painel informa caminho
   for (const item of JARVIS_AJUDA_CATALOGO) {
     assert(item.comoPedir.length >= 2 && item.comoPedir.length <= 3);
     assertEquals(item.oQueAcontece.includes("\n"), false);
-    if (item.rota.tipo === "painel") {
-      assert(item.rota.caminho.length > 3);
+    if (item.route.type === "panel") {
+      assert(item.route.href.startsWith("/"));
+      assert(item.route.path.length > 3);
+      assertStringIncludes(item.route.path, "›");
       assert(
         item.comoPedir.every((frase) =>
           /painel|gestão|veículo|os/i.test(frase)
