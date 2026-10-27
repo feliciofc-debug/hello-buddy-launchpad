@@ -13,6 +13,7 @@ export type MediaExtract = {
   base64: string;
   caption?: string;
   filename?: string;
+  protected_document?: boolean;
 };
 
 export type MediaRejection = {

@@ -20,6 +20,16 @@ const ALLOWED_MIME = new Set([
   "image/webp",
   "image/heic",
   "image/heif",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "application/xml",
+  "application/octet-stream",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const ALLOWED_TIPO = new Set([
   "crlv",
@@ -163,7 +173,11 @@ export async function gestaoCofreUpload(
   if (!input.bytes.byteLength || input.bytes.byteLength > MAX_BYTES) {
     throw new Error("Arquivo deve ter até 15 MB");
   }
-  if (!ALLOWED_MIME.has(input.mime.toLowerCase())) {
+  const normalizedMime = input.mime.toLowerCase();
+  if (
+    !ALLOWED_MIME.has(normalizedMime) &&
+    !normalizedMime.startsWith("text/")
+  ) {
     throw new Error("Tipo de arquivo não permitido");
   }
   if (!ALLOWED_TIPO.has(input.tipo)) {

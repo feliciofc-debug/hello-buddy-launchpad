@@ -17,15 +17,26 @@ export type DocumentoPortaoResultado = {
 export function deveBloquearDocumentoParceiro(
   resultado: Pick<DocumentoPortaoResultado, "documento" | "possivel_documento">,
 ): boolean {
-  // Com cotação ativa, mídia apenas suspeita ainda precisa chegar ao fluxo de
-  // orçamento. Somente um documento oficialmente reconhecido fica bloqueado.
-  return resultado.documento;
+  return resultado.documento || resultado.possivel_documento;
 }
 
 export function isDocumentoGateCandidate(media: MediaExtract): boolean {
   return media.kind === "image" ||
     (media.kind === "document" &&
       (media.mime === "application/pdf" || media.mime.startsWith("image/")));
+}
+
+export function markProtectedDocumentMedia<T extends MediaExtract>(
+  media: T,
+): T {
+  media.protected_document = true;
+  return media;
+}
+
+export function isProtectedDocumentMedia(
+  media: MediaExtract | null | undefined,
+): boolean {
+  return media?.protected_document === true;
 }
 
 export async function verificarDocumentoNoPortao(
@@ -45,10 +56,12 @@ export async function verificarDocumentoNoPortao(
         media.filename,
       );
       if (extracted.text.trim()) {
+        const classification = classificarDocumentoIdentidade(extracted.text);
+        if (classification.documento) markProtectedDocumentMedia(media);
         return {
           media,
           bytes,
-          ...classificarDocumentoIdentidade(extracted.text),
+          ...classification,
           possivel_documento: false,
         };
       }
@@ -57,6 +70,9 @@ export async function verificarDocumentoNoPortao(
     }
   }
   const result = await detector(bytes, media.mime);
+  if (result.documento || result.possivel_documento) {
+    markProtectedDocumentMedia(media);
+  }
   return { media, bytes, ...result };
 }
 

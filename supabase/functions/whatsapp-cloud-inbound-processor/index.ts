@@ -183,10 +183,12 @@ import {
   DOCUMENTO_CLIENTE_RESPOSTA,
   DOCUMENTO_DETECTOR_INDISPONIVEL,
   isDocumentoGateCandidate,
+  isProtectedDocumentMedia,
   respostaCrlvWhatsApp,
   tipoDocumentoCofre,
   verificarDocumentoNoPortao,
 } from "../_shared/documento-portao.ts";
+import { commentOnLocallyExtractedDocument } from "../_shared/document-privacy.ts";
 import {
   cleanupDocumentPhotoPending,
   isUnrelatedPhotoConfirmationMessage,
@@ -1037,6 +1039,7 @@ function extractText(payload: any): string {
 }
 
 function buildUserContent(userText: string, media: MediaExtract[]): any {
+  media = media.filter((item) => !isProtectedDocumentMedia(item));
   if (media.length === 0) return userText || "(mensagem sem texto)";
   const hasAudio = media.some((m) => m.kind === "audio");
   const hasImage = media.some((m) => m.kind === "image");
@@ -3715,7 +3718,7 @@ async function tenantVerticalSegment(userId: string): Promise<string | null> {
 async function classifyPhotoVertical(
   media: MediaExtract | undefined,
 ): Promise<ReturnType<typeof parseVerticalVisionResult>> {
-  if (!media || media.kind !== "image") return null;
+  if (!media || media.kind !== "image" || isProtectedDocumentMedia(media)) return null;
   try {
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -3762,6 +3765,7 @@ async function identifyVehiclePhoto(
   source: MediaExtract | string | undefined,
 ): Promise<VehicleIdentification | null> {
   if (!source) return null;
+  if (typeof source !== "string" && isProtectedDocumentMedia(source)) return null;
   const imageUrl = typeof source === "string"
     ? source
     : source.kind === "image"
@@ -10440,7 +10444,7 @@ async function descreverFotosSalvas(
       reutilizada: salvos[i]?.reutilizada,
       contextoOriginal: salvos[i]?.contexto_original,
     }))
-    .filter((x) => x.tipo === "foto");
+    .filter((x) => x.tipo === "foto" && !isProtectedDocumentMedia(x.m));
   if (fotos.length === 0) return "";
 
   const descricoes = await Promise.all(fotos.map(async (f) => {
@@ -15995,7 +15999,7 @@ async function resolveFipeModelsForYear(input: {
 async function identifyFipeVehicleFromPhoto(
   media: MediaExtract,
 ): Promise<{ brand: string; model: string; earliestYear?: number } | null> {
-  if (!media.base64) return null;
+  if (!media.base64 || isProtectedDocumentMedia(media)) return null;
   const imageUrl = `data:${media.mime || "image/jpeg"};base64,${media.base64}`;
   const prompt =
     'Identifique apenas como sugestão o veículo principal da foto. Responda SOMENTE JSON: {"brand":"marca","model":"modelo/geração","earliestYear":ano_inicial_no_Brasil_ou_null}. Não afirme o ano exato e não invente versão.';
@@ -25907,7 +25911,7 @@ async function processOne(queueId: string) {
       | null = partnerChecked?.documento ? partnerChecked : null;
     let possibleDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = null;
+      | null = partnerChecked?.possivel_documento ? partnerChecked : null;
     for (const candidate of gateCandidates) {
       if (detectedDocument || possibleDocument) break;
       // O callback do parceiro só roda quando há cotação ativa. Se a mídia não
@@ -26016,8 +26020,7 @@ async function processOne(queueId: string) {
           content: "[possível documento recebido sem análise externa]",
         }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
 
-        let reply =
-          "Recebi seu documento, guardei no cofre e avisei a equipe com segurança.";
+        let reply = DOCUMENTO_CLIENTE_RESPOSTA;
         let buttons: WhatsAppInteractiveButtons | undefined;
         if (senderIsGestao) {
           reply = "Parece um documento. Quer que eu guarde no cofre e tente ler?";
@@ -26360,7 +26363,10 @@ async function processOne(queueId: string) {
 
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
     // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
-    const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
+    const freshLibraryMedia = media.filter((m) =>
+      !isProtectedDocumentMedia(m) &&
+      (m.kind === "image" || m.kind === "video")
+    );
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
       const stateConversation = {
@@ -28472,323 +28478,146 @@ async function processOne(queueId: string) {
       }
     }
 
-    // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
-    // Regra: nunca chamar tools, nunca buscar lugares, nunca postar. Só análise.
+    // PASSO 6.8 — arquivo/documento: cofre primeiro. Cliente nunca usa IA;
+    // responsável/gestor só pode enviar texto extraído localmente e mascarado.
     const docMedia = media.filter((m) => m.kind === "document");
-    const senderIsClient = !!tenantOwnerPhone && !fromIsOwner;
+    const documentGestaoAuth = docMedia.length > 0
+      ? await loadGestaoAuthContext(sb, userId)
+      : null;
+    const senderIsGestaoDocument = fromIsOwner ||
+      (!!documentGestaoAuth &&
+        isGestaoAuthorizedPhone(row.from_number, documentGestaoAuth));
+    const senderIsClient = !senderIsGestaoDocument;
 
-    // === CLIENTE mandou documento (RG/CNH/comprovante/PDF/imagem-doc) ===
-    // Silvester deve LER de verdade (vision multimodal), extrair dados
-    // estruturados, salvar no dossiê e responder de forma natural — não
-    // devolver análise técnica genérica tipo "certificado digital MP 2.200".
     if (docMedia.length > 0 && senderIsClient) {
       const doc = docMedia[0];
-      const label = doc.filename || `arquivo ${doc.mime}`;
-
-      const _agentNomeDoc = String(agent.agent_name || "assistente").trim();
-      const _consorcioDoc = /cons[oó]rcio|ademicon|carta\s+de\s+cr[eé]dito/i.test(`${(agent as any)?.persona || ""} ${(agent as any)?.knowledge_base || ""}`);
-      const _donoNomeDoc = ownerFirstName(_tenantOwner?.name) || "o responsável";
-      const clientVisionPrompt = `Você é o ${_agentNomeDoc}, pré-atendente ${_consorcioDoc ? `do consultor de consórcio ${_donoNomeDoc}` : `de ${_donoNomeDoc}`}. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
-
-{
-  "tipo": "rg" | "cnh" | "comprovante_residencia" | "comprovante_renda" | "ir" | "foto_bem" | "outro",
-  "legivel": true | false,
-  "resumo_humano": "1 frase curta pro cliente confirmando o que você viu, ex: 'Recebi sua CNH, João Silva, tudo legível'",
-  "dados": {
-    "nome_completo": "...", "cpf": "...", "rg": "...", "data_nascimento": "YYYY-MM-DD",
-    "profissao": "...", "renda_mensal": 0,
-    "endereco_logradouro": "...", "endereco_numero": "...", "endereco_bairro": "...",
-    "endereco_cidade": "...", "endereco_estado": "UF", "endereco_cep": "..."
-  }
-}
-
-Regras:
-- OMITA chaves que não aparecem no documento (não invente).
-- CPF só dígitos (11). Datas ISO YYYY-MM-DD. renda_mensal em número.
-- Se estiver borrado/ilegível: legivel=false e no resumo_humano peça pra reenviar mais nítido.
-- Se for CNH-e / QR-code de validação sem dados pessoais visíveis: legivel=false, resumo_humano="O arquivo é só o QR de validação da CNH-e — não mostra os dados. Consegue mandar uma foto da frente e verso da CNH?"
-- Devolva JSON PURO.`;
-
-      let vision: any = { tipo: "outro", legivel: false, resumo_humano: `Recebi *${label}*, mas não consegui ler.` };
       try {
-        const vr = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-          body: JSON.stringify({
-            model: MODEL_DEEP,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "text", text: clientVisionPrompt },
-                doc.mime.includes("pdf")
-                  ? { type: "file", file: { filename: label, file_data: `data:${doc.mime};base64,${doc.base64}` } }
-                  : { type: "image_url", image_url: { url: `data:${doc.mime};base64,${doc.base64}` } },
-              ],
-            }],
-          }),
+        await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: base64Decode(doc.base64),
+          mime: doc.mime,
+          tipo: "outro",
+          origem: "whatsapp",
+          filename: doc.filename,
+          lerCrlv: false,
         });
-        if (vr.ok) {
-          const vj = await vr.json();
-          const raw = vj?.choices?.[0]?.message?.content ?? "{}";
-          const cleaned = raw.replace(/```json\s*|\s*```/g, "").trim();
-          try { vision = JSON.parse(cleaned); } catch { /* keep default */ }
-        } else {
-          console.error("[processor][client-doc] vision falhou", vr.status, (await vr.text()).slice(0, 300));
-        }
-      } catch (e) {
-        console.error("[processor][client-doc] vision erro", (e as Error).message);
-      }
-
-      // Grava dossiê + documento (best-effort)
-      let dossieAtual: any = null;
-      try {
-        const { data: existing } = await sb
-          .from("silvester_dossies")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("telefone_cliente", row.from_number)
-          .maybeSingle();
-        if (existing) dossieAtual = existing;
-        else {
-          const { data: created } = await sb
-            .from("silvester_dossies")
-            .insert({ user_id: userId, telefone_cliente: row.from_number, nome_completo: vision?.dados?.nome_completo ?? null, status: "coletando" })
-            .select("*")
-            .single();
-          dossieAtual = created;
-        }
-
-        if (dossieAtual) {
-          // upload no storage (se bucket existir)
-          let storagePath: string | null = null;
-          try {
-            const ext = doc.mime.includes("pdf") ? "pdf" : doc.mime.includes("png") ? "png" : "jpg";
-            const path = `${userId}/${dossieAtual.id}/${crypto.randomUUID()}.${ext}`;
-            const bin = Uint8Array.from(atob(doc.base64), (c) => c.charCodeAt(0));
-            const { error: upErr } = await sb.storage.from("silvester-docs").upload(path, bin, { contentType: doc.mime, upsert: false });
-            if (!upErr) storagePath = path;
-          } catch (e) {
-            console.warn("[processor][client-doc] upload falhou", (e as Error).message);
-          }
-
-          await sb.from("silvester_documentos").insert({
-            dossie_id: dossieAtual.id,
-            user_id: userId,
-            tipo: vision?.tipo ?? "outro",
-            storage_path: storagePath,
-            mime_type: doc.mime,
-            ocr_texto: vision?.resumo_humano ?? null,
-            dados_extraidos: vision?.dados ?? {},
-            status_validacao: vision?.legivel === false ? "ilegivel" : "validado",
-            observacoes_ia: vision?.resumo_humano ?? null,
-            wamid: row.wamid ?? null,
-            processed_at: new Date().toISOString(),
-          });
-
-          const patch: Record<string, any> = {};
-          for (const [k, v] of Object.entries(vision?.dados ?? {})) {
-            if (v === null || v === undefined) continue;
-            if (typeof v === "string" && v.trim() === "") continue;
-            patch[k] = v;
-          }
-          if (Object.keys(patch).length > 0) {
-            await sb.from("silvester_dossies").update(patch).eq("id", dossieAtual.id);
-            // Recarrega para ter os dados atualizados em memória
-            const { data: fresh } = await sb.from("silvester_dossies").select("*").eq("id", dossieAtual.id).maybeSingle();
-            if (fresh) dossieAtual = fresh;
-          }
-        }
-      } catch (e) {
-        console.warn("[processor][client-doc] persist dossie falhou", (e as Error).message);
-      }
-
-      const primeiroNome = ownerFirstName(_tenantOwner?.name) || "o Marcelo";
-      const humano = (vision?.resumo_humano || "").trim();
-
-
-
-      const temNome = !!(dossieAtual?.nome_completo && String(dossieAtual.nome_completo).trim());
-      const temCpf = !!(dossieAtual?.cpf && String(dossieAtual.cpf).trim());
-      const temIdentidade = !!(dossieAtual?.rg || vision?.tipo === "cnh" || vision?.tipo === "rg");
-      const jaEncaminhado = dossieAtual?.status === "enviado";
-      const deveEncaminhar = !jaEncaminhado && temNome && temCpf && temIdentidade && !!tenantOwnerPhone;
-
-      let ownerForwardWamid: string | null = null;
-      if (deveEncaminhar) {
-        try {
-          const linhas: string[] = [];
-          linhas.push(`👋 Oi ${primeiroNome}, aqui é o ${String(agent.agent_name || "seu assistente").trim()}.`);
-          linhas.push(_consorcioDoc ? `Novo cliente interessado em consórcio, pré-atendimento concluído:` : `Novo contato de cliente, pré-atendimento concluído:`);
-          linhas.push("");
-          linhas.push(`👤 *Nome:* ${dossieAtual.nome_completo}`);
-          if (dossieAtual.cpf) linhas.push(`🆔 *CPF:* ${dossieAtual.cpf}`);
-          if (dossieAtual.rg) linhas.push(`📄 *RG:* ${dossieAtual.rg}`);
-          if (dossieAtual.data_nascimento) linhas.push(`🎂 *Nascimento:* ${dossieAtual.data_nascimento}`);
-          if (dossieAtual.profissao) linhas.push(`💼 *Profissão:* ${dossieAtual.profissao}`);
-          if (dossieAtual.renda_mensal) linhas.push(`💰 *Renda:* ${dossieAtual.renda_mensal}`);
-          linhas.push(`📱 *WhatsApp:* ${row.from_number}`);
-          linhas.push("");
-          linhas.push(`Documentos anexados no dossiê. Pode assumir o atendimento quando puder. 🙌`);
-          const recado = linhas.join("\n");
-          ownerForwardWamid = await sendWhatsApp(userId, tenantOwnerPhone!, recado);
-          await logOwnerHeadsup(userId, recado, ownerForwardWamid);
-          await sb.from("silvester_dossies").update({ status: "enviado" }).eq("id", dossieAtual.id);
-          // NÃO mutamos o bot (status="handoff") aqui: o cliente ainda pode
-          // agradecer/perguntar coisas simples ("obrigado", "quanto tempo?", etc.)
-          // e o Silvester precisa responder com naturalidade até o Marcelo assumir.
-          console.log(`[processor][silvester][handoff] dossiê ${dossieAtual.id} enviado para ${tenantOwnerPhone} wamid=${ownerForwardWamid}`);
-        } catch (e) {
-          console.warn("[processor][silvester][handoff] falhou:", (e as Error).message);
-        }
-      }
-
-      let reply: string;
-      let docSiteLinkAlreadySent = false;
-      if (vision?.legivel === false) {
-        reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
-      } else if (deveEncaminhar && ownerForwardWamid) {
-        const proto = buildForwardProof(ownerForwardWamid);
-        try {
-          const stPrev = await loadAgentState(sb, convStateIdentity);
-          docSiteLinkAlreadySent = stPrev.site_link_enviado === true;
-          await saveAgentState(sb, convStateIdentity, {
-            forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
-            ...(isAmzTenant && !docSiteLinkAlreadySent
-              ? { site_link_enviado: true }
-              : {}),
-          }, stPrev);
-        } catch (_e) { /* não bloqueia */ }
-        reply = isAmzTenant
-          ? `${humano ? humano + "\n\n" : ""}Prontinho! Já encaminhei seu cadastro completo para um dos nossos consultores agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`
-          : `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
-      } else if (deveEncaminhar) {
-        reply = isAmzTenant
-          ? `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar um dos nossos consultores agora mesmo para ele te retornar. 🙌`
-          : `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
-      } else {
-        const nomeVisto = vision?.dados?.nome_completo ? ` (${vision.dados.nome_completo})` : "";
-        reply = isAmzTenant
-          ? humano
-            ? `${humano} Já anexei no seu cadastro para um dos nossos consultores usar na proposta. 👍`
-            : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro para um dos nossos consultores. Obrigado!`
-          : humano
-          ? `${humano} Já anexei no seu cadastro pra ${primeiroNome} usar na proposta. 👍`
-          : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro pra ${primeiroNome}. Obrigado!`;
-      }
-      reply = finalizeAmzInboundReply({
-        text: reply,
-        isAmzTenant,
-        inboundFromOwner: false,
-        ownerName: _tenantOwner?.name,
-      });
-      reply = appendAmzSiteLinkAfterHandoff({
-        text: reply,
-        isAmzProspect: isAmzTenant,
-        handoffSucceeded: Boolean(deveEncaminhar && ownerForwardWamid),
-        siteLinkAlreadySent: docSiteLinkAlreadySent,
-      }).text;
-
-      const { data: outMsg } = await sb
-        .from("whatsapp_cloud_messages")
-        .insert({
+      } catch {
+        const failure =
+          "Recebi o documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
           conversation_id: conv.id,
           user_id: userId,
           direction: "outbound",
           sender: "agent",
-          content: reply,
+          content: failure,
           message_type: "text",
-        })
-        .select("id")
-        .single();
-
-      let sendError: string | null = null;
-      try {
-        const docReplyParts = reply.split("<<SPLIT>>")
-          .map((part) => part.trim())
-          .filter(Boolean);
-        const sentId = await sendWhatsApp(
-          userId,
-          row.from_number,
-          docReplyParts[0] ?? reply,
-        );
-        for (const part of docReplyParts.slice(1)) {
-          await sendWhatsApp(userId, row.from_number, part);
-        }
-        if (sentId && outMsg?.id) {
-          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
-        }
-      } catch (e) {
-        sendError = String((e as Error).message ?? e);
-      }
-      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
-
-      if (sendError) {
-        await failQueue(row.id, `send_failed: ${sendError}`);
-        return { ok: false, reason: "send_failed", error: sendError };
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "client_document_secure_store_failed" };
       }
 
+      await sb.from("whatsapp_cloud_messages").update({
+        content: "[documento recebido com segurança]",
+      }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+      if (tenantOwnerPhone) {
+        const ownerNotice =
+          "📄 Um cliente enviou um documento. Guardei no cofre com segurança e não enviei o conteúdo para IA externa.";
+        try {
+          const ownerWamid = await sendWhatsApp(
+            userId,
+            tenantOwnerPhone,
+            ownerNotice,
+          );
+          await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+        } catch {
+          // O documento continua protegido mesmo se o aviso falhar.
+        }
+      }
+      const sentId = await sendWhatsApp(
+        userId,
+        row.from_number,
+        DOCUMENTO_CLIENTE_RESPOSTA,
+      );
+      await sb.from("whatsapp_cloud_messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        direction: "outbound",
+        sender: "agent",
+        content: DOCUMENTO_CLIENTE_RESPOSTA,
+        message_type: "text",
+        wamid: sentId,
+      });
       await doneQueue(row.id);
-      return { ok: true, client_doc_processed: true, tipo: vision?.tipo, legivel: vision?.legivel };
+      return { ok: true, client_document_secured: true };
     }
 
     if (docMedia.length > 0) {
       const doc = docMedia[0]; // trata 1 por vez (o mais comum no WhatsApp)
-      const extracted = await extractDocumentText(doc.base64, doc.mime, doc.filename);
       const label = doc.filename || `arquivo ${doc.mime}`;
+      try {
+        await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: base64Decode(doc.base64),
+          mime: doc.mime,
+          tipo: "outro",
+          origem: "whatsapp",
+          filename: doc.filename,
+          lerCrlv: false,
+        });
+      } catch {
+        const failure =
+          "Recebi o arquivo, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: failure,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "document_secure_store_failed" };
+      }
+      await sb.from("whatsapp_cloud_messages").update({
+        content: "[arquivo guardado com segurança]",
+      }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
 
+      const extracted = await extractDocumentText(
+        doc.base64,
+        doc.mime,
+        doc.filename,
+      );
       let reply: string;
       if (!extracted.supported || !extracted.text) {
-        reply = extracted.note
-          ? `Recebi o arquivo *${label}*, mas ${extracted.note}`
-          : `Recebi *${label}*, mas não consegui ler o conteúdo. Se puder, manda em .md, .txt, .json ou .pdf com texto.`;
+        reply =
+          "📄 Arquivo guardado com segurança no cofre. Não enviei o conteúdo para IA externa.";
       } else {
         const truncNote = extracted.truncated
           ? `\n\n(Obs: o documento é grande — analisei os primeiros ~60 mil caracteres.)`
           : "";
-        const userComment = userText ? `\n\nContexto que o dono mandou junto: "${userText}"` : "";
-        const docPrompt = [
-          `O dono (Felício) te enviou um documento/projeto pelo WhatsApp para você COMENTAR.`,
-          `Sua tarefa: LEIA o conteúdo abaixo e responda como o Jarvis — assistente do Felício —`,
-          `com um comentário útil, honesto e direto: pontos fortes, riscos, o que falta, sugestões práticas.`,
-          `Formato: WhatsApp (curto, parágrafos claros, sem tabelas ASCII). Máx ~250 palavras.`,
-          `NÃO use nenhuma ferramenta (nada de busca de lugares, nada de pesquisar_web, nada de postar).`,
-          `Só análise textual do que está aqui.${userComment}`,
-          ``,
-          `NOME DO ARQUIVO: ${label}`,
-          `TIPO: ${extracted.kind}`,
-          ``,
-          `--- CONTEÚDO ---`,
-          extracted.text,
-          `--- FIM ---`,
-        ].join("\n");
-
         try {
-          const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: escolherModelo({ kind: "document" }),
-              temperature: 0.5,
-              messages: [
-                { role: "system", content: "Você é o Jarvis, assistente pessoal do Felício. Leia o documento enviado e comente com franqueza técnica e prática. Nunca invente informação. Nunca peça localização. Nunca ofereça buscar lugares." },
-                { role: "user", content: docPrompt },
-              ],
-            }),
+          const comment = await commentOnLocallyExtractedDocument({
+            audience: "gestao",
+            text: extracted.text,
+            filename: label,
+            kind: extracted.kind,
+            context: userText,
+            apiKey: LOVABLE_API_KEY,
+            model: escolherModelo({ kind: "document" }),
           });
-          if (!aiRes.ok) {
-            const t = await aiRes.text();
-            throw new Error(`gateway ${aiRes.status}: ${t.slice(0, 200)}`);
-          }
-          const aiJson = await aiRes.json();
-          const aiText = aiJson?.choices?.[0]?.message?.content?.trim();
-          reply = aiText || `Li o arquivo *${label}*, mas não consegui montar o comentário agora. Tenta reenviar em alguns segundos.`;
-          if (extracted.truncated) reply += truncNote;
-        } catch (e) {
-          console.error("[processor][document] falha modelo:", (e as Error).message);
-          reply = `Recebi e li *${label}*, mas travei ao gerar o comentário (${(e as Error).message.slice(0, 120)}). Tenta reenviar.`;
+          reply = comment.sent
+            ? `${comment.reply}${truncNote}`
+            : "📄 Arquivo guardado com segurança no cofre. Não enviei o conteúdo para IA externa.";
+        } catch {
+          console.error("[processor][document] falha ao comentar texto mascarado");
+          reply =
+            "📄 Arquivo guardado com segurança no cofre. Não consegui gerar o comentário agora.";
         }
       }
 
@@ -28839,7 +28668,14 @@ Regras:
         return { ok: false, reason: "send_failed", error: sendError };
       }
       await doneQueue(row.id);
-      return { ok: true, document_commented: true, filename: label, kind: extracted.kind, truncated: extracted.truncated };
+      return {
+        ok: true,
+        document_secured: true,
+        document_commented:
+          !reply.includes("Arquivo guardado com segurança no cofre"),
+        kind: extracted.kind,
+        truncated: extracted.truncated,
+      };
     }
 
 
@@ -29096,9 +28932,8 @@ Regras:
       }
     }
 
-    // === SILVESTER DOSSIÊ — fire-and-forget ===
-    // Para conversas com CLIENTE (não-dono), dispara extração/atualização de dossiê em background.
-    // Não bloqueia a resposta ao cliente. Roda para texto E mídia.
+    // === SILVESTER DOSSIÊ — fire-and-forget, somente texto ===
+    // Mídia nunca integra o payload, inclusive quando já existe na biblioteca.
     const silvesterEnabled = await silvesterDossieEnabledForTenant(sb, userId);
     if (
       shouldFireSilvesterExtractHook({
@@ -29108,19 +28943,6 @@ Regras:
       })
     ) {
       try {
-        // Coleta mídias JÁ salvas (fotos/PDFs) da biblioteca dessa conversa (últimos 10min)
-        const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: recentMidias } = await sb
-          .from("midias_whatsapp")
-          .select("midia_url, tipo, created_at, telefone_origem")
-          .eq("user_id", userId)
-          .eq("telefone_origem", row.from_number)
-          .in("tipo", ["foto"])
-          .gte("created_at", cutoff)
-          .order("created_at", { ascending: false })
-          .limit(5);
-        const mediaPayload = (recentMidias ?? []).map((m: any) => ({ url: m.midia_url }));
-
         // Coleta últimas mensagens de texto do cliente (para extração de dados)
         const { data: recentTexts } = await sb
           .from("whatsapp_cloud_messages")
@@ -29136,7 +28958,7 @@ Regras:
           telefone_cliente: row.from_number,
           nome_cliente: contactName || null,
           owner_phone: tenantOwnerPhone,
-          media: mediaPayload,
+          media: [],
           texto_conversa: textoConversa,
         };
         // fire-and-forget
@@ -29891,7 +29713,10 @@ Regras:
       (audioTranscript
         ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
         : userText);
-    const userContent = buildUserContent(userTextComAudio, media);
+    const externalAiMedia = media.filter((item) =>
+      !isProtectedDocumentMedia(item)
+    );
+    const userContent = buildUserContent(userTextComAudio, externalAiMedia);
 
     let reply = "";
     let generatedImageUrl: string | undefined;
@@ -29920,10 +29745,10 @@ Regras:
         } catch (e) {
           console.warn("[gestao-consulta][auth]", (e as Error).message);
         }
-        const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
+        const aiResult = await callGemini(systemPromptWithDate, history, userContent, externalAiMedia.length > 0, {
           userId,
           fromNumber: row.from_number,
-          media,
+          media: externalAiMedia,
           convId: conv.id,
           agentState,
           vertical: textVerticalDecision.route,

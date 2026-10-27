@@ -173,7 +173,7 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
       documento: false,
       possivel_documento: true,
     }),
-    false,
+    true,
   );
   assertEquals(
     deveBloquearDocumentoParceiro({
@@ -199,14 +199,10 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
     true,
   );
   assertEquals(
-    flow.includes("checked.documento || checked.possivel_documento"),
-    false,
-  );
-  assertEquals(
     flow.includes(
       "partnerChecked?.possivel_documento ? partnerChecked : null",
     ),
-    false,
+    true,
   );
   const generalGate = flow.indexOf(
     "// DOC-0 — portão local ANTES das demais rotas",
@@ -278,4 +274,44 @@ Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativ
   assertEquals(source.includes("Guardar e ler"), true);
   assertEquals(source.includes("Não é documento"), true);
   assertEquals(source.includes("releasedPossibleDocument"), true);
+});
+
+Deno.test("PRIV-1 — documento certo ou possível recebe marca de proteção", async () => {
+  for (const key of ["documento", "possivel_documento"] as const) {
+    const candidate = { ...image };
+    const result = await verificarDocumentoNoPortao(
+      candidate,
+      () =>
+        Promise.resolve({
+          documento: key === "documento",
+          possivel_documento: key === "possivel_documento",
+          tipo: key === "documento" ? "cnh" as const : null,
+        }),
+    );
+    assertEquals(result.media.protected_document, true);
+  }
+});
+
+Deno.test("PRIV-1 — mídia protegida tem barreiras antes de toda visão tardia", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  assertEquals(
+    source.includes(
+      "media = media.filter((item) => !isProtectedDocumentMedia(item))",
+    ),
+    true,
+  );
+  assertEquals(
+    source.includes(
+      "!isProtectedDocumentMedia(m) &&\n      (m.kind === \"image\" || m.kind === \"video\")",
+    ),
+    true,
+  );
+  assertEquals(
+    source.includes(
+      "const externalAiMedia = media.filter((item) =>\n      !isProtectedDocumentMedia(item)",
+    ),
+    true,
+  );
 });
