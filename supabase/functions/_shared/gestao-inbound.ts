@@ -101,6 +101,13 @@ import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
 import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
 import type { GestaoVendaDreLine } from "./gestao-dre-calc.ts";
+import { buildGestaoFechamentoDia } from "./gestao-fechamento-dia.ts";
+import { ownerPhoneVariants } from "./owner-phone.ts";
+import {
+  buscarJarvisAjudaCatalogo,
+  formatarMenuJarvisAjuda,
+  formatarRespostaJarvisAjuda,
+} from "./jarvis-ajuda-catalogo.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -118,6 +125,70 @@ const GESTAO_VEHICLE_SELECT =
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GestaoDb = { from: (table: string) => any };
+
+function jarvisAjudaAudiencia(
+  fromNumber: string,
+  auth: GestaoAuthContext,
+): "dono" | "gestor" {
+  const remetente = new Set(ownerPhoneVariants(fromNumber));
+  const telefonesDono = [auth.ownerPhone, ...auth.ownerAltPhones];
+  return telefonesDono.some((phone) =>
+      ownerPhoneVariants(phone).some((variant) => remetente.has(variant))
+    )
+    ? "dono"
+    : "gestor";
+}
+
+async function enviarCartilhaJarvisWhatsApp(input: {
+  sb: unknown;
+  userId: string;
+  to: string;
+  message: string;
+  audiencia: "dono" | "gestor";
+}): Promise<boolean> {
+  try {
+    const { ensureJarvisCartilhaPdf } = await import(
+      "./jarvis-cartilha-pdf.ts"
+    );
+    const { url } = await ensureJarvisCartilhaPdf(
+      input.sb,
+      input.userId,
+      input.audiencia,
+    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey) return false;
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/whatsapp-send-message`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+          "apikey": serviceKey,
+        },
+        body: JSON.stringify({
+          user_id: input.userId,
+          to: input.to,
+          message: input.message,
+          document_url: url,
+          document_filename: "cartilha-jarvis.pdf",
+        }),
+      },
+    );
+    if (!response.ok) {
+      console.warn("[gestao-inbound][ajuda] envio PDF falhou", response.status);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn(
+      "[gestao-inbound][ajuda] cartilha falhou",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
 
 function pendingActive(pending: PendingGestaoConfirm | null | undefined): boolean {
   if (!pending?.expires_at) return false;
@@ -960,6 +1031,55 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   const intent = classifyGestaoIntent(text);
   if (intent.kind === "none") return { handled: false };
+
+  if (intent.kind === "ajuda") {
+    const audiencia = jarvisAjudaAudiencia(input.fromNumber, input.auth);
+    const textoNormalizado = text.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+    if (textoNormalizado === "cartilha") {
+      const message = "🤖 Aqui está a cartilha completa de comandos do Jarvis.";
+      const enviado = await enviarCartilhaJarvisWhatsApp({
+        sb: input.sb,
+        userId: input.userId,
+        to: input.fromNumber,
+        message,
+        audiencia,
+      });
+      return enviado ? { handled: true } : {
+        handled: true,
+        reply:
+          `${message}\n\nNão consegui anexar o PDF agora. Tente novamente em instantes.`,
+      };
+    }
+
+    const pedidoEspecifico =
+      /\bcomo\s+(faco\s+(para|pra)|eu\s+peco)\b/.test(textoNormalizado);
+    const item = pedidoEspecifico
+      ? buscarJarvisAjudaCatalogo(text, audiencia)
+      : null;
+    if (item) {
+      return { handled: true, reply: formatarRespostaJarvisAjuda(item) };
+    }
+    return {
+      handled: true,
+      reply:
+        `${
+          formatarMenuJarvisAjuda(audiencia)
+        }\n\nQuer a cartilha completa? Responda *cartilha*.`,
+    };
+  }
+
+  if (intent.kind === "fechamento_dia") {
+    const fechamento = await buildGestaoFechamentoDia(
+      input.sb as Parameters<typeof buildGestaoFechamentoDia>[0],
+      input.userId,
+      hojeSaoPaulo(),
+      { financeiroPermitido: true },
+    );
+    return { handled: true, reply: fechamento.texto };
+  }
 
   if (intent.kind === "lucro_mes") {
     const reply = await fetchLucroMes(input.sb, input.userId);

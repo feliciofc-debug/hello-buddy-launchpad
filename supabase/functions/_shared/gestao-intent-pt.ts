@@ -6,6 +6,8 @@ import { isGestaoDreWhatsAppRequest } from "./gestao-dre-whatsapp.ts";
 
 export type GestaoIntentKind =
   | "none"
+  | "ajuda"
+  | "fechamento_dia"
   | "despesa"
   | "compra"
   | "venda"
@@ -68,6 +70,14 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
   };
   const t = normalize(text);
   if (!t || t.length < 4) return empty;
+  if (
+    /^(ajuda|comandos|cartilha)$/.test(t) ||
+    /\bo\s+que\s+voce\s+(faz|sabe\s+fazer)\b/.test(t) ||
+    /\bcomo\s+faco\s+(para|pra)\b/.test(t) ||
+    /\bcomo\s+eu\s+peco\b/.test(t)
+  ) {
+    return { ...empty, kind: "ajuda" };
+  }
   if (BLOCK_VERB.test(t)) return empty;
 
   const vehicleHint = vehicleHintFromText(text);
@@ -82,10 +92,16 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
   }
 
   if (
+    /\bfechamento\s+(do\s+dia|de\s+hoje)\b/.test(t) ||
+    /\bresumo\s+do\s+dia\b/.test(t)
+  ) {
+    return { ...empty, kind: "fechamento_dia", vehicleHint };
+  }
+
+  if (
     /\bposicao\s+da\s+loja\b/.test(t) ||
     /\bstatus\s+da\s+loja\b/.test(t) ||
-    /\bresumo\s+(da\s+loja|do\s+dia|geral)\b/.test(t) ||
-    (/\bfechamento\b/.test(t) && !/\bcontrato\b/.test(t)) ||
+    /\bresumo\s+(da\s+loja|geral)\b/.test(t) ||
     /\bcomo\s+(estamos|esta\s+a\s+loja|ta\s+a\s+loja|estao\s+a\s+loja|estão\s+a\s+loja)\b/.test(t)
   ) {
     return { ...empty, kind: "posicao_loja", vehicleHint };

@@ -29,8 +29,38 @@ Deno.test("intent notas do mes", () => {
 Deno.test("intent posicao loja frases dono", () => {
   assertEquals(classifyGestaoIntent("como está a loja?").kind, "posicao_loja");
   assertEquals(classifyGestaoIntent("posição da loja").kind, "posicao_loja");
-  assertEquals(classifyGestaoIntent("resumo do dia").kind, "posicao_loja");
   assertEquals(classifyGestaoIntent("como estamos").kind, "posicao_loja");
+});
+
+Deno.test("AJUDA-1 — fechamento usa o builder dedicado", () => {
+  assertEquals(
+    classifyGestaoIntent("fechamento do dia").kind,
+    "fechamento_dia",
+  );
+  assertEquals(
+    classifyGestaoIntent("fechamento de hoje").kind,
+    "fechamento_dia",
+  );
+  assertEquals(classifyGestaoIntent("resumo do dia").kind, "fechamento_dia");
+});
+
+Deno.test("AJUDA-1 — ajuda não rouba comandos existentes", () => {
+  for (
+    const frase of [
+      "ajuda",
+      "comandos",
+      "cartilha",
+      "o que você faz?",
+      "o que você sabe fazer?",
+      "como faço para emitir nota?",
+      "como eu peço uma arte?",
+    ]
+  ) {
+    assertEquals(classifyGestaoIntent(frase).kind, "ajuda", frase);
+  }
+  assertEquals(classifyGestaoIntent("lucro do mês").kind, "lucro_mes");
+  assertEquals(classifyGestaoIntent("posição da loja").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("emite a nota do X6").kind, "nfe_emit");
 });
 
 Deno.test("intent posicao loja nao captura preco cliente", () => {

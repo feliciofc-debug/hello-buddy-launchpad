@@ -75,6 +75,78 @@ Deno.test("gestor ver carros não aciona intent gestão", () => {
   assertEquals(classifyGestaoIntent("ver carros").kind, "none");
 });
 
+Deno.test("AJUDA-1 — cliente e parceiro nunca recebem ajuda de gestão", async () => {
+  let dbTouched = false;
+  const result = await tryProcessGestaoLucroInbound({
+    sb: {
+      from: () => {
+        dbTouched = true;
+        throw new Error("não deveria consultar");
+      },
+    },
+    userId: "u1",
+    fromNumber: "5511999999999",
+    userText: "cartilha",
+    hasInboundMedia: false,
+    auth: {
+      ownerPhone: "5521888776655",
+      ownerAltPhones: [],
+      gestores: ["5521777666555"],
+    },
+    agentState: {},
+    saveAgentStatePatch: async () => true,
+  });
+  assertEquals(result.handled, false);
+  assertEquals(dbTouched, false);
+});
+
+Deno.test("AJUDA-1 — fechamento inbound usa builder de produção", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./gestao-inbound.ts", import.meta.url),
+  );
+  assert(source.includes('intent.kind === "fechamento_dia"'));
+  assert(source.includes("buildGestaoFechamentoDia("));
+  assert(source.includes("financeiroPermitido: true"));
+});
+
+Deno.test("AJUDA-1 — ajuda curta oferece a cartilha sem anexar de imediato", async () => {
+  const sb = {
+    from: (table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_col: string, _value: string) => ({
+          maybeSingle: () =>
+            Promise.resolve({
+              data: table === "profiles"
+                ? { tipo: "revenda_veiculos" }
+                : {
+                  segmento: null,
+                  sobre_negocio: null,
+                  vitrine_veiculos_demo: false,
+                },
+            }),
+        }),
+      }),
+    }),
+  };
+  const result = await tryProcessGestaoLucroInbound({
+    sb,
+    userId: "u1",
+    fromNumber: "5521888776655",
+    userText: "ajuda",
+    hasInboundMedia: false,
+    auth: {
+      ownerPhone: "5521888776655",
+      ownerAltPhones: [],
+      gestores: [],
+    },
+    agentState: {},
+    saveAgentStatePatch: async () => true,
+  });
+  assertEquals(result.handled, true);
+  assert(String(result.reply).includes("COMO PEDIR AO JARVIS"));
+  assert(String(result.reply).includes("Responda *cartilha*"));
+});
+
 Deno.test("desambiguação: 2 → confirmação; sim → persiste", async () => {
   const vehicles = [
     {
