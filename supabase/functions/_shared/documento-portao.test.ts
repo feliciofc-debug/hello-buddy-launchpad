@@ -278,6 +278,43 @@ Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativ
   assertEquals(source.includes("releasedPossibleDocument"), true);
 });
 
+Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai na IA", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  assertEquals(
+    source.includes(
+      "const interactiveId = extractWhatsAppInteractiveId(row.payload);",
+    ),
+    true,
+  );
+  const possibleStart = source.indexOf(
+    "const possibleAction = String(interactiveId ?? \"\").match(",
+  );
+  const documentActions = source.indexOf(
+    "// DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.",
+  );
+  const possibleFlow = source.slice(possibleStart, documentActions);
+  assertEquals(possibleStart >= 0, true);
+  assertEquals(possibleFlow.includes("await gestaoCofreUpload({"), true);
+  assertEquals(possibleFlow.includes('tipo: "crlv"'), true);
+  assertEquals(possibleFlow.includes("lerCrlv: true"), true);
+  assertEquals(
+    possibleFlow.includes(
+      "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
+    ),
+    true,
+  );
+  assertEquals(possibleFlow.includes("await doneQueue(row.id)"), true);
+  assertEquals(possibleFlow.includes("callGemini("), false);
+  assertEquals(
+    source.includes(
+      '/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(\n        String(interactiveId ?? ""),',
+    ),
+    true,
+  );
+});
+
 Deno.test("PRIV-1 — documento certo ou possível recebe marca de proteção", async () => {
   for (const key of ["documento", "possivel_documento"] as const) {
     const candidate = { ...image };

@@ -6,10 +6,7 @@ import {
 } from "./gestao-cofre-crypto.ts";
 import { lerCrlvLocal } from "./crlv-leitura.ts";
 import type { CrlvOcrMetricas } from "./crlv-leitura.ts";
-import {
-  type CrlvParserResultado,
-  parseCrlvText,
-} from "./crlv-parser.ts";
+import type { CrlvParserResultado } from "./crlv-parser.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -51,7 +48,7 @@ const PII_KEYS = new Set([
 ]);
 
 export const CRLV_LEITURA_FRACA_MENSAGEM =
-  "Não consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar";
+  "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.";
 
 type CofreClient = SupabaseClient<any, "public", any>;
 
@@ -150,17 +147,22 @@ async function readCrlv(
       input.mime,
       input.filename,
     );
+    if (result.parser.leitura_fraca) {
+      return {
+        leitura: null,
+        leituraErro: CRLV_LEITURA_FRACA_MENSAGEM,
+        metricasOcr: result.metricas_ocr,
+      };
+    }
     return {
       leitura: result.parser,
-      leituraErro: result.parser.leitura_fraca
-        ? CRLV_LEITURA_FRACA_MENSAGEM
-        : null,
+      leituraErro: null,
       metricasOcr: result.metricas_ocr,
     };
   } catch {
     // Falha do OCR não impede o cofre nem a conferência manual.
     return {
-      leitura: parseCrlvText("", "ocr"),
+      leitura: null,
       leituraErro: CRLV_LEITURA_FRACA_MENSAGEM,
       metricasOcr: null,
     };

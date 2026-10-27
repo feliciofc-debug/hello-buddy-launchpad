@@ -97,15 +97,62 @@ class PossibleDocumentTest(unittest.TestCase):
         for x in range(40, 900, 130):
             draw.rectangle((x + 35, 190, x + 50, 390), fill="#725438")
             draw.ellipse((x, 120, x + 100, 280), fill="#3f8f4b")
-        draw.rounded_rectangle((210, 350, 700, 510), radius=45, fill="#b83232")
+        draw.rounded_rectangle((210, 350, 700, 510), radius=45, fill="#f5f5f5")
         draw.ellipse((280, 470, 380, 570), fill="#242424")
         draw.ellipse((550, 470, 650, 570), fill="#242424")
+        noisy_scene_text = "\n".join(
+            [
+                "RENAULT KWID",
+                "CARRO BRANCO",
+                "ARVORES AO FUNDO",
+                "OFERTA DA LOJA",
+                "VEICULO NO PATIO",
+                "MODELO COMPACTO",
+                "FOTO EXTERNA",
+                "CEU AZUL",
+            ]
+        )
 
         self.assertTrue(detector_app._possible_document_background(image))
         self.assertEqual(
-            self.detect_with_text(image, ""),
+            self.detect_with_text(image, noisy_scene_text),
             (False, None, False),
         )
+
+    def test_cars_under_blue_sky_and_in_dealership_yard_are_not_documents(
+        self,
+    ) -> None:
+        fixtures = [
+            ("ceu_azul", "#7dc8ee", "#b9b9b9"),
+            ("patio_loja", "#d8d8d8", "#777777"),
+        ]
+        ocr_noise = "\n".join(
+            [
+                "CARROS DISPONIVEIS",
+                "ESTOQUE DA LOJA",
+                "SUV PRETO",
+                "SEDAN BRANCO",
+                "HATCH VERMELHO",
+                "ENTRADA DO PATIO",
+                "VAGAS EXTERNAS",
+                "OFERTA ESPECIAL",
+            ]
+        )
+        for name, sky, ground in fixtures:
+            with self.subTest(name=name):
+                image = Image.new("RGB", (900, 600), sky)
+                draw = ImageDraw.Draw(image)
+                draw.rectangle((0, 310, 900, 600), fill=ground)
+                for x in (90, 340, 590):
+                    draw.rounded_rectangle(
+                        (x, 350, x + 220, 470),
+                        radius=28,
+                        fill="#f4f4f4",
+                    )
+                self.assertEqual(
+                    self.detect_with_text(image, ocr_noise),
+                    (False, None, False),
+                )
 
     def test_green_ad_with_three_lines_is_not_possible_document(self) -> None:
         image = Image.new("RGB", (900, 600), "#acd29f")
@@ -132,6 +179,27 @@ class PossibleDocumentTest(unittest.TestCase):
         self.assertTrue(detector_app._possible_document_background(image))
         self.assertEqual(
             self.detect_with_text(image, "\n".join(lines)),
+            (False, None, True),
+        )
+
+    def test_old_green_crlv_without_full_header_is_possible_document(
+        self,
+    ) -> None:
+        image = Image.new("RGB", (900, 800), "#b4d7aa")
+        text = "\n".join(
+            [
+                "REGISTRO NACIONAL",
+                "PLACA VEICULO",
+                "RENAVAM NUMERO",
+                "MARCA MODELO",
+                "ANO FABRICACAO",
+                "COR PREDOMINANTE",
+                "COMBUSTIVEL CATEGORIA",
+                "PROPRIETARIO NOME",
+            ]
+        )
+        self.assertEqual(
+            self.detect_with_text(image, text),
             (False, None, True),
         )
 

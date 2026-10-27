@@ -72,14 +72,14 @@ Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () 
   assertStringIncludes(endpoint, "reaproveitado: result.duplicate");
 });
 
-Deno.test("DOC-1.2d — OCR indisponível produz leitura fraca para conferência", async () => {
+Deno.test("ESTAB-1 — OCR indisponível mantém documento guardado sem leitura fictícia", async () => {
   const upload = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
-  assertStringIncludes(upload, 'parseCrlvText("", "ocr")');
+  assertEquals(upload.includes('parseCrlvText("", "ocr")'), false);
   assertStringIncludes(
     upload,
-    "Não consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar",
+    "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
   );
 });
 

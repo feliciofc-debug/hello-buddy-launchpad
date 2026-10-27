@@ -146,6 +146,10 @@ import {
   shouldRunVitrineEarlyCapture,
   vitrineFormNeedsAudioTranscriptBeforeShowcase,
 } from "../_shared/vehicle-stock-whatsapp.ts";
+import {
+  extractWhatsAppInteractiveId,
+  stripWhatsAppInteractiveMarkers,
+} from "../_shared/whatsapp-interactive-id.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -1010,7 +1014,7 @@ async function groupIfNewerLeadTextExists(row: QueueRow): Promise<boolean> {
   return true;
 }
 
-function extractText(payload: any): string {
+function extractText(payload: any, interactiveId: string | null = null): string {
   if (!payload) return "";
   if (payload.text?.body) return payload.text.body;
   const vitrineButtonText = formatCarouselVitrineButtonText(payload.button);
@@ -1018,12 +1022,12 @@ function extractText(payload: any): string {
   if (payload.button?.text) return payload.button.text;
   if (payload.interactive?.button_reply?.title) {
     const title = String(payload.interactive.button_reply.title);
-    const id = String(payload.interactive.button_reply.id || "");
+    const id = interactiveId ?? "";
     return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
   }
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
-    const id = String(payload.interactive.list_reply.id || "");
+    const id = interactiveId ?? "";
     return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|vehicle_model_fix:|vehicle_photo_edit:|gestao_troca_wa:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
@@ -24319,6 +24323,7 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   convStateIdentity: ConversationStateIdentity;
   userId: string;
   userText: string;
+  interactiveId?: string | null;
   contactName: string | null;
   convId: string;
   hasInboundMedia: boolean;
@@ -24477,6 +24482,7 @@ async function tryProcessGestaoLucroShortcut(input: {
   convStateIdentity: ConversationStateIdentity;
   userId: string;
   userText: string;
+  interactiveId?: string | null;
   convId: string;
   hasInboundMedia: boolean;
 }): Promise<{ handled: boolean; preview?: string }> {
@@ -24489,6 +24495,7 @@ async function tryProcessGestaoLucroShortcut(input: {
     userId: input.userId,
     fromNumber: input.row.from_number,
     userText: input.userText,
+    interactiveId: input.interactiveId,
     hasInboundMedia: input.hasInboundMedia,
     auth,
     agentState: baseState as Record<string, unknown>,
@@ -24655,7 +24662,7 @@ async function tryProcessVehicleStockShowcase(input: {
   allowEarlyFormCapture?: boolean;
   agentStateSeed?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
-  const listId = String(input.row.payload?.interactive?.list_reply?.id ?? "");
+  const listId = input.interactiveId ?? "";
   const vitrineId = extractVitrineInteractiveId({
     userText: input.userText,
     listId,
@@ -24811,12 +24818,11 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    let userText = replyTextFromInteractiveId(extractText(row.payload));
-    const rawJarvisMenuInteractiveId = String(
-      row.payload?.interactive?.button_reply?.id ??
-        row.payload?.interactive?.list_reply?.id ??
-        "",
+    const interactiveId = extractWhatsAppInteractiveId(row.payload);
+    let userText = replyTextFromInteractiveId(
+      extractText(row.payload, interactiveId),
     );
+    const rawJarvisMenuInteractiveId = interactiveId ?? "";
     const jarvisMenuFallbackText = userText;
     if (
       rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
@@ -24826,9 +24832,13 @@ async function processOne(queueId: string) {
       userText = rawJarvisMenuInteractiveId;
     }
     let commercialContactForOwner: any = null;
-    let inboundContent = jarvisMenuFallbackText ||
+    let inboundContent = stripWhatsAppInteractiveMarkers(
+      jarvisMenuFallbackText,
+    ) ||
       `(${row.message_type ?? "mídia"} sem legenda)`;
-    const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
+    const directNearbySearch = row.message_type === "text"
+      ? detectNearbySearch(stripWhatsAppInteractiveMarkers(userText))
+      : null;
 
     // Captura localização compartilhada
     const loc = row.payload?.location;
@@ -24906,7 +24916,7 @@ async function processOne(queueId: string) {
 
     // DOC-0.2 — a mídia suspeita fica cifrada enquanto aguarda a decisão.
     // Somente "Não é documento" a libera para as rotas de IA abaixo.
-    const possibleAction = userText.match(
+    const possibleAction = String(interactiveId ?? "").match(
       /^cofre_possivel_(guardar|liberar):([0-9a-f-]{36})$/i,
     );
     if (possibleAction) {
@@ -24953,6 +24963,9 @@ async function processOne(queueId: string) {
                 "Documento mantido com segurança no cofre. Refiz a leitura.";
               if (stored.leitura) {
                 reply += `\n${respostaCrlvWhatsApp(stored.leitura)}`;
+              } else {
+                reply =
+                  "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.";
               }
               const sentId = await sendWhatsApp(
                 userId,
@@ -24977,10 +24990,16 @@ async function processOne(queueId: string) {
     }
 
     // DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.
-    if (/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(userText)) {
+    if (
+      /^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(
+        String(interactiveId ?? ""),
+      )
+    ) {
       const gestaoAuth = await loadGestaoAuthContext(sb, userId);
       if (fromIsOwner || isGestaoAuthorizedPhone(row.from_number, gestaoAuth)) {
-        const [, action, documentoId, veiculoId] = userText.match(
+        const [, action, documentoId, veiculoId] = String(
+          interactiveId ?? "",
+        ).match(
           /^cofre_doc_(cadastrar|vincular|guardar|link):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
         ) ?? [];
         let reply = "Documento mantido com segurança no cofre.";
@@ -25063,7 +25082,8 @@ async function processOne(queueId: string) {
             row,
             convStateIdentity,
             userId,
-            userText,
+            userText: stripWhatsAppInteractiveMarkers(userText),
+            interactiveId,
             convId: conv.id,
             hasInboundMedia: false,
           });
@@ -25142,10 +25162,9 @@ async function processOne(queueId: string) {
           console.warn("[vitrine-crm] opt-out:", (e as Error).message);
         }
       }
-      const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
       const vitrineInteractiveEarly = extractVitrineInteractiveId({
         userText,
-        listId: vitrineListId,
+        listId: interactiveId ?? "",
         inboundPayload: row.payload,
       });
       const vitrineStateEarly = migrateVerticalState(
@@ -25167,7 +25186,8 @@ async function processOne(queueId: string) {
             row,
             convStateIdentity,
             userId,
-            userText,
+            userText: stripWhatsAppInteractiveMarkers(userText),
+            interactiveId,
             contactName,
             earlyInteractiveOnly: !!vitrineInteractiveEarly,
             allowEarlyFormCapture: vitrineEarlyCapture && !vitrineInteractiveEarly,
@@ -25234,8 +25254,7 @@ async function processOne(queueId: string) {
           .trim();
         // Quick-reply de TEMPLATE chega como payload.button.{payload,text};
         // botão interativo (não-template) chega como interactive.button_reply.id.
-        const buttonId: string = row.payload?.interactive?.button_reply?.id ??
-          row.payload?.button?.payload ?? "";
+        const buttonId = interactiveId ?? "";
         const buttonTextNorm = String(
           row.payload?.button?.text ??
           row.payload?.interactive?.button_reply?.title ?? "",
@@ -25622,7 +25641,8 @@ async function processOne(queueId: string) {
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
+          interactiveId,
           convId: conv.id,
           hasInboundMedia: false,
         });
@@ -25655,7 +25675,7 @@ async function processOne(queueId: string) {
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
           contactName,
           convId: conv.id,
           hasInboundMedia: false,
@@ -26315,6 +26335,7 @@ async function processOne(queueId: string) {
             convStateIdentity,
             userId,
             userText: inboundContent,
+            interactiveId,
             contactName,
             earlyInteractiveOnly: false,
             allowEarlyFormCapture: true,
@@ -29152,7 +29173,8 @@ async function processOne(queueId: string) {
       ? migratedAgentState.vertical_router?.last_route ?? null
       : null;
     const textVerticalDecision = resolveVertical({
-      text: audioTranscript || userText,
+      text: audioTranscript ||
+        stripWhatsAppInteractiveMarkers(userText),
       tenantSegment,
       selectedRoute: selectedVertical,
       pendingRoute: fromIsOwner
@@ -29535,7 +29557,8 @@ async function processOne(queueId: string) {
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
+          interactiveId,
           contactName,
           earlyInteractiveOnly: false,
           agentStateSeed: agentState,
@@ -29558,7 +29581,8 @@ async function processOne(queueId: string) {
           "jarvis_menu:",
         )
         ? rawJarvisMenuInteractiveId
-        : audioTranscript?.trim() || userText;
+        : audioTranscript?.trim() ||
+          stripWhatsAppInteractiveMarkers(userText);
       const jarvisMenu = await tryProcessJarvisServiceMenuShortcut({
         row,
         userId,
@@ -29650,14 +29674,18 @@ async function processOne(queueId: string) {
       .filter((m) => m.content && !isStaleToolFailureMessage(m.content as string))
       .map((m) => ({
         role: m.direction === "inbound" ? "user" : "assistant",
-        content: m.content as string,
+        content: stripWhatsAppInteractiveMarkers(m.content),
       }));
 
     // PASSO 9 — IA (multimodal)
     const userTextComAudio = metaAdsJarvisOriginalText ??
       (audioTranscript
-        ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
-        : userText);
+        ? `${
+          stripWhatsAppInteractiveMarkers(userText)
+            ? `${stripWhatsAppInteractiveMarkers(userText)}\n\n`
+            : ""
+        }🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+        : stripWhatsAppInteractiveMarkers(userText));
     const externalAiMedia = media.filter((item) =>
       !isProtectedDocumentMedia(item)
     );

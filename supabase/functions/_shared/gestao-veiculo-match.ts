@@ -1,4 +1,5 @@
 import { placaFinalLabel } from "./gestao-lucro-calc.ts";
+import { stripGestaoOpaqueTokens } from "./gestao-text-sanitize.ts";
 
 export type GestaoVeiculoRow = {
   id: string;
@@ -65,7 +66,7 @@ export function rankGestaoVeiculoMatches(
 }
 
 export function vehicleHintFromText(text: string): string {
-  const t = normalize(text);
+  const t = normalize(stripGestaoOpaqueTokens(text));
   const semValor = t
     .replace(/\br\$\s*[\d.,]+/g, " ")
     .replace(/\b[\d.,]+\s*mil\b/g, " ")

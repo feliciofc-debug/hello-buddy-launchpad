@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import re
 import time
 from typing import Annotated
 
@@ -116,6 +117,41 @@ def _possible_document_background(image: Image.Image) -> bool:
     return float(np.count_nonzero(green_or_blue)) / green_or_blue.size >= 0.35
 
 
+_REAL_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
+_DOCUMENT_TEXT_HINT_RE = re.compile(
+    r"\b(?:PLACA|RENAVAM|CHASSI|PROPRIETARIO|PROPRIETÁRIO|"
+    r"CPF|CNPJ|DETRAN|REGISTRO|LICENCIAMENTO|HABILITACAO|HABILITAÇÃO|"
+    r"VALIDADE|NASCIMENTO|FILIACAO|FILIAÇÃO|CATEGORIA|COMBUSTIVEL|"
+    r"COMBUSTÍVEL|MUNICIPIO|MUNICÍPIO)\b",
+    re.IGNORECASE,
+)
+
+
+def _possible_document_text(text: str, image: Image.Image) -> bool:
+    real_word_lines: list[list[str]] = []
+    for raw_line in text.splitlines():
+        words = _REAL_WORD_RE.findall(raw_line)
+        if len(words) >= 2:
+            real_word_lines.append(words)
+
+    words = [word for line in real_word_lines for word in line]
+    letter_count = sum(len(word) for word in words)
+    dense_text = (
+        len(real_word_lines) >= 12
+        and len(words) >= 24
+        and letter_count >= 100
+    )
+    hint_count = len(_DOCUMENT_TEXT_HINT_RE.findall(text))
+    old_colored_document = (
+        _possible_document_background(image)
+        and len(real_word_lines) >= 6
+        and len(words) >= 12
+        and letter_count >= 55
+        and hint_count >= 2
+    )
+    return dense_text or old_colored_document
+
+
 def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
     image = _resize(image, 1400)
     oriented = _osd_rotate(image) or image
@@ -125,17 +161,7 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
         config="--oem 1 --psm 11",
     )
     documento, tipo = classify_document(text)
-    text_lines = [line for line in text.splitlines() if line.strip()]
-    possivel = (
-        not documento and
-        (
-            len(text_lines) >= 25 or
-            (
-                len(text_lines) >= 8 and
-                _possible_document_background(oriented)
-            )
-        )
-    )
+    possivel = not documento and _possible_document_text(text, oriented)
     return documento, tipo, possivel
 
 

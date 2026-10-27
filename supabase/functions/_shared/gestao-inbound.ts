@@ -108,6 +108,10 @@ import {
   formatarMenuJarvisAjuda,
   formatarRespostaJarvisAjuda,
 } from "./jarvis-ajuda-catalogo.ts";
+import {
+  isGestaoInteractiveId,
+  stripWhatsAppInteractiveMarkers,
+} from "./whatsapp-interactive-id.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -871,6 +875,7 @@ export async function tryProcessGestaoLucroInbound(input: {
   userId: string;
   fromNumber: string;
   userText: string;
+  interactiveId?: string | null;
   hasInboundMedia: boolean;
   auth: GestaoAuthContext;
   agentState: Record<string, unknown>;
@@ -881,12 +886,17 @@ export async function tryProcessGestaoLucroInbound(input: {
 }): Promise<{ handled: boolean; reply?: string; clearPending?: boolean }> {
   if (input.hasInboundMedia) return { handled: false };
   if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) return { handled: false };
+  if (input.interactiveId && !isGestaoInteractiveId(input.interactiveId)) {
+    return { handled: false };
+  }
+  const text = stripWhatsAppInteractiveMarkers(input.userText);
+  if (!text) return { handled: false };
 
   const procedenciaEarly = await tryProcessVeiculoProcedenciaInbound({
     sb: input.sb,
     userId: input.userId,
     fromNumber: input.fromNumber,
-    userText: input.userText,
+    userText: text,
     hasInboundMedia: input.hasInboundMedia,
     auth: input.auth,
     agentState: input.agentState,
@@ -899,9 +909,6 @@ export async function tryProcessGestaoLucroInbound(input: {
     input.userId,
   );
   if (!gate.usesVehicleStock) return { handled: false };
-
-  const text = (input.userText || "").trim();
-  if (!text) return { handled: false };
 
   const pending = input.agentState.pending_gestao_confirm as PendingGestaoConfirm | undefined;
 

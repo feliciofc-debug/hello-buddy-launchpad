@@ -8,7 +8,10 @@ import {
 import { isGestaoAuthorizedPhone } from "./gestao-auth-phone.ts";
 import { tryProcessGestaoLucroInbound } from "./gestao-inbound.ts";
 import { parseGestaoValorPt } from "./gestao-valor-pt.ts";
-import { rankGestaoVeiculoMatches } from "./gestao-veiculo-match.ts";
+import {
+  rankGestaoVeiculoMatches,
+  vehicleHintFromText,
+} from "./gestao-veiculo-match.ts";
 import {
   parseGestaoDisambiguationPick,
 } from "./gestao-intent-pt.ts";
@@ -21,6 +24,22 @@ Deno.test("parseGestaoValorPt casos obrigatórios", () => {
   assertEquals(parseGestaoValorPt("R$ 3.500,00"), 3500);
   assertEquals(parseGestaoValorPt("80 mil"), 80000);
   assertEquals(parseGestaoValorPt("meio milhão"), 500_000);
+});
+
+Deno.test("ESTAB-1 — valor e veículo ignoram UUID, hash e código misto", () => {
+  const interactive =
+    "Não é documento\n<<INTERACTIVE_ID:cofre_possivel_liberar:8222abcd-1111-2222-3333-444455556666>>";
+  assertEquals(parseGestaoValorPt(interactive), null);
+  assertEquals(
+    parseGestaoValorPt("documento a9f8222c1144beef sem valor"),
+    null,
+  );
+  assertEquals(parseGestaoValorPt("código ABC-8222-ZZ"), null);
+  assertEquals(
+    vehicleHintFromText("despesa do ABC-8222-ZZ no X6"),
+    "x6",
+  );
+  assertEquals(vehicleHintFromText(interactive).includes("8222"), false);
 });
 
 Deno.test("categorias despesa", () => {
@@ -73,6 +92,34 @@ Deno.test("gestor cadastrado autorizado sem ser owner_phone", () => {
 
 Deno.test("gestor ver carros não aciona intent gestão", () => {
   assertEquals(classifyGestaoIntent("ver carros").kind, "none");
+});
+
+Deno.test("ESTAB-1 — ID alheio à Gestão nunca cria intenção mutável", async () => {
+  let dbTouched = false;
+  const result = await tryProcessGestaoLucroInbound({
+    sb: {
+      from: () => {
+        dbTouched = true;
+        throw new Error("não deveria consultar");
+      },
+    },
+    userId: "u1",
+    fromNumber: "5521888776655",
+    userText:
+      "Não é documento\n<<INTERACTIVE_ID:cofre_possivel_liberar:8222abcd-1111-2222-3333-444455556666>>",
+    interactiveId:
+      "cofre_possivel_liberar:8222abcd-1111-2222-3333-444455556666",
+    hasInboundMedia: false,
+    auth: {
+      ownerPhone: "5521888776655",
+      ownerAltPhones: [],
+      gestores: [],
+    },
+    agentState: {},
+    saveAgentStatePatch: async () => true,
+  });
+  assertEquals(result.handled, false);
+  assertEquals(dbTouched, false);
 });
 
 Deno.test("AJUDA-1 — cliente e parceiro nunca recebem ajuda de gestão", async () => {
