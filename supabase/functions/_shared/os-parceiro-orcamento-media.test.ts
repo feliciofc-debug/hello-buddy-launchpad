@@ -263,7 +263,7 @@ Deno.test({
 
 Deno.test({
   name: "PRIV-1.1 — CNH identificada pelo OCR volta protegida para o cofre",
-  permissions: { env: true },
+  permissions: { env: true, read: true },
   fn: () =>
     withOcrEnv(async () => {
       const documentPhoto = media("image", "image/jpeg", "foto.jpg");
