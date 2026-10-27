@@ -72,7 +72,7 @@ Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () 
   assertStringIncludes(endpoint, "reaproveitado: result.duplicate");
 });
 
-Deno.test("ESTAB-1 — OCR indisponível mantém documento guardado sem leitura fictícia", async () => {
+Deno.test("ESTAB-1/VEIC-WPP-1 — OCR indisponível mantém o CRLV guardado sem leitura fictícia", async () => {
   const upload = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
@@ -81,6 +81,8 @@ Deno.test("ESTAB-1 — OCR indisponível mantém documento guardado sem leitura 
     upload,
     "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
   );
+  assertStringIncludes(upload, 'leituraReason: crlvFailureReason(error)');
+  assertStringIncludes(upload, '"ocr_timeout"');
 });
 
 Deno.test("SEG-DOC — migração garante duplicado, RLS e auditoria append-only", async () => {
