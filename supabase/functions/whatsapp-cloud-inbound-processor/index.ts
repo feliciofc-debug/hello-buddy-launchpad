@@ -1034,7 +1034,7 @@ function extractText(payload: any, interactiveId: string | null = null): string 
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = interactiveId ?? "";
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|vehicle_model_fix:|vehicle_photo_edit:|gestao_troca_wa:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|vehicle_model_fix:|vehicle_photo_edit:|gestao_troca_wa:|cofre_doc_|cofre_possivel_|molicar_wa:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }

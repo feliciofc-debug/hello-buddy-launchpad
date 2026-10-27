@@ -343,6 +343,10 @@ Deno.test("VEIC-WPP-1 — Guardar e ler encerra o turno sem cair na IA genérica
   assertEquals(action.includes("CRLV_NAO_LIDO_MENSAGEM"), true);
   assertEquals(action.includes("callGemini"), false);
   assertEquals(action.includes("crlv_read: false"), true);
+  assertEquals(
+    action.includes('String(interactiveId ?? "").match'),
+    true,
+  );
 });
 
 Deno.test("PRIV-1 — documento certo ou possível recebe marca de proteção", async () => {

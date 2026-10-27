@@ -177,7 +177,8 @@ Deno.test("VEIC-WPP-1 — procedência mostra custo, confirma e usa Molicar", as
   let notified = 0;
   const confirmed = await tryProcessVeiculoProcedenciaInbound({
     ...input,
-    userText: "molicar_wa:procedencia_confirmar",
+    userText:
+      "Confirmar\n<<INTERACTIVE_ID:molicar_wa:procedencia_confirmar>>",
     dependencies: {
       runProcedencia: async () => {
         started++;
