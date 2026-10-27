@@ -667,6 +667,14 @@ export function buscarJarvisAjudaCatalogo(
     "pedir",
     "jarvis",
     "posso",
+    "uma",
+    "umas",
+    "uns",
+    "por",
+    "com",
+    "sem",
+    "meu",
+    "minha",
   ]);
   const termos = normalizarBusca(pergunta).filter((x) => !ignorar.has(x));
   if (!termos.length) return null;
