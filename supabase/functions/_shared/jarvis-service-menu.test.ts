@@ -640,7 +640,7 @@ Deno.test("MENU-B3 — contrato do processor preserva a ordem segura", async () 
     new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
   );
   const idGuard = processor.indexOf(
-    "const rawJarvisMenuInteractiveId = String(",
+    "const interactiveId = extractWhatsAppInteractiveId(row.payload);",
   );
   const late = processor.indexOf("const vitrineLate =");
   const menu = processor.indexOf(
@@ -681,7 +681,7 @@ Deno.test("MENU-B3 — contrato do processor preserva a ordem segura", async () 
   );
   assertStringIncludes(
     processor.slice(menu - 800, menu + 1_200),
-    "audioTranscript?.trim() || userText",
+    "stripWhatsAppInteractiveMarkers(userText)",
   );
   assertStringIncludes(
     processor.slice(menu - 800, menu + 1_200),
