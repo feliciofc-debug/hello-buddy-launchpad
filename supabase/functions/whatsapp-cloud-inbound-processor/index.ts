@@ -24415,6 +24415,7 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
   hasBlockingMedia: boolean;
   priorityFlowActive: boolean;
   agentState: AgentConvState;
+  lastMessageAt: string | null;
 }): Promise<{ handled: boolean; preview?: string; sendError?: string }> {
   const menu = await tryProcessJarvisServiceMenu({
     sb,
@@ -24427,6 +24428,7 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
     hasBlockingMedia: input.hasBlockingMedia,
     priorityFlowActive: input.priorityFlowActive,
     agentState: input.agentState as Record<string, unknown>,
+    lastMessageAt: input.lastMessageAt,
     appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
   });
   if (!menu.handled) return { handled: false };
@@ -29801,6 +29803,7 @@ Regras:
         priorityFlowActive: !!verticalChoiceResolution ||
           metaAdsQuestionarioResult.handled,
         agentState,
+        lastMessageAt: existingConv?.last_message_at ?? null,
       });
       if (jarvisMenu.handled) {
         stopTypingHeartbeat();

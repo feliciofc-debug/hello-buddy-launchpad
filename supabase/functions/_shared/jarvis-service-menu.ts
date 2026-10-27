@@ -22,6 +22,14 @@ import { dateKeySaoPaulo } from "./vitrine-crm-time.ts";
 
 export const JARVIS_MENU_ID_PREFIX = "jarvis_menu:";
 const MENU_CACHE_TTL_MS = 10 * 60 * 1000;
+const MENU_PENDING_TTL_MS = 2 * 60 * 60 * 1000;
+
+export type JarvisMenuSkipReason =
+  | "flag_off"
+  | "nao_saudacao"
+  | `pendencia:${string}`
+  | "midia"
+  | "sem_acesso";
 
 export type JarvisMenuConfig = {
   menu_enabled: boolean;
@@ -65,6 +73,7 @@ export type JarvisServiceMenuInput = {
   hasBlockingMedia?: boolean;
   priorityFlowActive?: boolean;
   agentState?: Record<string, unknown> | null;
+  lastMessageAt?: string | null;
   appBaseUrl?: string | null;
   now?: Date;
 };
@@ -86,6 +95,7 @@ export type JarvisServiceMenuDependencies = {
     fromNumber: string,
   ) => Promise<boolean>;
   buildFechamento?: FechamentoBuilder;
+  logSkip?: (reason: JarvisMenuSkipReason) => void;
 };
 
 type GreetingSnapshot = {
@@ -108,21 +118,32 @@ function normalizeGreeting(value: string): string {
     .trim();
 }
 
-const PURE_GREETINGS = new Set([
-  "oi",
-  "ola",
-  "oi jarvis",
-  "bom dia",
-  "boa tarde",
-  "boa noite",
-  "e ai",
-  "menu",
-  "opcoes",
-  "o que voce faz",
-]);
-
 export function isJarvisPureGreeting(value: string): boolean {
-  return PURE_GREETINGS.has(normalizeGreeting(value));
+  const normalized = normalizeGreeting(value);
+  if (["menu", "opcoes", "o que voce faz"].includes(normalized)) return true;
+
+  let remaining = normalized;
+  let foundGreeting = false;
+  for (
+    const phrase of [
+      "bom dia",
+      "boa tarde",
+      "boa noite",
+      "e ai",
+      "ola",
+      "oi",
+    ]
+  ) {
+    const pattern = new RegExp(`\\b${phrase}\\b`, "g");
+    if (pattern.test(remaining)) foundGreeting = true;
+    remaining = remaining.replace(pattern, " ");
+  }
+  remaining = remaining
+    .replace(/\bjarvis\b/g, " ")
+    .replace(/\btudo (?:bem|certo)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return foundGreeting && !remaining;
 }
 
 export function extractJarvisMenuId(value: string): string | null {
@@ -138,25 +159,82 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function bucketHasPending(bucket: Record<string, unknown>): boolean {
+function pendingTimestamp(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  for (
+    const field of [
+      "created_at",
+      "criado_em",
+      "updated_at",
+      "at",
+      "last_photo_at",
+      "started_at",
+      "requested_at",
+    ]
+  ) {
+    const parsed = Date.parse(String(value[field] ?? ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function pendingIsRecent(
+  value: unknown,
+  nowMs: number,
+  fallbackTimestamp: number | null,
+): boolean {
+  const timestamp = pendingTimestamp(value) ?? fallbackTimestamp;
+  return timestamp != null && nowMs - timestamp < MENU_PENDING_TTL_MS;
+}
+
+function bucketPendingName(
+  bucket: Record<string, unknown>,
+  nowMs: number,
+  fallbackTimestamp: number | null,
+): string | null {
   for (const [key, value] of Object.entries(bucket)) {
-    if (key.startsWith("pending_") && value != null && value !== false) {
-      return true;
+    if (
+      key.startsWith("pending_") &&
+      value != null &&
+      value !== false &&
+      pendingIsRecent(value, nowMs, fallbackTimestamp)
+    ) {
+      return key;
     }
   }
-  return false;
+  return null;
+}
+
+export function jarvisMenuPriorityPendingName(
+  state: Record<string, unknown> | null | undefined,
+  options: { now?: Date; lastMessageAt?: string | null } = {},
+): string | null {
+  if (!state) return null;
+  const nowMs = (options.now ?? new Date()).getTime();
+  const parsedFallback = Date.parse(String(options.lastMessageAt ?? ""));
+  const fallbackTimestamp = Number.isFinite(parsedFallback)
+    ? parsedFallback
+    : null;
+  const rootPending = bucketPendingName(state, nowMs, fallbackTimestamp);
+  if (rootPending) return rootPending;
+  for (const key of ["vehicle", "general", "vertical_router"]) {
+    const bucket = state[key];
+    if (!isRecord(bucket)) continue;
+    const nestedPending = bucketPendingName(
+      bucket,
+      nowMs,
+      fallbackTimestamp,
+    );
+    if (nestedPending) return nestedPending;
+  }
+  return null;
 }
 
 export function hasJarvisMenuPriorityPending(
   state: Record<string, unknown> | null | undefined,
+  options: { now?: Date; lastMessageAt?: string | null } = {},
 ): boolean {
-  if (!state) return false;
-  if (bucketHasPending(state)) return true;
-  for (const key of ["vehicle", "general", "vertical_router"]) {
-    const bucket = state[key];
-    if (isRecord(bucket) && bucketHasPending(bucket)) return true;
-  }
-  return false;
+  return jarvisMenuPriorityPendingName(state, options) != null;
 }
 
 async function loadJarvisMenuConfig(
@@ -421,22 +499,18 @@ function messageTypeAllowed(messageType: string | null | undefined): boolean {
   );
 }
 
+function defaultLogSkip(reason: JarvisMenuSkipReason): void {
+  console.log("[jarvis-service-menu] skip", reason);
+}
+
 export async function tryProcessJarvisServiceMenu(
   input: JarvisServiceMenuInput,
   dependencies: JarvisServiceMenuDependencies = {},
 ): Promise<JarvisServiceMenuResult> {
   const menuId = extractJarvisMenuId(input.text);
-  if (!menuId && !isJarvisPureGreeting(input.text)) {
-    return { handled: false };
-  }
-  if (
-    !messageTypeAllowed(input.messageType) ||
-    input.hasBlockingMedia ||
-    input.priorityFlowActive ||
-    hasJarvisMenuPriorityPending(input.agentState)
-  ) {
-    return { handled: false };
-  }
+  const isGreeting = isJarvisPureGreeting(input.text);
+  const requestedMenu = Boolean(menuId || isGreeting);
+  const logSkip = dependencies.logSkip ?? defaultLogSkip;
 
   let config: JarvisMenuConfig | null = null;
   try {
@@ -445,12 +519,47 @@ export async function tryProcessJarvisServiceMenu(
       input.userId,
     );
   } catch {
+    config = null;
+  }
+
+  const role = await resolveJarvisMenuRole(
+    input,
+    config ?? {
+      menu_enabled: false,
+      vendedor_enabled: false,
+      recent_enabled: true,
+    },
+    dependencies,
+  );
+  const diagnosticAuthorized = role === "owner" || role === "manager";
+  if (!config?.menu_enabled) {
+    if (diagnosticAuthorized) logSkip("flag_off");
     return { handled: false };
   }
-  if (!config?.menu_enabled) return { handled: false };
-
-  const role = await resolveJarvisMenuRole(input, config, dependencies);
-  if (!role) return { handled: false };
+  if (!role) {
+    if (requestedMenu) logSkip("sem_acesso");
+    return { handled: false };
+  }
+  if (!requestedMenu) {
+    if (diagnosticAuthorized) logSkip("nao_saudacao");
+    return { handled: false };
+  }
+  if (!messageTypeAllowed(input.messageType) || input.hasBlockingMedia) {
+    if (diagnosticAuthorized) logSkip("midia");
+    return { handled: false };
+  }
+  if (input.priorityFlowActive) {
+    if (diagnosticAuthorized) logSkip("pendencia:fluxo_prioritario");
+    return { handled: false };
+  }
+  const pendingName = jarvisMenuPriorityPendingName(input.agentState, {
+    now: input.now,
+    lastMessageAt: input.lastMessageAt,
+  });
+  if (pendingName) {
+    if (diagnosticAuthorized) logSkip(`pendencia:${pendingName}`);
+    return { handled: false };
+  }
 
   if (!menuId) {
     const now = input.now ?? new Date();
@@ -482,12 +591,18 @@ export async function tryProcessJarvisServiceMenu(
   }
 
   const navigation = parseNavigation(menuId);
-  if (!navigation) return { handled: false };
+  if (!navigation) {
+    if (diagnosticAuthorized) logSkip("nao_saudacao");
+    return { handled: false };
+  }
   if (navigation.kind === "item") {
     const item = JARVIS_AJUDA_CATALOGO.find((candidate) =>
       candidate.id === navigation.id
     );
-    if (!item || !itemAccessible(item, role)) return { handled: false };
+    if (!item || !itemAccessible(item, role)) {
+      if (diagnosticAuthorized) logSkip("sem_acesso");
+      return { handled: false };
+    }
     return {
       handled: true,
       role,
@@ -504,6 +619,7 @@ export async function tryProcessJarvisServiceMenu(
     !listAccessible(list, role) ||
     (navigation.kind === "grupo" && list.parentId !== null)
   ) {
+    if (diagnosticAuthorized) logSkip("sem_acesso");
     return { handled: false };
   }
   const interactiveList = renderMenuList(list, role);

@@ -11,6 +11,8 @@ import {
   hasJarvisMenuPriorityPending,
   isJarvisPureGreeting,
   type JarvisMenuConfig,
+  jarvisMenuPriorityPendingName,
+  type JarvisMenuSkipReason,
   type JarvisServiceMenuDependencies,
   type JarvisServiceMenuInput,
   tryProcessJarvisServiceMenu,
@@ -107,6 +109,7 @@ function ownerInput(
     isOwner: true,
     displayName: "Felicio Costa",
     now: new Date("2026-10-27T15:00:00.000Z"),
+    lastMessageAt: "2026-10-27T14:55:00.000Z",
     ...overrides,
   };
 }
@@ -125,6 +128,7 @@ function deps(
       dados: fechamento(dia),
       texto: "fechamento",
     })) as JarvisServiceMenuDependencies["buildFechamento"],
+    logSkip: () => {},
     ...overrides,
   };
 }
@@ -142,6 +146,12 @@ Deno.test("MENU-B3 — detector aceita somente saudações puras e menu", () => 
       "menu 📋",
       "opções",
       "O que você faz?",
+      "oi jarvis, bom dia!",
+      "olá, boa tarde",
+      "bom dia jarvis",
+      "oi, tudo bem?",
+      "e aí, tudo certo?",
+      "👋 oi, bom dia, tudo bem? 😊",
     ]
   ) {
     assert(isJarvisPureGreeting(value), value);
@@ -153,6 +163,9 @@ Deno.test("MENU-B3 — detector aceita somente saudações puras e menu", () => 
       "menu de vendas",
       "boa tarde, orçamento 1950",
       "o que você faz com documentos?",
+      "oi, tudo bem? quero consultar o estoque",
+      "e aí, tudo certo? vendi o Civic",
+      "tudo bem?",
       "👋",
       "",
     ]
@@ -187,8 +200,9 @@ Deno.test("MENU-B3 — extrai somente IDs próprios do menu", () => {
   );
 });
 
-Deno.test("MENU-B3 — saudação com pedido não consulta flag nem abre menu", async () => {
+Deno.test("MENU-B3.1 — saudação com pedido não abre menu", async () => {
   let configReads = 0;
+  const reasons: JarvisMenuSkipReason[] = [];
   const result = await tryProcessJarvisServiceMenu(
     ownerInput({ text: "bom dia, vendi o Civic por 90 mil" }),
     deps({
@@ -196,10 +210,12 @@ Deno.test("MENU-B3 — saudação com pedido não consulta flag nem abre menu", 
         configReads += 1;
         return ENABLED;
       },
+      logSkip: (reason) => reasons.push(reason),
     }),
   );
   assertEquals(result, { handled: false });
-  assertEquals(configReads, 0);
+  assertEquals(configReads, 1);
+  assertEquals(reasons, ["nao_saudacao"]);
 });
 
 Deno.test("MENU-B3 — dono com flag on recebe resumo, urgência e 3 botões", async () => {
@@ -480,6 +496,73 @@ Deno.test("MENU-B3 — flag off ignora saudação e qualquer ID", async () => {
   }
 });
 
+Deno.test("MENU-B3.1 — diagnóstico usa somente motivos sem PII", async () => {
+  const reasons: JarvisMenuSkipReason[] = [];
+  const logSkip = (reason: JarvisMenuSkipReason) => reasons.push(reason);
+
+  await tryProcessJarvisServiceMenu(
+    ownerInput(),
+    deps({
+      loadConfig: async () => ({ ...ENABLED, menu_enabled: false }),
+      logSkip,
+    }),
+  );
+  await tryProcessJarvisServiceMenu(
+    ownerInput({
+      isOwner: false,
+      fromNumber: "5511888888888",
+      text: "quero ver um carro",
+    }),
+    deps({
+      loadAuthContext: async () => ({
+        ownerPhone: "5511999999999",
+        ownerAltPhones: [],
+        gestores: ["5511888888888"],
+      }),
+      logSkip,
+    }),
+  );
+  await tryProcessJarvisServiceMenu(
+    ownerInput({ hasBlockingMedia: true }),
+    deps({ logSkip }),
+  );
+  await tryProcessJarvisServiceMenu(
+    ownerInput({
+      agentState: {
+        pending_vehicle_identification: {
+          created_at: "2026-10-27T14:30:00.000Z",
+        },
+      },
+    }),
+    deps({ logSkip }),
+  );
+  await tryProcessJarvisServiceMenu(
+    ownerInput({
+      isOwner: false,
+      fromNumber: "5511777777777",
+      text: "menu",
+    }),
+    deps({ logSkip }),
+  );
+
+  assertEquals(reasons, [
+    "flag_off",
+    "nao_saudacao",
+    "midia",
+    "pendencia:pending_vehicle_identification",
+    "sem_acesso",
+  ]);
+  assert(
+    reasons.every((reason) =>
+      /^(flag_off|nao_saudacao|midia|sem_acesso|pendencia:[a-z0-9_]+)$/.test(
+        reason,
+      )
+    ),
+  );
+  assertEquals(JSON.stringify(reasons).includes("5511"), false);
+  assertEquals(JSON.stringify(reasons).includes("Felicio"), false);
+});
+
 Deno.test("MENU-B3 — mídia, fluxo anterior e pendências prioritárias vencem", async () => {
   const blockedInputs: Array<Partial<JarvisServiceMenuInput>> = [
     { hasBlockingMedia: true },
@@ -506,9 +589,89 @@ Deno.test("MENU-B3 — mídia, fluxo anterior e pendências prioritárias vencem
       { handled: false },
     );
   }
-  assert(hasJarvisMenuPriorityPending({
-    pending_meta_ads_limit: { token: "x" },
-  }));
+  assert(hasJarvisMenuPriorityPending(
+    {
+      pending_meta_ads_limit: { token: "x" },
+    },
+    {
+      now: new Date("2026-10-27T15:00:00.000Z"),
+      lastMessageAt: "2026-10-27T14:55:00.000Z",
+    },
+  ));
+});
+
+Deno.test("MENU-B3.1 — pendência própria velha é ignorada sem apagar estado", async () => {
+  const stalePending = {
+    identification: { marca: "Honda", modelo: "Civic" },
+    media_ids: ["media-1"],
+    target: "single_ad",
+    created_at: "2026-10-26T15:00:00.000Z",
+  };
+  const agentState = {
+    pending_vehicle_identification: stalePending,
+  };
+  assertEquals(
+    jarvisMenuPriorityPendingName(agentState, {
+      now: new Date("2026-10-27T15:00:00.000Z"),
+      lastMessageAt: "2026-10-27T14:55:00.000Z",
+    }),
+    null,
+  );
+
+  const result = await tryProcessJarvisServiceMenu(
+    ownerInput({
+      text: "oi jarvis, bom dia!",
+      agentState,
+    }),
+    deps(),
+  );
+  assert(result.handled);
+  assertEquals(result.kind, "greeting");
+  assertEquals(
+    agentState.pending_vehicle_identification,
+    stalePending,
+    "o menu não deve apagar a pendência dos outros fluxos",
+  );
+});
+
+Deno.test("MENU-B3.1 — pendência recente bloqueia pelo timestamp próprio ou da conversa", async () => {
+  const ownTimestamp = {
+    pending_vehicle_identification: {
+      created_at: "2026-10-27T14:00:01.000Z",
+    },
+  };
+  assertEquals(
+    jarvisMenuPriorityPendingName(ownTimestamp, {
+      now: new Date("2026-10-27T16:00:00.000Z"),
+      lastMessageAt: "2026-10-26T15:00:00.000Z",
+    }),
+    "pending_vehicle_identification",
+  );
+  assertEquals(
+    jarvisMenuPriorityPendingName(
+      { pending_gestao_confirm: { token: "x" } },
+      {
+        now: new Date("2026-10-27T16:00:00.000Z"),
+        lastMessageAt: "2026-10-27T15:30:00.000Z",
+      },
+    ),
+    "pending_gestao_confirm",
+  );
+  assertEquals(
+    jarvisMenuPriorityPendingName(
+      {
+        pending_vehicle_identification: {
+          created_at: "2026-10-27T14:00:00.000Z",
+        },
+      },
+      {
+        now: new Date("2026-10-27T16:00:00.000Z"),
+        lastMessageAt: "2026-10-27T15:59:00.000Z",
+      },
+    ),
+    null,
+    "com duas horas exatas, o timestamp próprio deve vencer o fallback recente",
+  );
 });
 
 Deno.test("MENU-B3 — grupo e subgrupo vêm da árvore sem slots recentes", async () => {
@@ -662,6 +825,10 @@ Deno.test("MENU-B3 — contrato do processor preserva a ordem segura", async () 
   assertStringIncludes(
     processor.slice(menu - 800, menu + 1_200),
     "metaAdsQuestionarioResult.handled",
+  );
+  assertStringIncludes(
+    processor.slice(menu - 800, menu + 1_200),
+    "lastMessageAt: existingConv?.last_message_at ?? null",
   );
   assertStringIncludes(
     processor.slice(idGuard, idGuard + 800),
