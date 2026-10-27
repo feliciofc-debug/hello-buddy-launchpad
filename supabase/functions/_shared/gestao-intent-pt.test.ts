@@ -54,14 +54,19 @@ Deno.test("AJUDA-1 — ajuda não rouba comandos existentes", () => {
       "ajuda",
       "comandos",
       "cartilha",
-      "o que você faz?",
       "o que você sabe fazer?",
+      "o que você faz com documentos?",
       "como faço para emitir nota?",
       "como eu peço uma arte?",
     ]
   ) {
     assertEquals(classifyGestaoIntent(frase).kind, "ajuda", frase);
   }
+  assertEquals(
+    classifyGestaoIntent("o que você faz?").kind,
+    "none",
+    "a saudação pura fica reservada ao menu B3/LLM",
+  );
   assertEquals(classifyGestaoIntent("lucro do mês").kind, "lucro_mes");
   assertEquals(classifyGestaoIntent("posição da loja").kind, "posicao_loja");
   assertEquals(classifyGestaoIntent("emite a nota do X6").kind, "nfe_emit");

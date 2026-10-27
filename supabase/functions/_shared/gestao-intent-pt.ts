@@ -70,6 +70,11 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
   };
   const t = normalize(text);
   if (!t || t.length < 4) return empty;
+  const greetingOnly = t
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (greetingOnly === "o que voce faz") return empty;
   if (
     /^(ajuda|comandos|cartilha)$/.test(t) ||
     /\bo\s+que\s+voce\s+(faz|sabe\s+fazer)\b/.test(t) ||

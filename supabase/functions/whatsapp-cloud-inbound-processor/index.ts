@@ -126,6 +126,7 @@ import {
   injectForcedFetchAsSystemContext,
   stripToolCallsToSystemContext,
 } from "../_shared/jarvis-gemini-message-safety.ts";
+import { tryProcessJarvisServiceMenu } from "../_shared/jarvis-service-menu.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
 import {
@@ -24404,6 +24405,76 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   return { handled: true, preview: ownerStock.preview };
 }
 
+async function tryProcessJarvisServiceMenuShortcut(input: {
+  row: QueueRow;
+  userId: string;
+  userText: string;
+  convId: string;
+  fromIsOwner: boolean;
+  displayName: string | null;
+  hasBlockingMedia: boolean;
+  priorityFlowActive: boolean;
+  agentState: AgentConvState;
+}): Promise<{ handled: boolean; preview?: string; sendError?: string }> {
+  const menu = await tryProcessJarvisServiceMenu({
+    sb,
+    userId: input.userId,
+    fromNumber: input.row.from_number,
+    text: input.userText,
+    messageType: input.row.message_type,
+    isOwner: input.fromIsOwner,
+    displayName: input.displayName,
+    hasBlockingMedia: input.hasBlockingMedia,
+    priorityFlowActive: input.priorityFlowActive,
+    agentState: input.agentState as Record<string, unknown>,
+    appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
+  });
+  if (!menu.handled) return { handled: false };
+
+  const { data: outMsg } = await sb.from("whatsapp_cloud_messages")
+    .insert({
+      conversation_id: input.convId,
+      user_id: input.userId,
+      direction: "outbound",
+      sender: "agent",
+      content: menu.text,
+      message_type: menu.interactiveList || menu.interactiveButtons
+        ? "interactive"
+        : "text",
+    })
+    .select("id")
+    .single();
+  try {
+    const sentId = await sendWhatsApp(
+      input.userId,
+      input.row.from_number,
+      menu.text,
+      undefined,
+      menu.interactiveList,
+      menu.interactiveButtons,
+      { alreadyLogged: true },
+    );
+    if (sentId && outMsg?.id) {
+      await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+        "id",
+        outMsg.id,
+      );
+    }
+    await sb.from("whatsapp_cloud_conversations").update({
+      last_message_at: new Date().toISOString(),
+    }).eq("id", input.convId);
+    return { handled: true, preview: menu.text.slice(0, 120) };
+  } catch (error) {
+    const sendError = String((error as Error).message ?? error);
+    await failQueue(input.row.id, `send_failed: ${sendError}`);
+    return {
+      handled: true,
+      preview: menu.text.slice(0, 120),
+      sendError,
+    };
+  }
+}
+
 async function tryProcessGestaoLucroShortcut(input: {
   row: QueueRow;
   convStateIdentity: ConversationStateIdentity;
@@ -24744,8 +24815,22 @@ async function processOne(queueId: string) {
     };
 
     let userText = replyTextFromInteractiveId(extractText(row.payload));
+    const rawJarvisMenuInteractiveId = String(
+      row.payload?.interactive?.button_reply?.id ??
+        row.payload?.interactive?.list_reply?.id ??
+        "",
+    );
+    const jarvisMenuFallbackText = userText;
+    if (
+      rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+    ) {
+      // Um clique do menu só pode ser interpretado no bloco B3, depois de
+      // todos os fluxos prioritários. O título não chega aos atalhos antigos.
+      userText = rawJarvisMenuInteractiveId;
+    }
     let commercialContactForOwner: any = null;
-    let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
+    let inboundContent = jarvisMenuFallbackText ||
+      `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
 
     // Captura localização compartilhada
@@ -29697,6 +29782,58 @@ Regras:
         console.error("[vehicle-vitrine][late]", (e as Error).message);
       }
     }
+    try {
+      const menuInputText = rawJarvisMenuInteractiveId.toLowerCase().startsWith(
+          "jarvis_menu:",
+        )
+        ? rawJarvisMenuInteractiveId
+        : audioTranscript?.trim() || userText;
+      const jarvisMenu = await tryProcessJarvisServiceMenuShortcut({
+        row,
+        userId,
+        userText: menuInputText,
+        convId: conv.id,
+        fromIsOwner,
+        displayName: fromIsOwner
+          ? _tenantOwner.name ?? contactName
+          : contactName,
+        hasBlockingMedia: media.some((item) => item.kind !== "audio"),
+        priorityFlowActive: !!verticalChoiceResolution ||
+          metaAdsQuestionarioResult.handled,
+        agentState,
+      });
+      if (jarvisMenu.handled) {
+        stopTypingHeartbeat();
+        if (jarvisMenu.sendError) {
+          return {
+            ok: false,
+            reason: "send_failed",
+            error: jarvisMenu.sendError,
+          };
+        }
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          jarvis_menu: true,
+          preview: jarvisMenu.preview,
+        };
+      }
+      if (
+        rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+      ) {
+        // Flag desligada ou remetente sem acesso: o ID fica inerte e o fluxo
+        // anterior recebe apenas o rótulo humano do botão/lista.
+        userText = jarvisMenuFallbackText;
+      }
+    } catch (error) {
+      console.error("[jarvis-service-menu]", (error as Error).message);
+      if (
+        rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+      ) {
+        userText = jarvisMenuFallbackText;
+      }
+    }
+
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
     if (!persistedForward?.protocolo && !fromIsOwner) {
       const recovered = await recoverForwardProof(userId, row.from_number);
