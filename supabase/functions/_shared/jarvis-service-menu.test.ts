@@ -4,9 +4,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { classifyGestaoIntent } from "./gestao-intent-pt.ts";
-import type { GestaoFechamentoDia } from "./gestao-fechamento-dia.ts";
 import {
-  clearJarvisServiceMenuCacheForTests,
   extractJarvisMenuId,
   hasJarvisMenuPriorityPending,
   isJarvisPureGreeting,
@@ -23,79 +21,6 @@ const ENABLED: JarvisMenuConfig = {
   vendedor_enabled: false,
   recent_enabled: true,
 };
-
-function fechamento(
-  dia = "2026-10-27",
-  options: {
-    vendas?: number;
-    parado?: number;
-    vencidas?: number;
-    urgentes?: number;
-  } = {},
-): GestaoFechamentoDia {
-  return {
-    dia,
-    lojaNome: "AMZ",
-    vendasHoje: {
-      qtd: options.vendas ?? 2,
-      faturamento: 180_000,
-      lucro: 20_000,
-      margemPct: 11.1,
-      ticketMedio: 90_000,
-    },
-    vendasMes: {
-      qtd: 10,
-      faturamento: 900_000,
-      lucro: 100_000,
-      margemPct: 11.1,
-      ticketMedio: 90_000,
-    },
-    comparacaoMesAnteriorPct: null,
-    estoque: {
-      total: 20,
-      valorImobilizado: 1_000_000,
-      entradasHoje: 1,
-      saidasHoje: 2,
-      emPreparacao: 3,
-      consignados: 1,
-    },
-    custoEstoque: {
-      hoje: options.parado ?? 1_234.5,
-      mes: 10_000,
-      dias30: 4,
-      dias60: 2,
-      dias90Mais: 1,
-      top3: [],
-    },
-    operacao: {
-      osAbertas: 0,
-      osEmCotacao: 0,
-      cotacoesRecebidasHoje: 0,
-      osParadas: 0,
-      preparacaoParada: 0,
-    },
-    financeiro: {
-      pagar7Dias: 0,
-      receber7Dias: 0,
-      pagarVencido: 500,
-      receberVencido: 0,
-      contasVencidas: options.vencidas ?? 3,
-      despesaOperacionalHoje: 0,
-      repasseHoje: 0,
-      trocoHoje: 0,
-      custoVeiculoHoje: 0,
-    },
-    atendimento: {
-      conversasHoje: 0,
-      leadsNovos: 0,
-      leadsQuentesSemRetorno24h: 0,
-    },
-    acoes: Array.from(
-      { length: options.urgentes ?? 2 },
-      (_, index) => `Ação ${index + 1}`,
-    ),
-  };
-}
 
 function ownerInput(
   overrides: Partial<JarvisServiceMenuInput> = {},
@@ -124,16 +49,12 @@ function deps(
       ownerAltPhones: [],
       gestores: [],
     }),
-    buildFechamento: (async (_sb, _userId, dia) => ({
-      dados: fechamento(dia),
-      texto: "fechamento",
-    })) as JarvisServiceMenuDependencies["buildFechamento"],
     logSkip: () => {},
     ...overrides,
   };
 }
 
-Deno.test("MENU-B3 — detector aceita somente saudações puras e menu", () => {
+Deno.test("MENU-B3.2 — detector aceita somente a gramática de saudação pura", () => {
   for (
     const value of [
       "oi",
@@ -143,40 +64,53 @@ Deno.test("MENU-B3 — detector aceita somente saudações puras e menu", () => 
       "boa tarde!!!",
       "BOA NOITE 🌙",
       "e aí?",
-      "menu 📋",
-      "opções",
-      "O que você faz?",
-      "oi jarvis, bom dia!",
-      "olá, boa tarde",
-      "bom dia jarvis",
-      "oi, tudo bem?",
-      "e aí, tudo certo?",
-      "👋 oi, bom dia, tudo bem? 😊",
+      "Oi Jarvis!",
+      "bom dia jarvis, tudo bem?",
+      "Opa",
+      "E aí Jarvis",
+      "boa tarde amigo",
+      "olá, tudo bom?",
+      "salve chefe, firmeza?",
+      "hey Jarvis, beleza?",
+      "hello, blz?",
+      "oi, td bem?",
     ]
   ) {
-    assert(isJarvisPureGreeting(value), value);
+    assert(isJarvisPureGreeting(value, "Felicio Costa"), value);
   }
+  assert(isJarvisPureGreeting("Boa noite, Felicio!", "Felicio Costa"));
+  assert(isJarvisPureGreeting("Oi, Felicio Costa, como vai?", "Felicio Costa"));
   for (
     const value of [
+      "menu",
+      "ajuda",
+      "o que voce faz",
       "bom dia, vendi o Civic por 90 mil",
-      "oi, quero consultar o estoque",
-      "menu de vendas",
-      "boa tarde, orçamento 1950",
+      "bom dia, quanto lucrei no Corolla?",
+      "oi, posta o Corolla",
+      "oi jarvis manda o fechamento",
       "o que você faz com documentos?",
-      "oi, tudo bem? quero consultar o estoque",
       "e aí, tudo certo? vendi o Civic",
+      "e aí, tudo certo?",
       "tudo bem?",
+      "Oi, Costa",
       "👋",
       "",
+      `oi ${"!".repeat(59)}`,
     ]
   ) {
-    assertEquals(isJarvisPureGreeting(value), false, value);
+    assertEquals(
+      isJarvisPureGreeting(value, "Felicio Costa"),
+      false,
+      value,
+    );
   }
   assertEquals(
     classifyGestaoIntent("bom dia, vendi o Civic por 90 mil").kind,
     "venda",
   );
-  assertEquals(classifyGestaoIntent("o que você faz?").kind, "none");
+  assertEquals(classifyGestaoIntent("ajuda").kind, "ajuda");
+  assertEquals(classifyGestaoIntent("o que você faz?").kind, "ajuda");
   assertEquals(
     classifyGestaoIntent("o que você faz com documentos?").kind,
     "ajuda",
@@ -218,8 +152,7 @@ Deno.test("MENU-B3.1 — saudação com pedido não abre menu", async () => {
   assertEquals(reasons, ["nao_saudacao"]);
 });
 
-Deno.test("MENU-B3 — dono com flag on recebe resumo, urgência e 3 botões", async () => {
-  clearJarvisServiceMenuCacheForTests();
+Deno.test("MENU-B3.2 — dono com flag on recebe saudação sem números e 3 botões", async () => {
   const result = await tryProcessJarvisServiceMenu(
     ownerInput(),
     deps(),
@@ -227,16 +160,8 @@ Deno.test("MENU-B3 — dono com flag on recebe resumo, urgência e 3 botões", a
   assert(result.handled);
   assertEquals(result.kind, "greeting");
   assertEquals(result.role, "owner");
-  assertStringIncludes(result.text, "Boa tarde, Felicio.");
-  assertStringIncludes(
-    result.text,
-    "Hoje: 2 vendas · parado R$ 1.234,50 · 3 contas vencidas",
-  );
-  assertStringIncludes(result.text, "⚠️ 2 urgentes para decidir hoje.");
-  assertStringIncludes(
-    result.text,
-    "Ou me diga (ou mande um áudio) o que precisa.",
-  );
+  assertEquals(result.text, "Boa tarde, Felicio! Como posso te ajudar?");
+  assertEquals(/\d|R\$|vendas|parado|contas|urgente/i.test(result.text), false);
   assertEquals(result.interactiveButtons?.buttons, [
     { id: "jarvis_menu:grupo:marketing", title: "📣 Marketing" },
     { id: "jarvis_menu:grupo:gestao", title: "📊 Gestão" },
@@ -248,7 +173,6 @@ Deno.test("MENU-B3 — dono com flag on recebe resumo, urgência e 3 botões", a
 });
 
 Deno.test("MENU-B3 — áudio transcrito com saudação pura abre o mesmo menu", async () => {
-  clearJarvisServiceMenuCacheForTests();
   const result = await tryProcessJarvisServiceMenu(
     ownerInput({ text: "olá 👋", messageType: "audio" }),
     deps(),
@@ -258,114 +182,30 @@ Deno.test("MENU-B3 — áudio transcrito com saudação pura abre o mesmo menu",
   assertEquals(result.interactiveButtons?.buttons.length, 3);
 });
 
-Deno.test("MENU-B3 — viradas 11:59/12:00 e 17:59/18:00 usam horário SP", async () => {
-  const cases: Array<[string, string, string]> = [
-    ["2026-10-27T14:59:00.000Z", "Bom dia", "Ontem:"],
-    ["2026-10-27T15:00:00.000Z", "Boa tarde", "Hoje:"],
-    ["2026-10-27T20:59:00.000Z", "Boa tarde", "Hoje:"],
-    ["2026-10-27T21:00:00.000Z", "Boa noite", "Hoje:"],
+Deno.test("MENU-B3.2 — viradas 11:59/12:00 e 17:59/18:00 usam horário SP", async () => {
+  const cases: Array<[string, string]> = [
+    ["2026-10-27T14:59:00.000Z", "Bom dia"],
+    ["2026-10-27T15:00:00.000Z", "Boa tarde"],
+    ["2026-10-27T20:59:00.000Z", "Boa tarde"],
+    ["2026-10-27T21:00:00.000Z", "Boa noite"],
   ];
-  for (const [iso, greeting, summary] of cases) {
-    clearJarvisServiceMenuCacheForTests();
+  for (const [iso, greeting] of cases) {
     const result = await tryProcessJarvisServiceMenu(
       ownerInput({ now: new Date(iso) }),
       deps(),
     );
     assert(result.handled);
-    assertStringIncludes(result.text, `${greeting}, Felicio.`);
-    assertStringIncludes(result.text, summary);
+    assertEquals(result.text, `${greeting}, Felicio! Como posso te ajudar?`);
   }
 });
 
-Deno.test("MENU-B3 — antes de 12h resume ontem mas urgência vem de hoje", async () => {
-  clearJarvisServiceMenuCacheForTests();
-  const days: string[] = [];
-  const result = await tryProcessJarvisServiceMenu(
-    ownerInput({ now: new Date("2026-10-27T14:59:00.000Z") }),
-    deps({
-      buildFechamento: (async (_sb, _userId, dia) => {
-        days.push(dia);
-        return {
-          dados: fechamento(dia, {
-            vendas: dia === "2026-10-26" ? 4 : 1,
-            urgentes: dia === "2026-10-27" ? 1 : 3,
-          }),
-          texto: "",
-        };
-      }) as JarvisServiceMenuDependencies["buildFechamento"],
-    }),
-  );
-  assert(result.handled);
-  assertEquals(days, ["2026-10-26", "2026-10-27"]);
-  assertStringIncludes(result.text, "Ontem: 4 vendas");
-  assertStringIncludes(result.text, "⚠️ 1 urgente para decidir hoje.");
-});
-
-Deno.test("MENU-B3 — sem urgentes omite a linha inteira", async () => {
-  clearJarvisServiceMenuCacheForTests();
-  const result = await tryProcessJarvisServiceMenu(
-    ownerInput(),
-    deps({
-      buildFechamento: (async (_sb, _userId, dia) => ({
-        dados: fechamento(dia, { urgentes: 0 }),
-        texto: "",
-      })) as JarvisServiceMenuDependencies["buildFechamento"],
-    }),
-  );
-  assert(result.handled);
-  assertEquals(result.text.includes("urgente"), false);
-});
-
-Deno.test("MENU-B3 — falha do resumo mantém menu e não inventa números", async () => {
-  clearJarvisServiceMenuCacheForTests();
-  const result = await tryProcessJarvisServiceMenu(
-    ownerInput(),
-    deps({
-      buildFechamento: (async () => {
-        throw new Error("indisponível");
-      }) as JarvisServiceMenuDependencies["buildFechamento"],
-    }),
-  );
-  assert(result.handled);
-  assertStringIncludes(
-    result.text,
-    "Não consegui carregar o resumo agora.",
-  );
-  assertEquals(result.text.includes("vendas · parado"), false);
-  assertEquals(result.interactiveButtons?.buttons.length, 3);
-});
-
-Deno.test("MENU-B3 — resumo usa cache de 10 minutos por loja e período", async () => {
-  clearJarvisServiceMenuCacheForTests();
-  let builds = 0;
-  const buildFechamento = (async (_sb, _userId, dia) => {
-    builds += 1;
-    return { dados: fechamento(dia), texto: "" };
-  }) as JarvisServiceMenuDependencies["buildFechamento"];
-  await tryProcessJarvisServiceMenu(
-    ownerInput({ now: new Date("2026-10-27T15:00:00.000Z") }),
-    deps({ buildFechamento }),
-  );
-  await tryProcessJarvisServiceMenu(
-    ownerInput({ now: new Date("2026-10-27T15:09:59.000Z") }),
-    deps({ buildFechamento }),
-  );
-  assertEquals(builds, 1);
-  await tryProcessJarvisServiceMenu(
-    ownerInput({ now: new Date("2026-10-27T15:10:01.000Z") }),
-    deps({ buildFechamento }),
-  );
-  assertEquals(builds, 2);
-});
-
 Deno.test("MENU-B3 — gestor autorizado recebe 2 botões e nunca Marketing", async () => {
-  clearJarvisServiceMenuCacheForTests();
   const result = await tryProcessJarvisServiceMenu(
     ownerInput({
       isOwner: false,
       fromNumber: "5511888888888",
       displayName: "Ana Gestora",
-      text: "menu",
+      text: "boa tarde Ana",
     }),
     deps({
       loadAuthContext: async () => ({
@@ -422,9 +262,7 @@ Deno.test("MENU-B3 — vendedor flag off, cliente e parceiro nunca recebem menu"
   assertEquals(sellerLookup, 0);
 });
 
-Deno.test("MENU-B3 — vendedor futuro não recebe resumo financeiro", async () => {
-  clearJarvisServiceMenuCacheForTests();
-  let builds = 0;
+Deno.test("MENU-B3.2 — vendedor futuro recebe saudação sem dados financeiros", async () => {
   const sellerDeps = deps({
     loadConfig: async () => ({ ...ENABLED, vendedor_enabled: true }),
     loadAuthContext: async () => ({
@@ -433,10 +271,6 @@ Deno.test("MENU-B3 — vendedor futuro não recebe resumo financeiro", async () 
       gestores: [],
     }),
     isActiveSeller: async () => true,
-    buildFechamento: (async () => {
-      builds += 1;
-      return { dados: fechamento(), texto: "" };
-    }) as JarvisServiceMenuDependencies["buildFechamento"],
   });
   const result = await tryProcessJarvisServiceMenu(
     ownerInput({
@@ -450,7 +284,6 @@ Deno.test("MENU-B3 — vendedor futuro não recebe resumo financeiro", async () 
   assertEquals(result.role, "seller");
   assertEquals(result.text.includes("contas vencidas"), false);
   assertEquals(result.text.includes("urgente"), false);
-  assertEquals(builds, 0);
   assertEquals(
     result.interactiveButtons?.buttons.map((button) => button.id),
     [
@@ -540,7 +373,7 @@ Deno.test("MENU-B3.1 — diagnóstico usa somente motivos sem PII", async () => 
     ownerInput({
       isOwner: false,
       fromNumber: "5511777777777",
-      text: "menu",
+      text: "oi",
     }),
     deps({ logSkip }),
   );
@@ -711,6 +544,38 @@ Deno.test("MENU-B3 — grupo e subgrupo vêm da árvore sem slots recentes", asy
   );
 });
 
+Deno.test("MENU-B3.2 — Postar nas redes usa copy automotiva por segmento", async () => {
+  const automotive = await tryProcessJarvisServiceMenu(
+    ownerInput({
+      text: "jarvis_menu:lista:marketing:postar_redes",
+      messageType: "interactive",
+      tenantSegment: "Revenda de veículos seminovos",
+    }),
+    deps(),
+  );
+  assert(automotive.handled);
+  assertEquals(
+    automotive.text,
+    [
+      "O que vamos divulgar hoje?",
+      '1. Um carro do estoque (ex: "Posta o Corolla 2022")',
+      "2. A última foto ou vídeo que você me mandou",
+      '3. Um texto ou ideia (ex: "feirão de sábado", "carro recém-chegado")',
+    ].join("\n"),
+  );
+
+  const retail = await tryProcessJarvisServiceMenu(
+    ownerInput({
+      text: "jarvis_menu:lista:marketing:postar_redes",
+      messageType: "interactive",
+      tenantSegment: "Loja de cosméticos",
+    }),
+    deps(),
+  );
+  assert(retail.handled);
+  assertEquals(retail.text, "Postar nas redes ›\nEscolha uma opção.");
+});
+
 Deno.test("MENU-B3 — item só ensina como pedir e painel inclui link+caminho", async () => {
   const actionItem = await tryProcessJarvisServiceMenu(
     ownerInput({
@@ -829,6 +694,10 @@ Deno.test("MENU-B3 — contrato do processor preserva a ordem segura", async () 
   assertStringIncludes(
     processor.slice(menu - 800, menu + 1_200),
     "lastMessageAt: existingConv?.last_message_at ?? null",
+  );
+  assertStringIncludes(
+    processor.slice(menu - 800, menu + 1_200),
+    "tenantSegment: textAutomotiveEffectiveSegment",
   );
   assertStringIncludes(
     processor.slice(idGuard, idGuard + 800),

@@ -78,7 +78,7 @@ da vitrine late** e **antes da montagem final de estado/prompt e de
   publicação, campanha, FIPE, troca ou vitrine);
 - o remetente é dono, ou está em `gestores`; vendedor exige sua flag;
 - a flag da loja está ligada;
-- a entrada é saudação pura/comando de menu ou um ID `jarvis_menu:*`.
+- a entrada é somente uma saudação pura ou um ID `jarvis_menu:*`.
 
 Esse ponto preserva explicitamente a precedência pedida:
 
@@ -211,11 +211,7 @@ no limite de 10.
 Texto:
 
 ```text
-Bom dia, <primeiro nome>.
-Hoje: <resumo de uma linha derivado do fechamento>.
-⚠️ <n> urgente(s) para decidir hoje.       [somente se n > 0]
-
-Ou me diga (ou mande um áudio) o que precisa.
+Bom dia, <primeiro nome>! Como posso te ajudar?
 ```
 
 Botões:
@@ -225,9 +221,9 @@ Botões:
 3. `🔍 Vistoria e Troca`
 
 Saudação: bom dia antes de 12h, boa tarde antes de 18h e boa noite a partir de
-18h, sempre em `America/Sao_Paulo`. O resumo usa `dados` de
-`buildGestaoFechamentoDia`, não texto gerado por IA. O ⚠️ usa `dados.acoes`; sem
-ações, a linha inteira some.
+18h, sempre em `America/Sao_Paulo`. A saudação não mostra vendas, estoque,
+financeiro ou urgências; esses dados ficam em Gestão ou aparecem quando o
+usuário pedir.
 
 ### 4.2 Lista Marketing
 
@@ -404,15 +400,12 @@ ações, a linha inteira some.
 
 - **Arquivos:** novo `_shared/jarvis-service-menu.ts` e testes; chamada pequena
   no processor; migration aditiva das duas flags por loja.
-- **Entrega:** detector estrito de saudação pura, resumo de uma linha,
-  urgência condicional, rodapé e três botões.
+- **Entrega:** detector estrito de saudação pura, texto curto e três botões.
 - **Riscos:** interceptar parceiro/cliente, resposta de fluxo pendente ou
-  áudio com pedido real; custo/latência do fechamento; vazar financeiro a
-  vendedor.
+  áudio com pedido real.
 - **Testes:** matriz dono/gestor/vendedor/cliente/parceiro; flag on/off;
   saudação pura versus “bom dia, orçamento 1950”; pending flows; horário SP;
-  sem urgente; erro do fechamento com fallback sem inventar números.
-  Rodar golden e cotação/parceiro obrigatoriamente.
+  saudação sem números. Rodar golden e cotação/parceiro obrigatoriamente.
 - **Desligar:** pôr `jarvis_menu_whatsapp_enabled=false` na AMZ; a próxima
   mensagem volta imediatamente ao fluxo atual do LLM.
 - **Reverter:** reverter B3; migration aditiva pode ficar com default `false`.
@@ -500,10 +493,10 @@ ações, a linha inteira some.
 
 | Caso | Resultado obrigatório |
 |---|---|
-| Dono manda “oi” com flag AMZ on | saudação, resumo, ⚠️ condicional e 3 botões |
+| Dono manda “oi” com flag AMZ on | saudação curta, sem números, e 3 botões |
 | Dono manda pedido real após “bom dia” | pedido real vence; não abre menu |
-| Gestor autorizado manda “menu” | menu filtrado às permissões do gestor |
-| Vendedor manda “menu” com flag off | comportamento atual, sem menu |
+| Gestor autorizado manda saudação pura | menu filtrado às permissões do gestor |
+| Vendedor manda saudação pura com flag off | comportamento atual, sem menu |
 | Cliente manda “oi/menu” | vitrine/atendimento atual, nunca menu interno |
 | Parceiro com cotação ativa manda valor/áudio/PDF | cotação vence |
 | Parceiro manda “bom dia” sem sessão | nunca é confundido com gestor |
@@ -548,9 +541,10 @@ ações, a linha inteira some.
 1. **Marketing para gestor:** gestor não vê Marketing por enquanto.
 2. **Piloto:** a primeira loja é a AMZ. O `user_id` exato será resolvido no
    deploy, nunca inferido nem gravado no código.
-3. **Resumo da saudação:** até 12h, mostrar
-   `Ontem: X vendas · parado R$ Y · N contas vencidas`; depois de 12h, mostrar
-   o mesmo formato iniciado por `Hoje:`.
+3. **Saudação sem números:** mostrar somente
+   `Bom dia/Boa tarde/Boa noite, <primeiro nome>! Como posso te ajudar?`.
+   Vendas, estoque, financeiro e urgências ficam em Gestão ou aparecem quando
+   o usuário pedir.
 4. **Urgente:** usar somente `buildGestaoFechamentoDia().dados.acoes`.
 5. **Item de painel:** enviar o link direto e também escrever o caminho, por
    exemplo `Gestão › Trocas`.
@@ -564,10 +558,8 @@ ações, a linha inteira some.
 12. **Lojas não automotivas:** ficam fora do rollout até existir catálogo
     adequado ao segmento.
 13. **Ajuda:** responder com texto curto e oferecer a cartilha em PDF.
-14. **Falha do resumo:** abrir o menu com
-    `Não consegui carregar o resumo agora`.
-
-No B3, o resumo da saudação usa cache de 10 minutos por loja.
+14. **Falha do resumo:** não se aplica à saudação, pois ela não carrega resumo.
+    O menu abre sem consultar o fechamento.
 
 ## 9. Critério de pronto
 

@@ -24416,6 +24416,7 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
   priorityFlowActive: boolean;
   agentState: AgentConvState;
   lastMessageAt: string | null;
+  tenantSegment: string | null;
 }): Promise<{ handled: boolean; preview?: string; sendError?: string }> {
   const menu = await tryProcessJarvisServiceMenu({
     sb,
@@ -24429,6 +24430,7 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
     priorityFlowActive: input.priorityFlowActive,
     agentState: input.agentState as Record<string, unknown>,
     lastMessageAt: input.lastMessageAt,
+    tenantSegment: input.tenantSegment,
     appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
   });
   if (!menu.handled) return { handled: false };
@@ -29804,6 +29806,7 @@ Regras:
           metaAdsQuestionarioResult.handled,
         agentState,
         lastMessageAt: existingConv?.last_message_at ?? null,
+        tenantSegment: textAutomotiveEffectiveSegment,
       });
       if (jarvisMenu.handled) {
         stopTypingHeartbeat();

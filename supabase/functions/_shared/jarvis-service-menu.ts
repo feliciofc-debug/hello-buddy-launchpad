@@ -5,10 +5,6 @@ import {
   loadGestaoAuthContext,
 } from "./gestao-auth-phone.ts";
 import {
-  buildGestaoFechamentoDia,
-  type GestaoFechamentoDia,
-} from "./gestao-fechamento-dia.ts";
-import {
   formatarRespostaJarvisAjuda,
   JARVIS_AJUDA_CATALOGO,
   JARVIS_MENU_LISTS,
@@ -18,10 +14,9 @@ import {
 } from "./jarvis-ajuda-catalogo.ts";
 import { jarvisMenuRows } from "./jarvis-menu-tree.ts";
 import { ownerPhoneVariants } from "./owner-phone.ts";
-import { dateKeySaoPaulo } from "./vitrine-crm-time.ts";
+import { isAutomotiveTenant } from "./vertical-router.ts";
 
 export const JARVIS_MENU_ID_PREFIX = "jarvis_menu:";
-const MENU_CACHE_TTL_MS = 10 * 60 * 1000;
 const MENU_PENDING_TTL_MS = 2 * 60 * 60 * 1000;
 
 export type JarvisMenuSkipReason =
@@ -74,11 +69,10 @@ export type JarvisServiceMenuInput = {
   priorityFlowActive?: boolean;
   agentState?: Record<string, unknown> | null;
   lastMessageAt?: string | null;
+  tenantSegment?: string | null;
   appBaseUrl?: string | null;
   now?: Date;
 };
-
-type FechamentoBuilder = typeof buildGestaoFechamentoDia;
 
 export type JarvisServiceMenuDependencies = {
   loadConfig?: (
@@ -94,19 +88,8 @@ export type JarvisServiceMenuDependencies = {
     userId: string,
     fromNumber: string,
   ) => Promise<boolean>;
-  buildFechamento?: FechamentoBuilder;
   logSkip?: (reason: JarvisMenuSkipReason) => void;
 };
-
-type GreetingSnapshot = {
-  summary: string;
-  urgentCount: number;
-};
-
-const greetingCache = new Map<
-  string,
-  { expiresAt: number; value: GreetingSnapshot }
->();
 
 function normalizeGreeting(value: string): string {
   return String(value || "")
@@ -118,32 +101,64 @@ function normalizeGreeting(value: string): string {
     .trim();
 }
 
-export function isJarvisPureGreeting(value: string): boolean {
-  const normalized = normalizeGreeting(value);
-  if (["menu", "opcoes", "o que voce faz"].includes(normalized)) return true;
+const GREETING_PHRASES = [
+  "boa tarde",
+  "boa noite",
+  "bom dia",
+  "e ai",
+  "hello",
+  "hey",
+  "eai",
+  "ola",
+  "opa",
+  "oi",
+  "salve",
+] as const;
 
+const COURTESY_PHRASES = [
+  "como vai",
+  "td bem",
+  "tudo bem",
+  "tudo bom",
+  "beleza",
+  "blz",
+  "firmeza",
+] as const;
+
+function profileCallingPhrases(displayName?: string | null): string[] {
+  const normalized = normalizeGreeting(displayName || "");
+  if (!normalized) return [];
+  const first = normalized.split(" ")[0];
+  return [...new Set([normalized, first])].filter(Boolean);
+}
+
+export function isJarvisPureGreeting(
+  value: string,
+  displayName?: string | null,
+): boolean {
+  if ([...String(value || "").trim()].length > 60) return false;
+  const normalized = normalizeGreeting(value);
+  if (!normalized) return false;
+  const greetings = new Set<string>(GREETING_PHRASES);
+  const phrases = [
+    ...GREETING_PHRASES,
+    "jarvis",
+    "amigo",
+    "chefe",
+    ...profileCallingPhrases(displayName),
+    ...COURTESY_PHRASES,
+  ].sort((a, b) => b.length - a.length);
   let remaining = normalized;
   let foundGreeting = false;
-  for (
-    const phrase of [
-      "bom dia",
-      "boa tarde",
-      "boa noite",
-      "e ai",
-      "ola",
-      "oi",
-    ]
-  ) {
-    const pattern = new RegExp(`\\b${phrase}\\b`, "g");
-    if (pattern.test(remaining)) foundGreeting = true;
-    remaining = remaining.replace(pattern, " ");
+  while (remaining) {
+    const phrase = phrases.find((candidate) =>
+      remaining === candidate || remaining.startsWith(`${candidate} `)
+    );
+    if (!phrase) return false;
+    if (greetings.has(phrase)) foundGreeting = true;
+    remaining = remaining.slice(phrase.length).trimStart();
   }
-  remaining = remaining
-    .replace(/\bjarvis\b/g, " ")
-    .replace(/\btudo (?:bem|certo)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return foundGreeting && !remaining;
+  return foundGreeting;
 }
 
 export function extractJarvisMenuId(value: string): string | null {
@@ -309,90 +324,12 @@ function saoPauloHour(now: Date): number {
   return Number(hour ?? 0);
 }
 
-function previousYmd(ymd: string): string {
-  const [year, month, day] = ymd.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day - 1, 12));
-  return date.toISOString().slice(0, 10);
-}
-
-function moneyWithoutNbsp(value: number): string {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).replace(/[\u00a0\u202f]/g, " ");
-}
-
-export function formatJarvisGreetingSummary(
-  dados: GestaoFechamentoDia,
-  label: "Ontem" | "Hoje",
-): string {
-  const overdue = dados.financeiro?.contasVencidas ?? 0;
-  return `${label}: ${dados.vendasHoje.qtd} vendas · parado ${
-    moneyWithoutNbsp(dados.custoEstoque.hoje ?? 0)
-  } · ${overdue} contas vencidas`;
-}
-
-function greetingPeriod(hour: number): {
-  greeting: "Bom dia" | "Boa tarde" | "Boa noite";
-  summaryLabel: "Ontem" | "Hoje";
-} {
-  return {
-    greeting: hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite",
-    summaryLabel: hour < 12 ? "Ontem" : "Hoje",
-  };
+function greetingPeriod(hour: number): "Bom dia" | "Boa tarde" | "Boa noite" {
+  return hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 }
 
 function firstName(value: string | null | undefined): string {
   return String(value || "").trim().split(/\s+/)[0] || "você";
-}
-
-async function loadGreetingSnapshot(
-  input: JarvisServiceMenuInput,
-  dependencies: JarvisServiceMenuDependencies,
-): Promise<GreetingSnapshot> {
-  const now = input.now ?? new Date();
-  const today = dateKeySaoPaulo(now);
-  const hour = saoPauloHour(now);
-  const { summaryLabel } = greetingPeriod(hour);
-  const cacheKey = `${input.userId}:${today}:${summaryLabel.toLowerCase()}`;
-  const cached = greetingCache.get(cacheKey);
-  if (cached && cached.expiresAt > now.getTime()) return cached.value;
-
-  const targetDay = summaryLabel === "Ontem" ? previousYmd(today) : today;
-  const builder = dependencies.buildFechamento ?? buildGestaoFechamentoDia;
-  let summary = "Não consegui carregar o resumo agora.";
-  let urgentCount = 0;
-  try {
-    const summaryResult = await builder(input.sb, input.userId, targetDay, {
-      financeiroPermitido: true,
-    });
-    summary = formatJarvisGreetingSummary(summaryResult.dados, summaryLabel);
-    if (targetDay === today) {
-      urgentCount = summaryResult.dados.acoes.length;
-    }
-  } catch {
-    // O menu continua disponível com o fallback explícito.
-  }
-  if (targetDay !== today) {
-    try {
-      const todayResult = await builder(input.sb, input.userId, today, {
-        financeiroPermitido: true,
-      });
-      urgentCount = todayResult.dados.acoes.length;
-    } catch {
-      urgentCount = 0;
-    }
-  }
-  const value = { summary, urgentCount };
-  greetingCache.set(cacheKey, {
-    expiresAt: now.getTime() + MENU_CACHE_TTL_MS,
-    value,
-  });
-  return value;
-}
-
-export function clearJarvisServiceMenuCacheForTests(): void {
-  greetingCache.clear();
 }
 
 function rootListsForRole(role: JarvisMenuRole): JarvisMenuList[] {
@@ -421,6 +358,7 @@ function itemAccessible(item: JarvisAjudaItem, role: JarvisMenuRole): boolean {
 function renderMenuList(
   list: JarvisMenuList,
   role: JarvisMenuRole,
+  tenantSegment?: string | null,
 ): JarvisMenuInteractiveList {
   const rows = jarvisMenuRows(list.id).filter((row) => {
     if (row.kind === "recent") return false;
@@ -451,8 +389,17 @@ function renderMenuList(
       description: row.description,
     };
   });
+  const body = list.id === "marketing:postar_redes" &&
+      isAutomotiveTenant(tenantSegment)
+    ? [
+      "O que vamos divulgar hoje?",
+      '1. Um carro do estoque (ex: "Posta o Corolla 2022")',
+      "2. A última foto ou vídeo que você me mandou",
+      '3. Um texto ou ideia (ex: "feirão de sábado", "carro recém-chegado")',
+    ].join("\n")
+    : `${list.title}\nEscolha uma opção.`;
   return {
-    body: `${list.title}\nEscolha uma opção.`,
+    body,
     button: "Ver opções",
     section_title: "Serviços",
     rows,
@@ -508,7 +455,7 @@ export async function tryProcessJarvisServiceMenu(
   dependencies: JarvisServiceMenuDependencies = {},
 ): Promise<JarvisServiceMenuResult> {
   const menuId = extractJarvisMenuId(input.text);
-  const isGreeting = isJarvisPureGreeting(input.text);
+  const isGreeting = isJarvisPureGreeting(input.text, input.displayName);
   const requestedMenu = Boolean(menuId || isGreeting);
   const logSkip = dependencies.logSkip ?? defaultLogSkip;
 
@@ -563,21 +510,10 @@ export async function tryProcessJarvisServiceMenu(
 
   if (!menuId) {
     const now = input.now ?? new Date();
-    const { greeting } = greetingPeriod(saoPauloHour(now));
-    const lines = [`${greeting}, ${firstName(input.displayName)}.`];
-    if (role !== "seller") {
-      const snapshot = await loadGreetingSnapshot(input, dependencies);
-      lines.push(snapshot.summary);
-      if (snapshot.urgentCount > 0) {
-        lines.push(
-          `⚠️ ${snapshot.urgentCount} ${
-            snapshot.urgentCount === 1 ? "urgente" : "urgentes"
-          } para decidir hoje.`,
-        );
-      }
-    }
-    lines.push("", "Ou me diga (ou mande um áudio) o que precisa.");
-    const text = lines.join("\n");
+    const greeting = greetingPeriod(saoPauloHour(now));
+    const text = `${greeting}, ${
+      firstName(input.displayName)
+    }! Como posso te ajudar?`;
     return {
       handled: true,
       role,
@@ -622,7 +558,7 @@ export async function tryProcessJarvisServiceMenu(
     if (diagnosticAuthorized) logSkip("sem_acesso");
     return { handled: false };
   }
-  const interactiveList = renderMenuList(list, role);
+  const interactiveList = renderMenuList(list, role, input.tenantSegment);
   return {
     handled: true,
     role,
