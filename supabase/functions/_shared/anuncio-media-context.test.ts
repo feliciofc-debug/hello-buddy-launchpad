@@ -113,7 +113,7 @@ Deno.test("ANUNCIO-1 — contexto salvo sem TTL não recupera Honda antigo", () 
   assertEquals(context, null);
 });
 
-Deno.test("ANUNCIO-1 — saneamento limpa estado vencido no turno", () => {
+Deno.test("FIX-BOTOES-1 — saneamento preserva o último evento de mídia", () => {
   const patch = staleVehicleMediaContextPatch({
     pending_vehicle_identification: {
       created_at: "2026-10-20T12:00:00.000Z",
@@ -124,7 +124,7 @@ Deno.test("ANUNCIO-1 — saneamento limpa estado vencido no turno", () => {
     },
   }, NOW);
   assertEquals(patch.pending_vehicle_identification, null);
-  assertEquals(patch.last_media_interaction, null);
+  assertEquals(patch.last_media_interaction, undefined);
 });
 
 Deno.test("ANUNCIO-1 — bindAnuncioMediaToArgs fixa mídia no pending", () => {

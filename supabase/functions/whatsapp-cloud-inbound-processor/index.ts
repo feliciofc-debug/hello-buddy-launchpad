@@ -8465,7 +8465,7 @@ const ULTIMA_MIDIA_FIELDS =
  * interação vence `created_at`, permitindo que uma mídia deduplicada e
  * reenviada volte a ser a última sem criar outra linha.
  */
-async function resolveUltimaMidia(
+export async function resolveUltimaMidia(
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
   tipo: UltimaMidiaTipo,
 ): Promise<{ midia: any | null; midias?: any[]; erro?: string }> {

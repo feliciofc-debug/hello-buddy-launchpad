@@ -155,7 +155,10 @@ class MemoryQuery
         : [this.payload ?? {}];
       rows = payloads.map((payload) => {
         const row = {
-          id: payload.id ?? `${this.table}-${this.db.nextId++}`,
+          id: payload.id ??
+            (this.table === "midias_whatsapp"
+              ? crypto.randomUUID()
+              : `${this.table}-${this.db.nextId++}`),
           ...structuredClone(payload),
         };
         table.push(row);
@@ -419,6 +422,37 @@ export function installProcessOneFetchRecorder() {
         message_id: `wamid-out-${calls.length}`,
         wamid: `wamid-out-${calls.length}`,
       });
+    }
+    if (url.includes("render-anuncio-produto")) {
+      return Response.json({
+        success: true,
+        image_url: `https://storage.test/generated-${calls.length}.png`,
+      });
+    }
+    if (url.includes("ai.gateway.lovable.dev")) {
+      const wantsImage = Array.isArray(body?.modalities) &&
+        body.modalities.includes("image");
+      return wantsImage
+        ? Response.json({
+          choices: [{
+            message: {
+              images: [{
+                image_url: {
+                  url:
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                },
+              }],
+            },
+          }],
+        })
+        : Response.json({
+          choices: [{
+            message: {
+              content:
+                '{"A":"Legenda A de teste","B":"Legenda B de teste","C":"Legenda C de teste"}',
+            },
+          }],
+        });
     }
     return Response.json({ ok: true, data: {}, candidates: [] });
   }) as typeof fetch;
