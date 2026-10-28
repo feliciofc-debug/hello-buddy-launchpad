@@ -939,11 +939,11 @@ Deno.test("FIX-BOTOES-1 J8 — processOne repassa IDs Molicar", async () => {
   assertEquals(failures, []);
 });
 
-Deno.test("FIX-BOTOES-1 J8 — Procedência → confirmar pelo processOne", async () => {
+Deno.test("VEIC-WPP-2 J8 — Consultar segurança → confirmar pelo processOne", async () => {
   const processor = await loadProcessor();
   const tables = baseProcessOneTables({
     interactiveId: "molicar_wa:procedencia:ABC1D23",
-    title: "Procedência",
+    title: "Consultar segurança",
     kind: "interactive.button_reply",
   });
   tables.profiles[0].tipo = "revenda_veiculos";

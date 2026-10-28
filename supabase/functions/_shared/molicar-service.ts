@@ -197,6 +197,7 @@ function publicSnapshot(row: Record<string, unknown>, cache: boolean) {
     molicar_id: row.molicar_id,
     placa: row.placa,
     vin: row.vin,
+    renavam: row.renavam,
     fipe_codigo: row.fipe_codigo,
     dados: row.dados,
     precos: row.precos,
@@ -265,7 +266,7 @@ async function findCache(
 ) {
   let query = db.from("molicar_consulta")
     .select(
-      "id, molicar_id, placa, vin, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem, veiculo_id, troca_id",
+      "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem, veiculo_id, troca_id",
     )
     .eq("user_id", userId)
     .gte("consultado_em", new Date(Date.now() - 365 * 86_400_000).toISOString())
@@ -366,7 +367,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
       const { data: saved, error: saveError } = await db.from(
         "molicar_consulta",
       ).insert(notFoundSnapshot).select(
-        "id, molicar_id, placa, vin, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
+        "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
       ).single();
       if (saveError) throw saveError;
       return { ...publicSnapshot(saved, false), quota };
@@ -401,7 +402,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     snapshot,
   )
     .select(
-      "id, molicar_id, placa, vin, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
+      "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
     )
     .single();
   if (error) throw error;

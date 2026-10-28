@@ -206,6 +206,7 @@ import {
 import { decifrarCofreBytes } from "../_shared/gestao-cofre-crypto.ts";
 import {
   autoLinkCrlvToStock,
+  completeCrlvWithMolicar,
   crlvWhatsappActionButtons,
 } from "../_shared/crlv-whatsapp.ts";
 import {
@@ -25128,6 +25129,16 @@ export async function processOne(queueId: string) {
               let reply = CRLV_NAO_LIDO_MENSAGEM;
               let buttons: WhatsAppInteractiveButtons | undefined;
               if (reread.leitura) {
+                const leituraParcial = reread.leitura.leitura_fraca;
+                const completion = leituraParcial
+                  ? await completeCrlvWithMolicar({
+                    sb,
+                    userId,
+                    documentoId,
+                    leitura: reread.leitura,
+                  })
+                  : null;
+                const leitura = completion?.leitura ?? reread.leitura;
                 let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> =
                   null;
                 try {
@@ -25135,20 +25146,26 @@ export async function processOne(queueId: string) {
                     sb,
                     userId,
                     documentoId,
-                    reread.leitura,
+                    leitura,
                   );
                 } catch {
                   console.warn("[crlv-leitura] skip", {
                     reason: "stock_auto_link_failed",
                   });
                 }
-                reply = respostaCrlvWhatsApp(reread.leitura);
+                reply = respostaCrlvWhatsApp(leitura, {
+                  origens: completion?.origens,
+                  leituraParcial,
+                  completadoMolicar: completion?.completado,
+                  avisoMolicar: completion?.aviso,
+                });
                 if (linked) {
                   reply += `\nVinculei ao ${linked.label} do estoque.`;
                 }
                 buttons = crlvWhatsappActionButtons(
                   documentoId,
                   linked?.id,
+                  leitura.veiculo.placa.valor,
                 );
               } else {
                 console.warn("[crlv-leitura] skip", {
@@ -26385,20 +26402,35 @@ export async function processOne(queueId: string) {
         });
         if (senderIsGestao) {
           if (stored.leitura) {
+            const leituraParcial = stored.leitura.leitura_fraca;
+            const completion = leituraParcial
+              ? await completeCrlvWithMolicar({
+                sb,
+                userId,
+                documentoId: stored.documentoId,
+                leitura: stored.leitura,
+              })
+              : null;
+            const leitura = completion?.leitura ?? stored.leitura;
             let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> = null;
             try {
               linked = await autoLinkCrlvToStock(
                 sb,
                 userId,
                 stored.documentoId,
-                stored.leitura,
+                leitura,
               );
             } catch {
               console.warn("[crlv-leitura] skip", {
                 reason: "stock_auto_link_failed",
               });
             }
-            let summary = respostaCrlvWhatsApp(stored.leitura);
+            let summary = respostaCrlvWhatsApp(leitura, {
+              origens: completion?.origens,
+              leituraParcial,
+              completadoMolicar: completion?.completado,
+              avisoMolicar: completion?.aviso,
+            });
             if (linked) {
               summary += `\nVinculei ao ${linked.label} do estoque.`;
             }
@@ -26408,6 +26440,7 @@ export async function processOne(queueId: string) {
             buttons = crlvWhatsappActionButtons(
               stored.documentoId,
               linked?.id,
+              leitura.veiculo.placa.valor,
             );
           } else if (stored.leituraErro) {
             reply = stored.leituraErro;

@@ -1,6 +1,7 @@
 import { maskOwnerDocument } from "./crlv-cofre.ts";
 import { detectarDocumentoLocal } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
+import type { CrlvFieldOrigins } from "./crlv-whatsapp.ts";
 import { decodeBase64Cofre } from "./gestao-cofre-crypto.ts";
 import type { MediaExtract } from "./whatsapp-media.ts";
 import { extractDocumentText } from "./document-extract.ts";
@@ -85,30 +86,70 @@ export function tipoDocumentoCofre(
   return "outro";
 }
 
-export function respostaCrlvWhatsApp(parser: CrlvParserResultado): string {
+export function respostaCrlvWhatsApp(
+  parser: CrlvParserResultado,
+  options: {
+    origens?: CrlvFieldOrigins;
+    leituraParcial?: boolean;
+    completadoMolicar?: boolean;
+    avisoMolicar?: string | null;
+  } = {},
+): string {
   const vehicle = parser.veiculo;
   const read = (value: unknown) =>
     value == null || String(value).trim() === "" ? "não lido" : String(value);
+  const withOrigin = (
+    value: unknown,
+    section: keyof CrlvFieldOrigins,
+    field: string,
+  ) => {
+    const rendered = read(value);
+    const origin = options.origens?.[section]?.[field];
+    return rendered === "não lido" || !origin
+      ? rendered
+      : `${rendered} (origem: ${origin})`;
+  };
   const ownerDocument = maskOwnerDocument(
     parser.proprietario.cpf_cnpj.valor,
   ) ?? "não lido";
+  const plate = read(vehicle.placa.valor);
+  const header = options.leituraParcial
+    ? options.completadoMolicar
+      ? `✅ Li a placa ${plate} no documento e completei pela Molicar:`
+      : `✅ Li a placa ${plate} no documento.`
+    : "✅ CRLV lido";
   const lines = [
-    "✅ CRLV lido",
-    `Placa: ${read(vehicle.placa.valor)}`,
-    `Renavam: ${read(vehicle.renavam.valor)}`,
-    `Chassi: ${read(vehicle.chassi.valor)}`,
-    `Marca/modelo/versão: ${read(vehicle.marca_modelo_versao.valor)}`,
-    `Ano fabricação/modelo: ${read(vehicle.ano_fabricacao.valor)}/${
-      read(vehicle.ano_modelo.valor)
+    header,
+    `Placa: ${withOrigin(vehicle.placa.valor, "veiculo", "placa")}`,
+    `Renavam: ${withOrigin(vehicle.renavam.valor, "veiculo", "renavam")}`,
+    `Chassi: ${withOrigin(vehicle.chassi.valor, "veiculo", "chassi")}`,
+    `Marca/modelo/versão: ${
+      withOrigin(
+        vehicle.marca_modelo_versao.valor,
+        "veiculo",
+        "marca_modelo_versao",
+      )
     }`,
-    `Cor: ${read(vehicle.cor.valor)}`,
-    `Combustível: ${read(vehicle.combustivel.valor)}`,
-    `Categoria: ${read(vehicle.categoria.valor)}`,
-    `Município/UF: ${read(parser.documento.municipio.valor)}/${
-      read(parser.documento.uf.valor)
+    `Ano fabricação/modelo: ${
+      withOrigin(vehicle.ano_fabricacao.valor, "veiculo", "ano_fabricacao")
+    }/${withOrigin(vehicle.ano_modelo.valor, "veiculo", "ano_modelo")}`,
+    `Cor: ${withOrigin(vehicle.cor.valor, "veiculo", "cor")}`,
+    `Combustível: ${
+      withOrigin(vehicle.combustivel.valor, "veiculo", "combustivel")
     }`,
-    `Proprietário: ${read(parser.proprietario.nome.valor)}`,
-    `CPF/CNPJ: ${ownerDocument}`,
+    `Categoria: ${
+      withOrigin(vehicle.categoria.valor, "veiculo", "categoria")
+    }`,
+    `Município/UF: ${
+      withOrigin(parser.documento.municipio.valor, "documento", "municipio")
+    }/${
+      withOrigin(parser.documento.uf.valor, "documento", "uf")
+    }`,
+    `Proprietário: ${
+      withOrigin(parser.proprietario.nome.valor, "proprietario", "nome")
+    }`,
+    `CPF/CNPJ: ${withOrigin(ownerDocument, "proprietario", "cpf_cnpj")}`,
+    ...(options.avisoMolicar ? [`⚠️ ${options.avisoMolicar}`] : []),
   ];
   return lines.join("\n");
 }

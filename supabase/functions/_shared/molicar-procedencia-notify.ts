@@ -138,6 +138,8 @@ export function buildMolicarProcedenciaWhatsAppSummary(
     `Débitos: ${summarizeDebts(fallback("debts"))}.`,
     `Gravame: ${summarizeGravame(fallback("gravame"))}.`,
     `Restrições: ${summarizeRestrictions(fallback("renajud"))}.`,
+    "Leilão: ❓ não consultado.",
+    "Roubo/furto: ❓ não consultado.",
   ].join("\n");
 }
 

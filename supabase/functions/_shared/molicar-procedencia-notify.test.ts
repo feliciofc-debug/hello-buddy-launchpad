@@ -34,6 +34,8 @@ Deno.test("VEIC-WPP-1 — resumo assíncrono distingue consultado de não consul
   assertStringIncludes(summary, "Débitos: 2 registro(s)");
   assertStringIncludes(summary, "Gravame: 1 registro(s); Banco Seguro");
   assertStringIncludes(summary, "Restrições: não consultado");
+  assertStringIncludes(summary, "Leilão: ❓ não consultado");
+  assertStringIncludes(summary, "Roubo/furto: ❓ não consultado");
   assertEquals(summary.includes("nenhum alerta"), false);
 });
 

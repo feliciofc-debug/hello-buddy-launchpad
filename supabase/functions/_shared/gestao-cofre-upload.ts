@@ -173,7 +173,10 @@ async function readCrlv(
       input.filename,
       fetchImpl,
     );
-    if (result.parser.leitura_fraca) {
+    if (
+      result.parser.leitura_fraca &&
+      !result.parser.veiculo.placa.valor
+    ) {
       return {
         leitura: null,
         leituraErro: CRLV_NAO_LIDO_MENSAGEM,
