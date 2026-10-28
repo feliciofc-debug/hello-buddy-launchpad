@@ -55,6 +55,7 @@ export type JarvisServiceMenuResult =
     text: string;
     interactiveButtons?: JarvisMenuInteractiveButtons;
     interactiveList?: JarvisMenuInteractiveList;
+    clearedAgentState?: Record<string, unknown>;
   };
 
 export type JarvisServiceMenuInput = {
@@ -67,6 +68,8 @@ export type JarvisServiceMenuInput = {
   displayName?: string | null;
   hasBlockingMedia?: boolean;
   priorityFlowActive?: boolean;
+  partnerQuoteActive?: boolean;
+  humanHandoffActive?: boolean;
   agentState?: Record<string, unknown> | null;
   lastMessageAt?: string | null;
   tenantSegment?: string | null;
@@ -216,6 +219,79 @@ function bucketPendingName(
     ) {
       return key;
     }
+  }
+  return null;
+}
+
+const GREETING_PRESERVED_PENDING = new Set([
+  "pending_gestao_confirm",
+  "pending_procedencia_confirm",
+]);
+
+function removeMediaMarketingPending(
+  bucket: Record<string, unknown>,
+  preserveFinancial = false,
+): boolean {
+  let changed = false;
+  for (const key of Object.keys(bucket)) {
+    if (
+      key.startsWith("pending_") &&
+      !(preserveFinancial && GREETING_PRESERVED_PENDING.has(key))
+    ) {
+      delete bucket[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+export function clearJarvisGreetingPendingState(
+  input: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!input) return null;
+  const hiddenRoot = (input as Record<string, unknown>).__vertical_root;
+  const source = isRecord(hiddenRoot) ? hiddenRoot : input;
+  const next = structuredClone(source);
+  let changed = removeMediaMarketingPending(next, true);
+  for (const key of ["vehicle", "general", "vertical_router"]) {
+    const bucket = next[key];
+    if (isRecord(bucket)) {
+      changed = removeMediaMarketingPending(bucket) || changed;
+    }
+  }
+  if (!changed) return null;
+
+  removeMediaMarketingPending(input, true);
+  for (const key of ["vehicle", "general", "vertical_router"]) {
+    const bucket = input[key];
+    if (isRecord(bucket)) removeMediaMarketingPending(bucket);
+  }
+  if (isRecord(hiddenRoot)) {
+    for (const key of Object.keys(hiddenRoot)) delete hiddenRoot[key];
+    Object.assign(hiddenRoot, next);
+  }
+  return next;
+}
+
+function pendingConfirmationSummary(
+  state: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!state) return null;
+  const gestao = state.pending_gestao_confirm;
+  if (isRecord(gestao)) {
+    const action = String(gestao.action ?? "")
+      .replace(/_/g, " ")
+      .trim();
+    return action
+      ? `confirmação de gestão (${action})`
+      : "confirmação de gestão";
+  }
+  const procedencia = state.pending_procedencia_confirm;
+  if (isRecord(procedencia)) {
+    const plate = String(procedencia.placa ?? "").trim();
+    return plate
+      ? `consulta de procedência da placa ${plate}`
+      : "consulta de procedência";
   }
   return null;
 }
@@ -495,25 +571,38 @@ export async function tryProcessJarvisServiceMenu(
     if (diagnosticAuthorized) logSkip("midia");
     return { handled: false };
   }
-  if (input.priorityFlowActive) {
+  if (input.partnerQuoteActive || input.humanHandoffActive) {
     if (diagnosticAuthorized) logSkip("pendencia:fluxo_prioritario");
     return { handled: false };
   }
-  const pendingName = jarvisMenuPriorityPendingName(input.agentState, {
-    now: input.now,
-    lastMessageAt: input.lastMessageAt,
-  });
-  if (pendingName) {
-    if (diagnosticAuthorized) logSkip(`pendencia:${pendingName}`);
+  if (input.priorityFlowActive && !isGreeting) {
+    if (diagnosticAuthorized) logSkip("pendencia:fluxo_prioritario");
     return { handled: false };
+  }
+  if (!isGreeting) {
+    const pendingName = jarvisMenuPriorityPendingName(input.agentState, {
+      now: input.now,
+      lastMessageAt: input.lastMessageAt,
+    });
+    if (pendingName) {
+      if (diagnosticAuthorized) logSkip(`pendencia:${pendingName}`);
+      return { handled: false };
+    }
   }
 
   if (!menuId) {
     const now = input.now ?? new Date();
     const greeting = greetingPeriod(saoPauloHour(now));
-    const text = `${greeting}, ${
+    const baseText = `${greeting}, ${
       firstName(input.displayName)
     }! Como posso te ajudar?`;
+    const confirmation = pendingConfirmationSummary(input.agentState);
+    const text = confirmation
+      ? `${baseText}\nVocê tem uma confirmação pendente: ${confirmation}.`
+      : baseText;
+    const clearedAgentState = clearJarvisGreetingPendingState(
+      input.agentState,
+    );
     return {
       handled: true,
       role,
@@ -523,6 +612,7 @@ export async function tryProcessJarvisServiceMenu(
         body: text,
         buttons: rootButtons(role),
       },
+      ...(clearedAgentState ? { clearedAgentState } : {}),
     };
   }
 

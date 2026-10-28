@@ -122,7 +122,10 @@ import {
   injectForcedFetchAsSystemContext,
   stripToolCallsToSystemContext,
 } from "../_shared/jarvis-gemini-message-safety.ts";
-import { tryProcessJarvisServiceMenu } from "../_shared/jarvis-service-menu.ts";
+import {
+  isJarvisPureGreeting,
+  tryProcessJarvisServiceMenu,
+} from "../_shared/jarvis-service-menu.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
 import {
@@ -24610,6 +24613,15 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
     appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
   });
   if (!menu.handled) return { handled: false };
+  if (menu.clearedAgentState) {
+    const { error } = await sb.from("whatsapp_cloud_conversations").update({
+      agent_state: menu.clearedAgentState,
+    }).eq("id", input.convId).eq("user_id", input.userId).eq(
+      "contact_number",
+      input.row.from_number,
+    );
+    if (error) throw new Error(`jarvis_menu_pending_cleanup_failed:${error.message}`);
+  }
 
   const { data: outMsg } = await sb.from("whatsapp_cloud_messages")
     .insert({
@@ -24664,6 +24676,16 @@ async function tryProcessGestaoLucroShortcut(input: {
   convId: string;
   hasInboundMedia: boolean;
 }): Promise<{ handled: boolean; preview?: string }> {
+  if (
+    isJarvisPureGreeting(
+      input.userText,
+      input.row.payload?.profile?.name ??
+        input.row.payload?.contacts?.[0]?.profile?.name ??
+        null,
+    )
+  ) {
+    return { handled: false };
+  }
   const baseState = migrateVerticalState(
     await loadAgentState(sb, input.convStateIdentity),
   ).state as AgentConvState;
@@ -24844,6 +24866,9 @@ async function tryProcessVehicleStockShowcase(input: {
   allowEarlyFormCapture?: boolean;
   agentStateSeed?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
+  if (isJarvisPureGreeting(input.userText, input.contactName)) {
+    return { handled: false };
+  }
   const listId = input.interactiveId ?? "";
   const vitrineId = extractVitrineInteractiveId({
     userText: input.userText,
@@ -29519,6 +29544,10 @@ async function processOne(queueId: string) {
         textVerticalDecision.route,
       )
       : migratedAgentState;
+    const pureMenuGreeting = isJarvisPureGreeting(
+      audioTranscript?.trim() || userText,
+      contactName,
+    );
     let verticalChoiceResolution: {
       text: string;
       buttons?: WhatsAppInteractiveButtons;
@@ -29559,6 +29588,7 @@ async function processOne(queueId: string) {
       fromIsOwner &&
       automotiveOwnerAccount &&
       pendingVerticalChoice?.awaiting_correction &&
+      !pureMenuGreeting &&
       userText.trim() &&
       !/<<INTERACTIVE_ID:/i.test(userText)
     ) {
@@ -29689,6 +29719,7 @@ async function processOne(queueId: string) {
       pendingVerticalChoice &&
       !verticalChoiceId &&
       !ownerPhotoConfirmChoice &&
+      !pureMenuGreeting &&
       !/<<INTERACTIVE_ID:/i.test(userText) &&
       userText.trim()
     ) {
@@ -29704,7 +29735,7 @@ async function processOne(queueId: string) {
     let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
       handled: false,
     };
-    try {
+    if (!pureMenuGreeting) try {
       const limitValueText = audioTranscript || userText;
       const limitValueAction = resolveMetaAdsLimitValueInput({
         text: limitValueText,
@@ -29837,7 +29868,11 @@ async function processOne(queueId: string) {
         };
       }
     }
-    if (!fromIsOwner && !metaAdsQuestionarioResult.handled) {
+    if (
+      !pureMenuGreeting &&
+      !fromIsOwner &&
+      !metaAdsQuestionarioResult.handled
+    ) {
       try {
         const vitrineLate = await tryProcessVehicleStockShowcase({
           row,

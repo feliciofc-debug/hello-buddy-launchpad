@@ -5,6 +5,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { classifyGestaoIntent } from "./gestao-intent-pt.ts";
 import {
+  clearJarvisGreetingPendingState,
   extractJarvisMenuId,
   hasJarvisMenuPriorityPending,
   isJarvisPureGreeting,
@@ -361,6 +362,8 @@ Deno.test("MENU-B3.1 — diagnóstico usa somente motivos sem PII", async () => 
   );
   await tryProcessJarvisServiceMenu(
     ownerInput({
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
       agentState: {
         pending_vehicle_identification: {
           created_at: "2026-10-27T14:30:00.000Z",
@@ -396,18 +399,38 @@ Deno.test("MENU-B3.1 — diagnóstico usa somente motivos sem PII", async () => 
   assertEquals(JSON.stringify(reasons).includes("Felicio"), false);
 });
 
-Deno.test("MENU-B3 — mídia, fluxo anterior e pendências prioritárias vencem", async () => {
+Deno.test("MENU-B3 — clique no menu mantém bloqueios atuais", async () => {
   const blockedInputs: Array<Partial<JarvisServiceMenuInput>> = [
-    { hasBlockingMedia: true },
-    { priorityFlowActive: true },
-    { agentState: { pending_gestao_confirm: { token: "x" } } },
-    { agentState: { general: { pending_single_photo: { id: "x" } } } },
     {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
+      hasBlockingMedia: true,
+    },
+    {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
+      priorityFlowActive: true,
+    },
+    {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
+      agentState: { pending_gestao_confirm: { token: "x" } },
+    },
+    {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
+      agentState: { general: { pending_single_photo: { id: "x" } } },
+    },
+    {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
       agentState: {
         vehicle: { pending_vitrine_estoque: { etapa: "telefone" } },
       },
     },
     {
+      text: "jarvis_menu:grupo:marketing",
+      messageType: "interactive",
       agentState: {
         vertical_router: { pending_choice: { media_id: "x" } },
       },
@@ -433,7 +456,7 @@ Deno.test("MENU-B3 — mídia, fluxo anterior e pendências prioritárias vencem
   ));
 });
 
-Deno.test("MENU-B3.1 — pendência própria velha é ignorada sem apagar estado", async () => {
+Deno.test("MENU-SEMPRE — saudação limpa pendência de mídia mesmo velha", async () => {
   const stalePending = {
     identification: { marca: "Honda", modelo: "Civic" },
     media_ids: ["media-1"],
@@ -460,11 +483,113 @@ Deno.test("MENU-B3.1 — pendência própria velha é ignorada sem apagar estado
   );
   assert(result.handled);
   assertEquals(result.kind, "greeting");
-  assertEquals(
-    agentState.pending_vehicle_identification,
-    stalePending,
-    "o menu não deve apagar a pendência dos outros fluxos",
+  assertEquals("pending_vehicle_identification" in agentState, false);
+});
+
+Deno.test("MENU-SEMPRE — oi jarvis abre menu e limpa pendings recentes", async () => {
+  const recent = "2026-10-27T14:59:00.000Z";
+  const agentState: Record<string, unknown> = {
+    pending_anuncio_cliente: { created_at: recent },
+    pending_single_photo: { created_at: recent },
+    pending_vehicle_identification: { created_at: recent },
+    vehicle: {
+      pending_fipe: { created_at: recent },
+    },
+    general: {
+      pending_carousel: { created_at: recent },
+    },
+    vertical_router: {
+      pending_choice: { created_at: recent },
+      last_route: "veiculo",
+    },
+  };
+  const result = await tryProcessJarvisServiceMenu(
+    ownerInput({ text: "oi jarvis", agentState }),
+    deps(),
   );
+  assert(result.handled);
+  assertEquals(result.kind, "greeting");
+  assertEquals(result.interactiveButtons?.buttons.length, 3);
+  for (const key of [
+    "pending_anuncio_cliente",
+    "pending_single_photo",
+    "pending_vehicle_identification",
+  ]) {
+    assertEquals(key in agentState, false, key);
+    assertEquals(key in (result.clearedAgentState ?? {}), false, key);
+  }
+  assertEquals(
+    "pending_fipe" in
+      ((result.clearedAgentState?.vehicle ?? {}) as Record<string, unknown>),
+    false,
+  );
+  assertEquals(
+    "pending_carousel" in
+      ((result.clearedAgentState?.general ?? {}) as Record<string, unknown>),
+    false,
+  );
+  assertEquals(
+    (result.clearedAgentState?.vertical_router as Record<string, unknown>)
+      .last_route,
+    "veiculo",
+  );
+});
+
+Deno.test("MENU-SEMPRE — confirmação financeira aparece e não é limpa", async () => {
+  const agentState = {
+    pending_gestao_confirm: {
+      action: "nfe_emit",
+      created_at: "2026-10-27T14:59:00.000Z",
+    },
+    pending_procedencia_confirm: {
+      placa: "ABC1D23",
+      created_at: "2026-10-27T14:59:00.000Z",
+    },
+    pending_single_photo: {
+      created_at: "2026-10-27T14:59:00.000Z",
+    },
+  };
+  const result = await tryProcessJarvisServiceMenu(
+    ownerInput({ text: "bom dia", agentState }),
+    deps(),
+  );
+  assert(result.handled);
+  assertStringIncludes(result.text, "Você tem uma confirmação pendente:");
+  assertStringIncludes(result.text, "nfe emit");
+  assertEquals(agentState.pending_gestao_confirm.action, "nfe_emit");
+  assertEquals(agentState.pending_procedencia_confirm.placa, "ABC1D23");
+  assertEquals("pending_single_photo" in agentState, false);
+});
+
+Deno.test("MENU-SEMPRE — parceiro com cotação ativa não recebe menu", async () => {
+  const result = await tryProcessJarvisServiceMenu(
+    ownerInput({
+      isOwner: false,
+      fromNumber: "5511888888888",
+      text: "oi",
+      partnerQuoteActive: true,
+    }),
+    deps({
+      loadAuthContext: async () => ({
+        ownerPhone: "5511999999999",
+        ownerAltPhones: [],
+        gestores: ["5511888888888"],
+      }),
+    }),
+  );
+  assertEquals(result, { handled: false });
+});
+
+Deno.test("MENU-SEMPRE — helper preserva só confirmações financeiras", () => {
+  const state = {
+    pending_gestao_confirm: { action: "despesa" },
+    pending_procedencia_confirm: { placa: "ABC1D23" },
+    pending_fipe: { stage: "model" },
+  };
+  const next = clearJarvisGreetingPendingState(state);
+  assertEquals(next?.pending_gestao_confirm, { action: "despesa" });
+  assertEquals(next?.pending_procedencia_confirm, { placa: "ABC1D23" });
+  assertEquals("pending_fipe" in (next ?? {}), false);
 });
 
 Deno.test("MENU-B3.1 — pendência recente bloqueia pelo timestamp próprio ou da conversa", async () => {
@@ -675,6 +800,31 @@ Deno.test("MENU-B3 — contrato do processor preserva a ordem segura", async () 
   assert(menu > freshPhoto, "menu deve vir após o fluxo de foto");
   assert(state > menu, "menu deve vir antes do estado final");
   assert(ai > menu, "menu deve vir antes do callGemini");
+  assertStringIncludes(
+    processor.slice(
+      processor.indexOf("async function tryProcessGestaoLucroShortcut"),
+      processor.indexOf("async function tryProcessGestaoTrocaWhatsAppShortcut"),
+    ),
+    "isJarvisPureGreeting(",
+  );
+  assertStringIncludes(
+    processor.slice(
+      processor.indexOf("async function tryProcessVehicleStockShowcase"),
+      processor.indexOf("async function processOne"),
+    ),
+    "isJarvisPureGreeting(input.userText, input.contactName)",
+  );
+  assertStringIncludes(
+    processor.slice(menu - 7_000, menu),
+    "if (!pureMenuGreeting) try {",
+  );
+  assertStringIncludes(
+    processor.slice(
+      processor.indexOf("async function tryProcessJarvisServiceMenuShortcut"),
+      processor.indexOf("async function tryProcessGestaoLucroShortcut"),
+    ),
+    "agent_state: menu.clearedAgentState",
+  );
   assertStringIncludes(
     processor.slice(menu - 800, menu + 1_200),
     "rawJarvisMenuInteractiveId.toLowerCase().startsWith(",
