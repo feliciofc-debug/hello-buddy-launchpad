@@ -223,8 +223,13 @@ Deno.test({
   fn: async () => {
     const oldUrl = Deno.env.get("AMZ_OCR_URL");
     const oldToken = Deno.env.get("AMZ_OCR_TOKEN");
+    const oldKey = Deno.env.get("DOC_COFRE_KEY");
     Deno.env.set("AMZ_OCR_URL", "http://127.0.0.1:3011/ocr");
     Deno.env.set("AMZ_OCR_TOKEN", "token-local");
+    Deno.env.set(
+      "DOC_COFRE_KEY",
+      btoa(String.fromCharCode(...new Uint8Array(32).fill(4))),
+    );
     const db = new ProcessOneMemorySupabase({
       gestao_documento: [{
         id: "d1",
@@ -255,6 +260,8 @@ Deno.test({
       else Deno.env.set("AMZ_OCR_URL", oldUrl);
       if (oldToken == null) Deno.env.delete("AMZ_OCR_TOKEN");
       else Deno.env.set("AMZ_OCR_TOKEN", oldToken);
+      if (oldKey == null) Deno.env.delete("DOC_COFRE_KEY");
+      else Deno.env.set("DOC_COFRE_KEY", oldKey);
     }
   },
 });
