@@ -399,7 +399,6 @@ import {
   hasSocialPostRequest,
   hasVideoPublicationRequest,
   isCarouselLibraryMedia,
-  selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
@@ -508,10 +507,7 @@ import {
   vehiclePostFipeVideoTheme,
 } from "../_shared/vehicle-post-fipe-menu.ts";
 import {
-  ANUNCIO_MEDIA_TTL_MS,
   bindAnuncioMediaToArgs,
-  anuncioPhotoContextConflict,
-  resolveAnuncioMediaId,
   staleVehicleMediaContextPatch,
   vehicleIdentificationBundleForMedia,
 } from "../_shared/anuncio-media-context.ts";
@@ -714,9 +710,6 @@ import {
   type ContentNiche,
   resolveNichoDoConteudo,
 } from "../_shared/content-niche.ts";
-import {
-  selectRecentOriginalPhoto,
-} from "../_shared/anuncio-source-media.ts";
 import {
   detectPhotoBoxesByVariant,
   parseFotoBoxFromVisionResponse,
@@ -1062,9 +1055,7 @@ function extractText(payload: any, interactiveId: string | null = null): string 
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = interactiveId ?? "";
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|vehicle_model_fix:|vehicle_photo_edit:|gestao_troca_wa:|cofre_doc_|cofre_possivel_|molicar_wa:)/i.test(id)
-      ? `${title}\n<<INTERACTIVE_ID:${id}>>`
-      : title;
+    return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
   }
   if (payload.image?.caption) return payload.image.caption;
   if (payload.video?.caption) return payload.video.caption;
@@ -2257,6 +2248,7 @@ async function toolEditarImagem(
     originalSourceMediaId?: string;
     libraryContext?: string;
     vehicleEdit?: boolean;
+    agentState?: AgentConvState;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -2284,43 +2276,42 @@ async function toolEditarImagem(
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
   }
-  if (!imageInput && ctx.sourceMediaId) {
-    const { data: source, error } = await sb
-      .from("midias_whatsapp")
-      .select("id, midia_url")
-      .eq("id", ctx.sourceMediaId)
-      .eq("user_id", ctx.userId)
-      .eq("tipo", "foto")
-      .maybeSingle();
-    if (error || !source?.midia_url) {
+  if (!imageInput && ctx.fromNumber) {
+    const latest = await resolveUltimaMidia({
+      userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
+      agentState: ctx.agentState,
+    }, "foto_usuario");
+    if (latest.erro) {
       return JSON.stringify({
         erro: "imagem_origem_indisponivel",
-        detalhe: error?.message,
+        detalhe: latest.erro,
       });
     }
-    imageInput = String(source.midia_url);
+    if (latest.midia?.midia_url) {
+      imageInput = String(latest.midia.midia_url);
+      ctx.sourceMediaId = String(latest.midia.id);
+      ctx.originalSourceMediaId = String(latest.midia.id);
+    }
+  }
+  if (!imageInput && ctx.sourceMediaId) {
+    const source = await resolverMidiaBibliotecaPorId(
+      ctx.userId,
+      ctx.sourceMediaId,
+    );
+    if (source.erro || !source.midia?.midia_url) {
+      return JSON.stringify({
+        erro: "imagem_origem_indisponivel",
+        detalhe: source.erro,
+      });
+    }
+    imageInput = String(source.midia.midia_url);
   }
   if (
     !imageInput &&
     /^https?:\/\//i.test(String(ctx.imageInputUrl || ""))
   ) {
     imageInput = String(ctx.imageInputUrl);
-  } else if (!imageInput) {
-    try {
-      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      const { data: rec } = await sb
-        .from("midias_whatsapp")
-        .select("midia_url, created_at")
-        .eq("user_id", ctx.userId)
-        .eq("telefone_origem", ctx.fromNumber)
-        .eq("tipo", "foto")
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
-    } catch (e) {
-      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
-    }
   }
   if (!imageInput) {
     return JSON.stringify({
@@ -2607,27 +2598,13 @@ async function toolApplyTenantLogoOverlay(
   if (current) {
     sourceBytes = base64Decode(current.base64);
   } else {
-    const interactionId = String(
-      ctx.sourceMediaId ||
-        ctx.agentState?.last_media_interaction?.media_id || "",
-    ).trim();
-    let query = sb.from("midias_whatsapp")
-      .select("id, midia_url, created_at")
-      .eq("user_id", ctx.userId)
-      .eq("telefone_origem", ctx.fromNumber)
-      .eq("tipo", "foto");
-    query = interactionId
-      ? query.eq("id", interactionId)
-      : query.gte(
-        "created_at",
-        new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      ).order("created_at", { ascending: false }).limit(1);
-    const { data, error } = await query.maybeSingle();
-    if (error) {
+    const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+    if (latest.erro) {
       return JSON.stringify({ ok: false, erro: "foto_recente_indisponivel" });
     }
-    if (data?.midia_url) {
-      const response = await fetch(String(data.midia_url), {
+    if (latest.midia?.midia_url) {
+      ctx.sourceMediaId = String(latest.midia.id);
+      const response = await fetch(String(latest.midia.midia_url), {
         signal: AbortSignal.timeout(30_000),
       });
       if (response.ok) {
@@ -8470,35 +8447,111 @@ function tempoRelativoMidia(createdAt: string): string {
   return `há ${Math.floor(horas / 24)} dias`;
 }
 
+type UltimaMidiaTipo =
+  | "foto_usuario"
+  | "grupo_fotos_usuario"
+  | "foto_conversa"
+  | "video"
+  | "conversa";
+
+const ULTIMA_MIDIA_FIELDS =
+  "id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at";
+
+/**
+ * Fonte única para referências implícitas de mídia do dono.
+ *
+ * Criação usa `foto_usuario`/`grupo_fotos_usuario`; publicação usa a linha do
+ * tempo completa (`conversa`, `foto_conversa` ou `video`). O timestamp da
+ * interação vence `created_at`, permitindo que uma mídia deduplicada e
+ * reenviada volte a ser a última sem criar outra linha.
+ */
+async function resolveUltimaMidia(
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+  tipo: UltimaMidiaTipo,
+): Promise<{ midia: any | null; midias?: any[]; erro?: string }> {
+  if (tipo === "grupo_fotos_usuario") {
+    const ids = ctx.agentState?.pending_image_composition?.media_ids ?? [];
+    if (!ids.length) {
+      const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+      return {
+        ...latest,
+        midias: latest.midia ? [latest.midia] : [],
+      };
+    }
+    const { data, error } = await sb
+      .from("midias_whatsapp")
+      .select(ULTIMA_MIDIA_FIELDS)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .eq("tipo", "foto")
+      .eq("origem", "whatsapp")
+      .in("id", ids);
+    if (error) return { midia: null, midias: [], erro: error.message };
+    const byId = new Map((data ?? []).map((row: any) => [String(row.id), row]));
+    const ordered = ids.map((id) => byId.get(id)).filter(Boolean);
+    return { midia: ordered.at(-1) ?? null, midias: ordered };
+  }
+
+  let query = sb
+    .from("midias_whatsapp")
+    .select(ULTIMA_MIDIA_FIELDS)
+    .eq("user_id", ctx.userId)
+    .eq("telefone_origem", ctx.fromNumber);
+  if (tipo === "foto_usuario") {
+    query = query.eq("tipo", "foto").eq("origem", "whatsapp");
+  } else if (tipo === "foto_conversa") {
+    query = query.eq("tipo", "foto");
+  } else if (tipo === "video") {
+    query = query.eq("tipo", "video");
+  } else {
+    query = query.in("tipo", ["foto", "video"]);
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) return { midia: null, erro: error.message };
+
+  const candidates = [...(data ?? [])];
+  const interaction = ctx.agentState?.last_media_interaction ?? null;
+  const interactionId = String(interaction?.media_id || "");
+  if (interactionId && !candidates.some((row: any) => row.id === interactionId)) {
+    const { data: interacted, error: interactedError } = await sb
+      .from("midias_whatsapp")
+      .select(ULTIMA_MIDIA_FIELDS)
+      .eq("id", interactionId)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .maybeSingle();
+    if (interactedError) {
+      return { midia: null, erro: interactedError.message };
+    }
+    const compatible = interacted &&
+      (tipo === "conversa" ||
+        (tipo === "video" && interacted.tipo === "video") ||
+        (tipo === "foto_conversa" && interacted.tipo === "foto") ||
+        (tipo === "foto_usuario" &&
+          interacted.tipo === "foto" &&
+          interacted.origem === "whatsapp"));
+    if (compatible) candidates.push(interacted);
+  }
+
+  const interactionAt = Date.parse(String(interaction?.at || ""));
+  candidates.sort((left: any, right: any) => {
+    const effectiveAt = (row: any) => Math.max(
+      Date.parse(String(row.created_at || "")) || Number.NEGATIVE_INFINITY,
+      row.id === interactionId && Number.isFinite(interactionAt)
+        ? interactionAt
+        : Number.NEGATIVE_INFINITY,
+    );
+    return effectiveAt(right) - effectiveAt(left);
+  });
+  return { midia: candidates[0] ?? null };
+}
+
 async function buscarUltimaMidiaDaConversa(
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<{ midia: any | null; erro?: string }> {
-  const { data, error } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .in("tipo", ["foto", "video"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return { midia: null, erro: error.message };
-
-  const selectedId = selectLatestImplicitMediaId(data, ctx.agentState?.last_media_interaction ?? null);
-  if (!selectedId || selectedId === data?.id) return { midia: data ?? null };
-
-  // Uma mídia reencaminhada pode ser deduplicada e conservar o created_at
-  // antigo. Nesse caso, last_media_interaction.at representa o evento mais
-  // recente da conversa e o ID deduplicado deve vencer.
-  const { data: interacted, error: interactedError } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("id", selectedId)
-    .eq("user_id", ctx.userId)
-    .in("tipo", ["foto", "video"])
-    .maybeSingle();
-  if (interactedError) return { midia: null, erro: interactedError.message };
-  return { midia: interacted ?? data ?? null };
+  return await resolveUltimaMidia(ctx, "conversa");
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
@@ -10674,66 +10727,18 @@ async function resolverMidiaParaPublicacao(
     return await resolverMidiaBibliotecaPorId(ctx.userId, selectedExplicitId);
   }
 
-  const nowMs = Date.now();
-  const lastInteraction = ctx.agentState?.last_media_interaction ?? null;
-  const interactionId = selectPublicationMediaId({
-    lastInteraction,
-    nowMs,
-    maxInteractionAgeMs: ANUNCIO_MEDIA_TTL_MS,
-  });
-  let interactedMedia: any | null = null;
-  if (interactionId) {
-    const interacted = await resolverMidiaBibliotecaPorId(
-      ctx.userId,
-      interactionId,
-    );
-    if (interacted.erro) return interacted;
-    if (interacted.midia && compativel(interacted.midia)) {
-      interactedMedia = interacted.midia;
-    }
-  }
-
-  const generatedSince = new Date(nowMs - 2 * 60 * 60 * 1000)
-    .toISOString();
-  let query = sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .in("tipo", ["foto", "video"])
-    .in("origem", [
-      "ia_video_motion",
-      "video_legendado",
-      "ia_whatsapp",
-      "ia_edicao",
-      "ia_composicao",
-      "anuncio_produto",
-      "whatsapp",
-      "whatsapp_pietro",
-    ])
-    .gte("created_at", generatedSince);
-  if (referencia === "video") query = query.eq("tipo", "video");
-  if (referencia === "image") query = query.eq("tipo", "foto");
-  const { data: generated, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return { midia: null, erro: error.message };
-
-  const selectedId = selectPublicationMediaId({
-    lastInteraction: interactedMedia
-      ? {
-        ...lastInteraction,
-        media_created_at: interactedMedia.created_at,
-      }
-      : null,
-    recentGenerated: generated ?? null,
-    nowMs,
-    maxInteractionAgeMs: ANUNCIO_MEDIA_TTL_MS,
-  });
-  if (selectedId === interactedMedia?.id) return { midia: interactedMedia };
-  if (selectedId === generated?.id) return { midia: generated };
-  return { midia: null };
+  const ultima = await resolveUltimaMidia(
+    ctx,
+    referencia === "video"
+      ? "video"
+      : referencia === "image"
+      ? "foto_conversa"
+      : "conversa",
+  );
+  if (ultima.erro) return ultima;
+  return ultima.midia && compativel(ultima.midia)
+    ? { midia: ultima.midia }
+    : { midia: null };
 }
 
 type ReadyLegendVideo = {
@@ -15693,41 +15698,9 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
   fromNumber: string;
   agentState?: AgentConvState;
 }): Promise<string | null> {
-  const { data: recent, error } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_url, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .eq("tipo", "foto")
-    .eq("origem", "whatsapp")
-    .order("created_at", { ascending: false })
-    .limit(20);
-  if (error) throw new Error(error.message);
-
-  const interaction = ctx.agentState?.last_media_interaction ?? null;
-  const candidates = [...(recent ?? [])];
-  const interactedId = String(interaction?.media_id || "");
-  const interactedAt = Date.parse(String(interaction?.at || ""));
-  if (
-    interactedId &&
-    Number.isFinite(interactedAt) &&
-    Date.now() - interactedAt <= 30 * 60 * 1000 &&
-    !candidates.some((media: any) => media.id === interactedId)
-  ) {
-    const { data: interacted } = await sb
-      .from("midias_whatsapp")
-      .select("id, tipo, origem, midia_url, telefone_origem, created_at")
-      .eq("id", interactedId)
-      .eq("user_id", ctx.userId)
-      .eq("telefone_origem", ctx.fromNumber)
-      .eq("origem", "whatsapp")
-      .maybeSingle();
-    if (interacted) candidates.push(interacted);
-  }
-  return selectRecentOriginalPhoto({
-    candidates,
-    lastInteraction: interaction,
-  })?.midia_url ?? null;
+  const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+  if (latest.erro) throw new Error(latest.erro);
+  return latest.midia?.midia_url ?? null;
 }
 
 async function buscarFotoRecenteParaFipe(ctx: {
@@ -16545,41 +16518,12 @@ async function toolCriarAnuncio(
     const explicitAnuncioMediaId = String(
       (args as Record<string, unknown>)?._anuncio_media_id || "",
     ).trim();
-    const anuncioMediaId = resolveAnuncioMediaId({
-      agentState: ctx.agentState,
-      explicitMediaId: explicitAnuncioMediaId,
-    });
-    if (
-      anuncioMediaId &&
-      anuncioPhotoContextConflict({
-        agentState: ctx.agentState,
-        mediaId: anuncioMediaId,
-      })
-    ) {
-      if (!ctx.agentState?.pending_anuncio_photo_mismatch && ctx.convId) {
-        const conversation = {
-          id: ctx.convId,
-          userId: ctx.userId,
-          contactNumber: ctx.fromNumber,
-        };
-        const current = ctx.agentState ??
-          await loadAgentState(sb, conversation);
-        await saveAgentState(sb, conversation, {
-          pending_anuncio_photo_mismatch: {
-            asked_at: new Date().toISOString(),
-          },
-        }, current);
-        current.pending_anuncio_photo_mismatch = {
-          asked_at: new Date().toISOString(),
-        };
-        ctx.agentState = current;
-      }
-      return JSON.stringify({
-        erro: "foto_identificacao_diferente",
-        mensagem:
-          "A identificação que tenho não bate com a foto deste anúncio. Qual foto você quer usar? Envie a imagem de novo ou toque a ação no menu da foto certa.",
-      });
-    }
+    const latestCreateMedia = explicitAnuncioMediaId
+      ? await resolverMidiaBibliotecaPorId(ctx.userId, explicitAnuncioMediaId)
+      : await resolveUltimaMidia(ctx, "foto_usuario");
+    const anuncioMediaId = String(
+      explicitAnuncioMediaId || latestCreateMedia.midia?.id || "",
+    ).trim();
 
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
@@ -16601,12 +16545,27 @@ async function toolCriarAnuncio(
     );
     const anuncioVertical: "veiculo" | "geral" =
       effectiveVerticalScope === "veiculo" ? "veiculo" : "geral";
-    const identificationBundle = anuncioMediaId
+    let identificationBundle = anuncioMediaId
       ? vehicleIdentificationBundleForMedia({
         agentState: ctx.agentState,
         mediaId: anuncioMediaId,
       })
       : null;
+    if (
+      !identificationBundle &&
+      effectiveVerticalScope === "veiculo" &&
+      latestCreateMedia.midia?.midia_url
+    ) {
+      const identification = await identifyVehiclePhoto(
+        String(latestCreateMedia.midia.midia_url),
+      );
+      if (identification) {
+        identificationBundle = {
+          identification,
+          media_ids: [anuncioMediaId],
+        };
+      }
+    }
     const pendingVehicleIdentification =
       identificationBundle &&
         ctx.agentState?.pending_vehicle_identification?.media_ids
@@ -16622,7 +16581,7 @@ async function toolCriarAnuncio(
           data: identificationBundle.data,
           created_at: new Date().toISOString(),
         }
-        : ctx.agentState?.pending_vehicle_identification;
+        : null;
     if (
       effectiveVerticalScope === "veiculo" &&
       pendingVehicleIdentification?.confirmed &&
@@ -17791,6 +17750,7 @@ async function runTool(
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
       preservarAmbiente: typeof args?.preservar_ambiente === "boolean" ? args.preservar_ambiente : undefined,
+      agentState: ctx.agentState,
     });
 
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
@@ -18364,7 +18324,11 @@ async function callGemini(
       userContent,
     );
     if (remetenteEhDono && vehicleBrandPositionAction) {
-      const mediaId = vehicleBrandPositionAction.mediaId;
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const mediaId = String(latestPhoto.midia?.id || "");
+      if (!mediaId) {
+        return { text: vehicleInteractiveMissingPhotoReply() };
+      }
       const logo = await getTenantLogoDataUrl(sb, toolCtx.userId);
       if (!logo) {
         const pending = {
@@ -18834,7 +18798,6 @@ async function callGemini(
       ? parseVehiclePhotoActionInteractive(userContent)
       : null;
     const vehiclePhotoAction = vehiclePhotoInteractive?.action ?? null;
-    const vehiclePhotoActionMediaId = vehiclePhotoInteractive?.mediaId ?? null;
     const vehiclePostFipeAction = remetenteEhDono
       ? parseVehiclePostFipeInteractiveId(userContent)
       : null;
@@ -18845,67 +18808,35 @@ async function callGemini(
         vehiclePostFipeAction,
     );
     if (remetenteEhDono && hasVehicleInteractiveAction) {
-      let context = resolveVehiclePhotoActionContext({
-        pending: pendingVehicleIdentification as VehiclePhotoActionContext | null,
-        saved: toolCtx.agentState?.last_vehicle_photo_context,
-        lastMediaId: toolCtx.agentState?.last_media_interaction?.media_id,
-        lastMediaInteraction: toolCtx.agentState?.last_media_interaction,
-        mediaRoutes: ownerMediaRoutesFromRouter(
-          toolCtx.agentState?.vertical_router,
-        ),
-      });
-      if (vehiclePhotoActionMediaId) {
-        const route = ownerMediaRoutesFromRouter(
-          toolCtx.agentState?.vertical_router,
-        )[vehiclePhotoActionMediaId];
-        if (route?.vehicle_identification) {
-          context = {
-            identification: route.vehicle_identification,
-            media_ids: [vehiclePhotoActionMediaId],
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const latestPhotoId = String(latestPhoto.midia?.id || "").trim();
+      const known = latestPhotoId
+        ? vehicleIdentificationBundleForMedia({
+          agentState: toolCtx.agentState,
+          mediaId: latestPhotoId,
+        })
+        : null;
+      const identification = known?.identification ??
+        (latestPhoto.midia?.midia_url
+          ? await identifyVehiclePhoto(String(latestPhoto.midia.midia_url))
+          : null);
+      const context: VehiclePhotoActionContext | null =
+        latestPhotoId && identification
+          ? {
+            identification,
+            media_ids: [latestPhotoId],
             target: "single_ad",
             created_at: new Date().toISOString(),
-            confirmed: route.confirmed,
-          };
-        } else if (context) {
-          context = {
-            ...context,
-            media_ids: [vehiclePhotoActionMediaId],
-            created_at: new Date().toISOString(),
-          };
-        }
-      }
-      if (!context) {
-        const lastMediaId = String(
-          toolCtx.agentState?.last_media_interaction?.media_id || "",
-        ).trim();
-        const lastRoute = getOwnerMediaRoute(
-          toolCtx.agentState?.vertical_router,
-          lastMediaId,
-        );
-        if (lastMediaId && lastRoute?.route === "veiculo") {
-          const resolved = await resolverMidiaBibliotecaPorId(
-            toolCtx.userId,
-            lastMediaId,
-          );
-          const identification = resolved.midia?.midia_url
-            ? await identifyVehiclePhoto(String(resolved.midia.midia_url))
-            : null;
-          if (identification) {
-            context = {
-              identification,
-              media_ids: [lastMediaId],
-              target: "single_ad",
-              created_at: new Date().toISOString(),
-            };
+            confirmed: known?.confirmed,
+            confirmed_title: known?.confirmed_title,
+            data: known?.data,
           }
-        }
-      }
+          : null;
       if (!context) {
         return { text: vehicleInteractiveMissingPhotoReply() };
       }
       if (
         !pendingVehicleIdentification ||
-        vehiclePhotoActionMediaId ||
         !pendingVehicleIdentification.media_ids?.includes(
           context.media_ids[0] || "",
         )
@@ -19111,11 +19042,7 @@ async function callGemini(
       if (syntheticPostFipe) {
         const pendingId = pendingAfter;
         if (syntheticPostFipe === "ad") {
-          const mediaId = String(
-            vehiclePhotoActionMediaId ||
-              pendingId.media_ids?.[0] ||
-              resolveAnuncioMediaId({ agentState: toolCtx.agentState }),
-          ).trim();
+          const mediaId = String(pendingId.media_ids?.[0] || "").trim();
           const data = pendingId?.data ?? {};
           const titulo = String(
             pendingId?.confirmed_title || data.titulo || "",
@@ -19474,6 +19401,10 @@ async function callGemini(
       };
     }
     if (remetenteEhDono && readyMediaScheduleChoice) {
+      const latestVideo = await resolveUltimaMidia(toolCtx, "video");
+      const scheduleMediaId = String(
+        latestVideo.midia?.id || readyMediaScheduleChoice.mediaId,
+      );
       if (readyMediaScheduleChoice.slot === "custom") {
         if (toolCtx.convId) {
           const current: AgentConvState = toolCtx.agentState ?? {};
@@ -19483,12 +19414,12 @@ async function callGemini(
             contactNumber: toolCtx.fromNumber,
           }, {
             pending_ready_media_schedule: {
-              media_id: readyMediaScheduleChoice.mediaId,
+              media_id: scheduleMediaId,
               created_at: new Date().toISOString(),
             },
           }, current);
           current.pending_ready_media_schedule = {
-            media_id: readyMediaScheduleChoice.mediaId,
+            media_id: scheduleMediaId,
             created_at: new Date().toISOString(),
           };
           toolCtx.agentState = current;
@@ -19506,7 +19437,7 @@ async function callGemini(
       }
       return {
         text: await scheduleReadyLegendVideo(
-          readyMediaScheduleChoice.mediaId,
+          scheduleMediaId,
           scheduledDate,
           toolCtx,
         ),
@@ -19547,19 +19478,22 @@ async function callGemini(
       readyMediaAction?.action === "edit" &&
       readyMediaAction.mediaType === "foto"
     ) {
-      const resolved = await resolverMidiaBibliotecaPorId(
-        toolCtx.userId,
-        readyMediaAction.mediaId,
-      );
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const resolved = latestPhoto.midia
+        ? { midia: latestPhoto.midia }
+        : await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          readyMediaAction.mediaId,
+        );
       if (!resolved.midia || resolved.midia.tipo !== "foto") {
         return {
           text:
             "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
         };
       }
-      await rememberLastMediaInteraction(toolCtx, readyMediaAction.mediaId);
+      await rememberLastMediaInteraction(toolCtx, resolved.midia.id);
       const pending = {
-        media_id: readyMediaAction.mediaId,
+        media_id: resolved.midia.id,
         created_at: new Date().toISOString(),
       };
       if (toolCtx.convId) {
@@ -19846,8 +19780,15 @@ async function callGemini(
         readyMediaAction.action === "brand" &&
         readyMediaAction.mediaType === "foto"
       ) {
+        const latestPhoto = await resolveUltimaMidia(
+          toolCtx,
+          "foto_usuario",
+        );
+        const brandMediaId = String(
+          latestPhoto.midia?.id || readyMediaAction.mediaId,
+        );
         const pending = {
-          media_id: readyMediaAction.mediaId,
+          media_id: brandMediaId,
           stage: "awaiting_position" as const,
           created_at: new Date().toISOString(),
         };
@@ -19863,14 +19804,21 @@ async function callGemini(
         }
         return {
           text: "",
-          interactiveList: vehicleBrandPositionList(readyMediaAction.mediaId),
+          interactiveList: vehicleBrandPositionList(brandMediaId),
         };
       }
       const isVideo = readyMediaAction.mediaType === "video";
+      const latestPublishMedia = await resolveUltimaMidia(
+        toolCtx,
+        isVideo ? "video" : "foto_conversa",
+      );
+      const readyMediaId = String(
+        latestPublishMedia.midia?.id || readyMediaAction.mediaId,
+      );
       const readyLegendVideo = isVideo
         ? await resolveReadyLegendVideo(
           toolCtx.userId,
-          readyMediaAction.mediaId,
+          readyMediaId,
         )
         : null;
       const readyRoute = readyMediaActionRoute({
@@ -19881,14 +19829,14 @@ async function callGemini(
       if (readyLegendVideo && readyRoute !== "social_variants") {
         if (readyRoute === "direct_video_publish") {
           return await publishReadyLegendVideo(
-            readyMediaAction.mediaId,
+            readyMediaId,
             toolCtx,
           );
         }
         if (readyRoute === "direct_video_schedule") {
           return {
             text: "Escolha quando publicar. Vou usar a mesma legenda.",
-            interactiveList: readyMediaScheduleList(readyMediaAction.mediaId),
+            interactiveList: readyMediaScheduleList(readyMediaId),
           };
         }
         const options = Array.isArray(readyLegendVideo.job.metadata?.opcoes)
@@ -19903,12 +19851,12 @@ async function callGemini(
         return {
           text: videoCaptionOptionsText(options),
           interactiveButtons: videoCaptionChoiceButtons(
-            readyMediaAction.mediaId,
+            readyMediaId,
           ),
         };
       }
       const postResult = await toolPostarMidiaBiblioteca({
-        midia_id: readyMediaAction.mediaId,
+        midia_id: readyMediaId,
         pedido_original: userContent,
         redes: ["facebook", "instagram"],
         formato: isVideo ? "reels" : "feed",
@@ -22949,13 +22897,13 @@ async function callGemini(
     }
     if (imageCompositionIntent && remetenteEhDono) {
       try {
-        const pendingComposition = toolCtx.agentState?.pending_image_composition;
-        const pendingAge = pendingComposition?.at
-          ? Date.now() - new Date(pendingComposition.at).getTime()
-          : Number.POSITIVE_INFINITY;
-        const preferredMediaIds = pendingAge <= 15 * 60 * 1000
-          ? pendingComposition?.media_ids ?? []
-          : [];
+        const latestGroup = await resolveUltimaMidia(
+          toolCtx,
+          "grupo_fotos_usuario",
+        );
+        const preferredMediaIds = (latestGroup.midias ?? []).map((media) =>
+          String(media.id)
+        );
         const sources = await resolveCompositionSources(
           toolCtx.userId,
           toolCtx.fromNumber,
@@ -30413,7 +30361,7 @@ export async function processOne(queueId: string) {
   }
 }
 
-if (import.meta.main) Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

@@ -903,6 +903,7 @@ export async function tryProcessGestaoLucroInbound(input: {
     userId: input.userId,
     fromNumber: input.fromNumber,
     userText: text,
+    interactiveId: input.interactiveId,
     hasInboundMedia: input.hasInboundMedia,
     auth: input.auth,
     agentState: input.agentState,

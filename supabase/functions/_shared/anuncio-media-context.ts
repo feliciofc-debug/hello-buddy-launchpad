@@ -53,13 +53,6 @@ export function staleVehicleMediaContextPatch(
   if (saved && !validPendingVehicleIdentification(saved, nowMs)) {
     patch.last_vehicle_photo_context = null;
   }
-  const lastInteraction = agentState?.last_media_interaction as
-    | TimestampedMediaRef
-    | null
-    | undefined;
-  if (lastInteraction && !isRecentMediaContext(lastInteraction, nowMs)) {
-    patch.last_media_interaction = null;
-  }
   const single = agentState?.pending_single_photo as
     | TimestampedMediaRef
     | null
@@ -162,17 +155,12 @@ export function vehicleIdentificationBundleForMedia(input: {
 } | null {
   const mediaId = String(input.mediaId || "").trim();
   if (!mediaId) return null;
-  const nowMs = input.nowMs ?? Date.now();
   const state = readState(input.agentState);
   const pending = state.pending_vehicle_identification as
     | VehiclePhotoActionContext
     | null
     | undefined;
-  if (
-    pending &&
-    validPendingVehicleIdentification(pending, nowMs) &&
-    pending.media_ids?.includes(mediaId)
-  ) {
+  if (pending?.media_ids?.includes(mediaId) && pending.identification) {
     return {
       identification: pending.identification,
       confirmed: pending.confirmed,
@@ -185,11 +173,7 @@ export function vehicleIdentificationBundleForMedia(input: {
     | VehiclePhotoActionContext
     | null
     | undefined;
-  if (
-    saved &&
-    validPendingVehicleIdentification(saved, nowMs) &&
-    saved.media_ids?.includes(mediaId)
-  ) {
+  if (saved?.media_ids?.includes(mediaId) && saved.identification) {
     return {
       identification: saved.identification,
       confirmed: saved.confirmed,

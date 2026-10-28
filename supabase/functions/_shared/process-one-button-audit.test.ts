@@ -14,12 +14,26 @@ type ProcessorModule =
   typeof import("../whatsapp-cloud-inbound-processor/index.ts");
 
 let processorModule: Promise<ProcessorModule> | null = null;
+let processorServeRegistrations = 0;
+let processorServeHandler: unknown = null;
 
 function loadProcessor(): Promise<ProcessorModule> {
   Deno.env.set("SUPABASE_URL", "http://127.0.0.1:54321");
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "audit-test-service-key");
   Deno.env.set("LOVABLE_API_KEY", "audit-test-ai-key");
-  processorModule ??= import("../whatsapp-cloud-inbound-processor/index.ts");
+  processorModule ??= (async () => {
+    const originalServe = Deno.serve;
+    Deno.serve = ((...args: unknown[]) => {
+      processorServeRegistrations += 1;
+      processorServeHandler = typeof args[0] === "function" ? args[0] : args[1];
+      return {};
+    }) as typeof Deno.serve;
+    try {
+      return await import("../whatsapp-cloud-inbound-processor/index.ts");
+    } finally {
+      Deno.serve = originalServe;
+    }
+  })();
   return processorModule;
 }
 
@@ -40,6 +54,12 @@ async function runProcessOne(
     fetchRecorder.restore();
   }
 }
+
+Deno.test("FIX-BOTOES-1 — import do processor registra exatamente um handler", async () => {
+  await loadProcessor();
+  assertEquals(processorServeRegistrations, 1);
+  assertEquals(typeof processorServeHandler, "function");
+});
 
 Deno.test("AUDIT-BOTOES — processOne real recebe os 3 formatos Meta", async () => {
   for (
@@ -215,7 +235,7 @@ Deno.test("AUDIT-BOTOES J6 — processOne real trata ações posteriores do CRLV
   }
 });
 
-Deno.test("AUDIT-BOTOES — processOne real revela famílias de lista sem marcador", async () => {
+Deno.test("FIX-BOTOES-1 — processOne preserva ID de todo list_reply", async () => {
   const ids = [
     "ready_media:schedule_at:today_18:video:00000000-0000-4000-8000-000000000010",
     "vehicle_brand_position:bottom-right:00000000-0000-4000-8000-000000000010",
@@ -238,11 +258,7 @@ Deno.test("AUDIT-BOTOES — processOne real revela famílias de lista sem marcad
     }
   }
 
-  assertEquals(missingMarkers, [
-    "ready_media",
-    "vehicle_brand_position",
-    "single_photo",
-  ]);
+  assertEquals(missingMarkers, []);
 });
 
 Deno.test("AUDIT-BOTOES — processOne real trata OPTIN_SIM e OPTIN_NAO", async () => {
@@ -322,7 +338,7 @@ Deno.test("AUDIT-BOTOES J9 — processOne real confirma despesa pendente", async
   assertStringIncludes(String(outbound.at(-1)?.content), "Despesa registrada");
 });
 
-Deno.test("AUDIT-BOTOES J8 — processOne real revela IDs Molicar perdidos", async () => {
+Deno.test("FIX-BOTOES-1 J8 — processOne repassa IDs Molicar", async () => {
   const failures: string[] = [];
   for (
     const [action, title] of [
@@ -342,11 +358,7 @@ Deno.test("AUDIT-BOTOES J8 — processOne real revela IDs Molicar perdidos", asy
     const { result } = await runProcessOne(tables);
     if (result.gestao_lucro !== true) failures.push(id);
   }
-  assertEquals(failures, [
-    "molicar_wa:procedencia:ABC1D23",
-    "molicar_wa:troca:ABC1D23",
-    "molicar_wa:cadastrar:ABC1D23",
-  ]);
+  assertEquals(failures, []);
 });
 
 Deno.test("AUDIT-BOTOES J10 — processOne real inicia cotação do parceiro", async () => {

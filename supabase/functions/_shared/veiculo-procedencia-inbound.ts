@@ -186,6 +186,7 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
   userId: string;
   fromNumber: string;
   userText: string;
+  interactiveId?: string | null;
   hasInboundMedia: boolean;
   auth: GestaoAuthContext;
   agentState: Record<string, unknown>;
@@ -216,7 +217,7 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
 
   const text = (input.userText || "").trim();
   if (!text) return { handled: false };
-  const interactive = parseMolicarInteractiveId(text);
+  const interactive = parseMolicarInteractiveId(input.interactiveId || text);
   const interactiveAction = interactive?.split(":")[0] ?? null;
   const interactivePlate = normalizeBrazilianPlate(
     interactive?.split(":")[1],
