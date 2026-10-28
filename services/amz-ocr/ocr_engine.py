@@ -68,10 +68,10 @@ def valid_crlv_fields(text: str) -> set[str]:
     )
     fields: set[str] = set()
     plate_source = _after_label(normalized, r"PLACA(?:\s+ANTERIOR/UF)?")
-    plate = re.search(
-        r"\b[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})\b",
-        plate_source or normalized,
-    )
+    plate_pattern = r"\b[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})\b"
+    plate = re.search(plate_pattern, plate_source)
+    if not plate:
+        plate = re.search(plate_pattern, normalized)
     if plate:
         fields.add("placa")
 
