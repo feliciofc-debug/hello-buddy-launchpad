@@ -48,23 +48,27 @@ O detector reduz a imagem para 1400 px, faz uma única leitura Tesseract e nunca
 devolve o texto. Ele continua separado da leitura completa para não atrasar
 fotos comuns no WhatsApp.
 
-Para fotos, a leitura completa usa PaddleOCR 3.7 em CPU com o modelo latino
-como motor principal. Tesseract fica como reserva quando o Paddle não inicia
-ou não encontra placa, chassi nem RENAVAM válidos. Os pesos do modelo são
-baixados durante o `docker build`; a imagem enviada nunca sai do servidor.
+Para fotos, a leitura completa usa PaddleOCR 3.7 em CPU com o detector
+`PP-OCRv6_small_det` e o reconhecedor
+`latin_PP-OCRv5_mobile_rec`. Tesseract fica como reserva somente quando o
+Paddle não devolve texto. Os pesos são baixados durante o `docker build` e
+verificados novamente sem rede como usuário não privilegiado; a imagem enviada
+nunca sai do servidor.
 
 A leitura completa:
 
-1. limita fotos grandes a 2400 px;
-2. corrige a orientação;
+1. aplica a orientação EXIF recebida no arquivo;
+2. limita fotos grandes a 1600 px;
 3. procura o maior quadrilátero e corrige a perspectiva;
-4. amplia 2× entradas cujo maior lado tenha menos de 2000 px;
-5. testa cor original, CLAHE, remoção do fundo colorido e limiar adaptativo;
+4. testa cor original, CLAHE e remoção do fundo colorido;
+5. remove caracteres CJK residuais da saída;
 6. escolhe a variante que contém mais campos validados pelo parser — placa,
    chassi e RENAVAM com dígito verificador.
 
-Uma variante sem binarização agressiva é sempre mantida. O teto da requisição
-é 25 segundos. Bytes, imagens intermediárias e texto ficam em memória; o
+Os módulos Paddle de orientação do documento, unwarping e orientação de linhas
+ficam desligados: no CRLV antigo eles não melhoraram a leitura e chegaram a
+inverter páginas. Uma variante sem binarização agressiva é sempre mantida. O
+teto da requisição é 40 segundos. Bytes, imagens intermediárias e texto ficam em memória; o
 diretório temporário aponta para `tmpfs` e o serviço não possui logs de acesso.
 
 Exemplo de resposta (sem dados do documento nas métricas):
