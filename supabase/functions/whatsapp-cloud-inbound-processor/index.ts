@@ -25137,10 +25137,7 @@ export async function processOne(queueId: string) {
               });
               let reply = CRLV_NAO_LIDO_MENSAGEM;
               let buttons: WhatsAppInteractiveButtons | undefined;
-              if (
-                reread.leitura &&
-                !reread.leitura.veiculo.placa.valor
-              ) {
+              if (!reread.leitura?.veiculo.placa.valor) {
                 const currentState = migrateVerticalState(
                   await loadAgentState(sb, convStateIdentity),
                 ).state as AgentConvState;
@@ -25151,6 +25148,11 @@ export async function processOne(queueId: string) {
                   },
                 }, currentState);
                 reply = CRLV_PLACA_DIGITADA_PROMPT;
+                if (!reread.leitura) {
+                  console.warn("[crlv-leitura] skip", {
+                    reason: reread.leituraReason ?? "ocr_failed",
+                  });
+                }
               } else if (reread.leitura) {
                 const leituraParcial = reread.leitura.leitura_fraca;
                 const completion = leituraParcial
@@ -25190,10 +25192,6 @@ export async function processOne(queueId: string) {
                   linked?.id,
                   leitura.veiculo.placa.valor,
                 );
-              } else {
-                console.warn("[crlv-leitura] skip", {
-                  reason: reread.leituraReason ?? "ocr_failed",
-                });
               }
               const sentId = await sendWhatsApp(
                 userId,
@@ -26517,8 +26515,8 @@ export async function processOne(queueId: string) {
         });
         if (senderIsGestao) {
           if (
-            stored.leitura &&
-            !stored.leitura.veiculo.placa.valor
+            (tipo === "crlv" || tipo === "crlv_e") &&
+            !stored.leitura?.veiculo.placa.valor
           ) {
             const currentState = migrateVerticalState(
               await loadAgentState(sb, convStateIdentity),
@@ -26530,6 +26528,11 @@ export async function processOne(queueId: string) {
               },
             }, currentState);
             reply = CRLV_PLACA_DIGITADA_PROMPT;
+            if (!stored.leitura) {
+              console.warn("[crlv-leitura] skip", {
+                reason: stored.leituraReason ?? "ocr_failed",
+              });
+            }
           } else if (stored.leitura) {
             const leituraParcial = stored.leitura.leitura_fraca;
             const completion = leituraParcial
