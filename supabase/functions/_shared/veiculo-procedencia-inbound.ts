@@ -5,13 +5,14 @@ import {
 } from "./gestao-auth-phone.ts";
 import { isGestaoAffirmative, isGestaoNegative } from "./gestao-intent-pt.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
-import {
-  MolicarDailyLimitError,
-  runMolicarConsulta,
-} from "./molicar-service.ts";
+import { runMolicarConsulta } from "./molicar-service.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import { runMolicarProcedenciaQuery } from "./molicar-procedencia-service.ts";
 import { maybeNotifyMolicarProcedenciaOwner } from "./molicar-procedencia-notify.ts";
+import {
+  classifyProcedenciaStartFailure,
+  logProcedenciaSkip,
+} from "./molicar-procedencia-errors.ts";
 import { normalizeBrazilianPlate } from "./vehicle-plate.ts";
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const MOLICAR_WA_PREFIX = "molicar_wa:";
@@ -270,10 +271,6 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
       interactiveAction === "procedencia_confirmar" ||
       isGestaoAffirmative(text)
     ) {
-      await input.saveAgentStatePatch(
-        { pending_procedencia_confirm: null },
-        input.agentState,
-      );
       try {
         const run = input.dependencies?.runProcedencia ??
           runMolicarProcedenciaQuery;
@@ -282,10 +279,21 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
           services: ["debts", "gravame", "renajud"],
           canal: "whatsapp",
         }) as Record<string, unknown>[];
+        if (!rows.length) {
+          logProcedenciaSkip("reserva_vazia", { phase: "confirm" });
+          return {
+            handled: true,
+            reply:
+              "Não foi possível iniciar a procedência Molicar agora. Tente novamente em instantes.",
+          };
+        }
+        await input.saveAgentStatePatch(
+          { pending_procedencia_confirm: null },
+          input.agentState,
+        );
         const requestId = String(rows[0]?.solicitacao_id ?? "");
         if (
           requestId &&
-          rows.length &&
           rows.every((row: Record<string, unknown>) =>
             String(row.status) !== "pendente"
           )
@@ -303,12 +311,11 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
             "Consulta de procedência iniciada. Avisarei o dono quando Débitos, Gravame e Renajud terminarem.",
         };
       } catch (error) {
-        const message = String((error as Error).message ?? "");
+        const failure = classifyProcedenciaStartFailure(error);
+        logProcedenciaSkip(failure.reason, { phase: "confirm" });
         return {
           handled: true,
-          reply: /conecte a molicar/i.test(message)
-            ? notConfiguredReply()
-            : "Não foi possível iniciar a procedência Molicar agora. Tente novamente em instantes.",
+          reply: failure.userMessage,
         };
       }
     }
@@ -356,19 +363,13 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
       interactiveButtons: molicarResultButtons(plate),
     };
   } catch (error) {
-    const message = String((error as Error).message ?? "");
-    if (
-      error instanceof MolicarDailyLimitError ||
-      /limite di[aá]rio/i.test(message)
-    ) {
-      return {
-        handled: true,
-        reply:
-          "A loja atingiu o limite de 30 consultas Molicar hoje. Tente novamente amanhã.",
-      };
+    const failure = classifyProcedenciaStartFailure(error);
+    logProcedenciaSkip(failure.reason, { phase: "consulta_placa" });
+    if (failure.reason === "molicar_nao_conectada") {
+      return { handled: true, reply: failure.userMessage };
     }
-    if (/conecte a molicar|conex[aã]o molicar/i.test(message)) {
-      return { handled: true, reply: notConfiguredReply() };
+    if (failure.reason === "quota_diaria" || failure.reason === "quota_mensal") {
+      return { handled: true, reply: failure.userMessage };
     }
     return {
       handled: true,
