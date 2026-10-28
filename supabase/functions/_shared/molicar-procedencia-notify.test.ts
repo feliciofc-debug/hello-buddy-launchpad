@@ -115,3 +115,38 @@ Deno.test("PROC-2 — gravame ativo orienta e baixado não orienta", () => {
     assertEquals(active.includes(forbidden), false, forbidden);
   }
 });
+
+function gravameSummary(statusValue: string, agent = "Credor Teste") {
+  return buildMolicarProcedenciaWhatsAppSummary([{
+    placa: "LMC5764",
+    servicos: ["gravame"],
+    status: "concluida",
+    resultado: {
+      Result: {
+        Gravame: [{
+          Status: statusValue,
+          AgentName: agent,
+          ContractDate: "2014-01-01",
+        }],
+      },
+    },
+  }]);
+}
+
+Deno.test("PROC-2.1 — gravame desconhecido ou ativo alerta e orienta", () => {
+  const gravameAtivo = gravameSummary("Gravame ativo");
+  assertStringIncludes(gravameAtivo, "⚠️ Gravame ATIVO");
+  assertStringIncludes(gravameAtivo, "peça a carta de quitação");
+  assertEquals(gravameAtivo.includes("✅ Gravame ATIVO"), false);
+
+  const inactive = gravameSummary("INACTIVE");
+  assertStringIncludes(inactive, "✅ Gravame baixado");
+  assertEquals(inactive.includes("carta de quitação"), false);
+  assertEquals(inactive.includes("situação a confirmar"), false);
+
+  const unknown = gravameSummary("XYZ", "Bradesco Adm. Consórcios");
+  assertStringIncludes(unknown, "⚠️ Gravame — Bradesco Adm. Consórcios");
+  assertStringIncludes(unknown, "situação a confirmar no Detran");
+  assertStringIncludes(unknown, "peça a carta de quitação");
+  assertEquals(unknown.match(/✅\s*Gravame/g)?.length ?? 0, 0);
+});

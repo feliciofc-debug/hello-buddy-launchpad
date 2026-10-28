@@ -72,10 +72,27 @@ function summarizeDebts(row: MolicarProcedenciaRow): string {
 }
 
 function gravameStatus(value: unknown): "active" | "inactive" | "unknown" {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (/^(active|ativo|vigente)$/.test(normalized)) return "active";
-  if (/baix|inactiv|inativ|cancel|encerr|liberad/.test(normalized)) {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "unknown";
+  if (
+    /inactive|inativ[oa]\b|baixad|baix\b|cancelad|encerrad|liberad/.test(
+      normalized,
+    )
+  ) {
     return "inactive";
+  }
+  if (
+    /^active$|^ativo$|^vigente$|^incluso$/.test(normalized) ||
+    /gravame\s+ativo/.test(normalized) ||
+    /alienacao\s+fiduciaria/.test(normalized) ||
+    /\b(active|ativo|vigente|incluso)\b/.test(normalized)
+  ) {
+    return "active";
   }
   return "unknown";
 }
@@ -91,22 +108,25 @@ function summarizeGravame(row: MolicarProcedenciaRow): string[] {
   }
   const entries = valueCi(row.resultado, ["Gravame"]);
   if (Array.isArray(entries) && entries.length) {
-    let hasActive = false;
+    let needsOrientation = false;
     const lines = entries.map((entry) => {
       const status = gravameStatus(valueCi(entry, ["Status", "Situacao"]));
-      if (status === "active") hasActive = true;
-      const label = status === "active"
-        ? "ATIVO"
-        : status === "inactive"
-        ? "baixado (não impede a transferência)"
-        : "situação a confirmar no Detran";
+      if (status !== "inactive") needsOrientation = true;
       const agent = String(valueCi(entry, ["AgentName", "Credor"]) ?? "").trim();
       const contractYear = year(valueCi(entry, ["ContractDate", "DataContrato"]));
-      return `${status === "active" ? "⚠️" : "✅"} Gravame ${label}${
-        agent ? ` — ${agent}` : ""
-      }${contractYear ? ` (contrato de ${contractYear})` : ""}.`;
+      const yearPart = contractYear ? ` (contrato de ${contractYear})` : "";
+      if (status === "inactive") {
+        return `✅ Gravame baixado (não impede a transferência)${
+          agent ? ` — ${agent}` : ""
+        }${yearPart}.`;
+      }
+      if (status === "active") {
+        return `⚠️ Gravame ATIVO${agent ? ` — ${agent}` : ""}${yearPart}.`;
+      }
+      const credorPart = agent ? ` — ${agent}` : "";
+      return `⚠️ Gravame${credorPart}${yearPart}: situação a confirmar no Detran.`;
     });
-    if (hasActive) {
+    if (needsOrientation) {
       lines.push(
         "→ Antes de comprar ou aceitar na troca, peça a carta de quitação e a baixa do gravame.",
       );
