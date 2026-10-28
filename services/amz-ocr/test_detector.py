@@ -109,6 +109,11 @@ class DetectorTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertTrue(possible_document_text(text, False))
 
+    def test_short_strong_terms_require_exact_match(self) -> None:
+        self.assertTrue(possible_document_text("CPF", False))
+        self.assertFalse(possible_document_text("CPG", False))
+        self.assertFalse(possible_document_text("CF", False))
+
 
 @unittest.skipUnless(
     DETECTOR_RUNTIME_AVAILABLE,
@@ -151,6 +156,25 @@ class PossibleDocumentTest(unittest.TestCase):
             self.detect_with_text(image, ""),
             (False, None, False),
         )
+
+    def test_first_pass_timeout_fails_closed(self) -> None:
+        image = Image.new("RGB", (900, 600), "white")
+        with (
+            unittest.mock.patch.object(
+                detector_app,
+                "_osd_rotate",
+                return_value=image,
+            ),
+            unittest.mock.patch.object(
+                detector_app.pytesseract,
+                "image_to_string",
+                side_effect=RuntimeError("Tesseract process timeout"),
+            ),
+        ):
+            self.assertEqual(
+                detector_app._detect_image(image),
+                (False, None, True),
+            )
 
     def test_cars_under_blue_sky_and_in_dealership_yard_are_not_documents(
         self,

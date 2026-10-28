@@ -18,7 +18,7 @@ from ocr_engine import OcrMetrics, OcrResult, preload_paddle, recognize_crlv_ima
 MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 40
 OCR_INTERNAL_DEADLINE_SECONDS = 38
-DETECT_TIMEOUT_SECONDS = 4
+DETECT_TIMEOUT_SECONDS = 8
 register_heif_opener()
 
 app = FastAPI(
@@ -122,18 +122,25 @@ def _detect_text(
     deadline: float,
 ) -> tuple[bool, str | None, bool]:
     if time.monotonic() >= deadline:
-        return False, None, False
-    text = pytesseract.image_to_string(
-        _preprocess(image),
-        lang="por",
-        config="--oem 1 --psm 11",
-        timeout=max(0.1, deadline - time.monotonic()),
-    )
+        return False, None, True
+    try:
+        text = pytesseract.image_to_string(
+            _preprocess(image),
+            lang="por",
+            config="--oem 1 --psm 11",
+            timeout=max(0.1, deadline - time.monotonic()),
+        )
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():
+            return False, None, True
+        raise
     documento, tipo = classify_document(text)
     possivel = not documento and possible_document_text(
         text,
         _possible_document_background(image),
     )
+    if not documento and not possivel and time.monotonic() >= deadline:
+        return False, None, True
     return documento, tipo, possivel
 
 
@@ -158,7 +165,7 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
         if result[0] or result[2]:
             return result
         if time.monotonic() >= deadline:
-            break
+            return False, None, True
     return False, None, False
 
 
@@ -267,7 +274,7 @@ async def detectar(
             timeout=DETECT_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="detecção excedeu 4 segundos") from exc
+        raise HTTPException(status_code=504, detail="detecção excedeu 8 segundos") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail="não foi possível verificar o arquivo") from exc
     return {

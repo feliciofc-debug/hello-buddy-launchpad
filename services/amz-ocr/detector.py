@@ -58,7 +58,11 @@ def _has_strong_term(text: str) -> bool:
         width = len(phrase)
         for offset in range(0, len(tokens) - width + 1):
             if all(
-                _one_edit_or_less(tokens[offset + index], expected)
+                (
+                    tokens[offset + index] == expected
+                    if len(expected) < 6
+                    else _one_edit_or_less(tokens[offset + index], expected)
+                )
                 for index, expected in enumerate(phrase)
             ):
                 return True
