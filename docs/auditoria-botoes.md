@@ -30,7 +30,7 @@ famílias dinâmicas; o valor dinâmico está entre `<...>`.
 | Menu listas | filhos e “Voltar” | `jarvis_menu:lista:<id>` | `_shared/jarvis-service-menu.ts:430-465` | `_shared/jarvis-service-menu.ts:619-650` | `interactiveId` bruto | papel com acesso | navega árvore | `U` |
 | Menu recentes | slots recentes 1/2 | `jarvis_menu:lista:<lista>:recent:1\|2` | `_shared/jarvis-menu-tree.ts:45-62` | não há handler alcançável | estado recente | nenhum: `renderMenuList` filtra `kind === "recent"` antes do envio | não emitido nesta base | `U` da árvore |
 | Menu itens | item do catálogo | `jarvis_menu:item:<id>`; IDs: `estoque-resumo`, `estoque-busca`, `oficina-os`, `cotacoes`, `gerar-arte`, `editar-foto`, `publicar-midia`, `gerar-publicar`, `agendar-post`, `listar-posts-agendados`, `video`, `anuncios-relatorio`, `campanha-status`, `fipe`, `preco-painel`, `lembrete`, `mensagem-contato`, `resumos-config`, `estoque-vendidos`, `estoque-giro`, `estoque-abrir`, `equipe-comissoes-ajuda`, `notas-contratos-ajuda`, `oficina-parceiros`, `documentos-guardar-crlv`, `documentos-cofre`, `documentos-vincular`, `documentos-notas-contratos`, `clientes-resumo`, `clientes-crm`, `clientes-sem-retorno`, `gestao-urgentes`, `gestao-ajuda`, `marketing-carrossel`, `marketing-campanha-meta`, `marketing-ajuda`, `redes-facebook`, `redes-instagram-feed`, `redes-instagram-story`, `redes-tiktok`, `redes-linkedin`, `portal-mercado-livre`, `portal-olx`, `portal-webmotors`, `troca-nova`, `troca-laudos`, `troca-preco-molicar`, `troca-procedencia`, `troca-liberar-estoque`, `troca-ajuda` | `_shared/jarvis-ajuda-catalogo.ts:305-2260`; `_shared/jarvis-service-menu.ts:430-465` | `_shared/jarvis-service-menu.ts:619-650` | `interactiveId` bruto | dono/gestor/vendedor conforme audiência | resposta/rota do catálogo | `U` catálogo |
-| Cofre, portão | Guardar e ler \| Não é documento | `cofre_possivel_guardar:<doc>` \| `cofre_possivel_liberar:<doc>` | `processor/index.ts:26350-26365` | `processor/index.ts:25135-25255` | `interactiveId` direto | documento possível no cofre | OCR seguro ou libera foto | `U`; leitura depende de bytes cifrados |
+| Cofre, portão | Guardar e ler \| Não é documento | `cofre_possivel_guardar:<doc>` \| `cofre_possivel_liberar:<doc>` | `processor/index.ts:26350-26365` | `processor/index.ts:25135-25255` | `interactiveId` direto | documento possível no cofre | OCR seguro ou libera foto | `P1` para Não é documento com bytes cifrados |
 | CRLV lido | Salvar na plataforma \| Vistoria \| Desfazer vínculo | `cofre_doc_salvar:<doc>[:<veículo>]` \| `cofre_doc_vistoria:<doc>` \| `cofre_doc_desvincular:<doc>:<veículo>` | `_shared/crlv-whatsapp.ts:49-77` | `processor/index.ts:25260-25380` | `interactiveId` direto | documento lido; veículo opcional | confirma, abre vistoria ou desfaz vínculo | `P1` |
 | Cofre, vínculo | Vincular \| escolher veículo | `cofre_doc_vincular:<doc>` \| `cofre_doc_link:<doc>:<veículo>` | `processor/index.ts:25325-25340` | `processor/index.ts:25260-25380` | `interactiveId` direto | documento e estoque | lista/vincula veículo | `P1` |
 | Foto de veículo | Criar arte \| Postar \| Meta Ads \| FIPE \| Vistoria/Troca \| Corrigir modelo \| Editar foto | `vehicle_photo_action:ad\|post\|meta\|fipe\|troca\|correct\|edit:<media>` | `_shared/vehicle-photo-direct-menu.ts:140-200` | `processor/index.ts:18980-19195` | marcador em `userContent` | última foto do usuário; identificação da mesma ID | abre ação na última foto recebida | `P1` J2 |
@@ -119,6 +119,7 @@ encontrado botão/lista de produção que os envie nesta base:
 17. `single_photo:edit` → mídia editada → publicação.
 18. `vehicle_carousel:publish` → redes → legenda A → confirmar.
 19. `ready_media:caption_choice:A` → agendar → `tomorrow_10`.
+20. `cofre_possivel_liberar:<doc>` com leitura e remoção dos bytes cifrados.
 
 Os três formatos de payload Meta são aceitos pelo harness. IDs restantes têm
 cobertura isolada (`U`) ou estão listados como sem sender alcançável.
@@ -167,7 +168,7 @@ a foto é identificada novamente.
 | J4 editar imagem → resultado → publicar | 🟢 | prompt de edição gera nova mídia e Publicar usa a mídia `ia_edicao`, não a original |
 | J5 várias fotos → carrossel → Pronto → publicar | 🟢 | carrossel persistido como pronto percorre rede → legenda A → confirmação pelo `processOne` |
 | J6 CRLV → guardar/ler → salvar/vistoria/desvincular | 🟢 parcial | ações pós-leitura passam no `processOne`; OCR cifrado não foi simulado |
-| J7 Não é documento → rota normal | 🟡 sem prova completa | teste isolado garante que não cria Gestão; bytes cifrados não foram simulados no harness |
+| J7 Não é documento → rota normal | 🟢 | bytes cifrados são lidos e removidos no clique `cofre_possivel_liberar:<doc>` pelo `processOne`; a foto é liberada sem criar registro em Gestão |
 | J8 placa → Molicar → Procedência → confirmar | 🟢 | os três IDs chegam a Gestão; Procedência → Confirmar executa em dois turnos reais |
 | J9 Gestão despesa → SIM/NÃO | 🟢 parcial | confirmação SIM foi executada pelo `processOne`; início por linguagem natural não foi encadeado |
 | J10 parceiro com cotação → mídia/valor → confirmar | 🟢 parcial | `os_cot_wa:enviar_orcamento` iniciou a sessão no `processOne`; mídia/valor/confirmação não foram encadeados |
@@ -175,8 +176,7 @@ a foto é identificada novamente.
 | J12 vídeo → legenda A/B/C → agendar | 🟢 | legenda A → Agendar → Amanhã 10h cria `videos_agendados` pelo `processOne` |
 | J13 saudação com fluxo pendente → menu | 🟢 | `processOne` real abre menu e limpa pendências |
 
-Contagem: **12 verdes/verdes parciais, 0 vermelhas e 1 sem prova completa
-(J7, bytes cifrados)**. As jornadas novas começam do estado persistido
+Contagem: **13 verdes/verdes parciais e 0 vermelhas**. As jornadas novas começam do estado persistido
 imediatamente anterior ao primeiro clique listado; integrações externas usam
 fakes determinísticos.
 

@@ -9,6 +9,7 @@ import {
   metaInteractivePayload,
   ProcessOneMemorySupabase,
 } from "./process-one-test-harness.ts";
+import { cifrarCofreBytes } from "./gestao-cofre-crypto.ts";
 
 type ProcessorModule =
   typeof import("../whatsapp-cloud-inbound-processor/index.ts");
@@ -274,6 +275,54 @@ Deno.test("AUDIT-BOTOES J6 — processOne real trata ações posteriores do CRLV
       false,
       auditCase.id,
     );
+  }
+});
+
+Deno.test("FIX-BOTOES-1 J7 — Não é documento libera bytes para rota normal", async () => {
+  const processor = await loadProcessor();
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  const documentId = "00000000-0000-4000-8000-000000000007";
+  const storagePath = `${tenantId}/${documentId}.bin`;
+  const key = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+  const previousKey = Deno.env.get("DOC_COFRE_KEY");
+  Deno.env.set("DOC_COFRE_KEY", key);
+  const tables = baseProcessOneTables({
+    interactiveId: `cofre_possivel_liberar:${documentId}`,
+    title: "Não é documento",
+  });
+  tables.gestao_documento = [{
+    id: documentId,
+    user_id: tenantId,
+    storage_path: storagePath,
+    mime: "image/jpeg",
+    status: "possivel_documento",
+    deleted_at: null,
+  }];
+  const db = new ProcessOneMemorySupabase(tables);
+  db.storageObjects.set(
+    `gestao-cofre/${storagePath}`,
+    await cifrarCofreBytes(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), key),
+  );
+  const fetchRecorder = installProcessOneFetchRecorder();
+  const restoreSupabase = processor.setProcessOneSupabaseForTest(db as never);
+  try {
+    const result = await processor.processOne("queue-1");
+    assertEquals(result.ok, true, JSON.stringify(result));
+    assertEquals(db.tables.gestao_documento[0].status, "descartado");
+    assert(db.tables.gestao_documento[0].deleted_at);
+    assertEquals(db.storageObjects.has(`gestao-cofre/${storagePath}`), false);
+    assertEquals(
+      db.operations.some((operation) =>
+        operation.table === "gestao_lancamentos" &&
+        operation.operation === "insert"
+      ),
+      false,
+    );
+  } finally {
+    restoreSupabase();
+    fetchRecorder.restore();
+    if (previousKey === undefined) Deno.env.delete("DOC_COFRE_KEY");
+    else Deno.env.set("DOC_COFRE_KEY", previousKey);
   }
 });
 
