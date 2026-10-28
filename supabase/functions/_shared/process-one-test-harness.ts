@@ -3,7 +3,8 @@ type Tables = Record<string, Row[]>;
 
 type Filter = (row: Row) => boolean;
 
-class MemoryQuery implements PromiseLike<{ data: any; error: null; count?: number }> {
+class MemoryQuery
+  implements PromiseLike<{ data: any; error: null; count?: number }> {
   private filters: Filter[] = [];
   private operation: "select" | "insert" | "update" | "upsert" | "delete" =
     "select";
@@ -77,22 +78,22 @@ class MemoryQuery implements PromiseLike<{ data: any; error: null; count?: numbe
   }
 
   gte(column: string, value: unknown) {
-    this.filters.push((row) => row[column] >= value);
+    this.filters.push((row) => row[column] >= (value as any));
     return this;
   }
 
   gt(column: string, value: unknown) {
-    this.filters.push((row) => row[column] > value);
+    this.filters.push((row) => row[column] > (value as any));
     return this;
   }
 
   lte(column: string, value: unknown) {
-    this.filters.push((row) => row[column] <= value);
+    this.filters.push((row) => row[column] <= (value as any));
     return this;
   }
 
   lt(column: string, value: unknown) {
-    this.filters.push((row) => row[column] < value);
+    this.filters.push((row) => row[column] < (value as any));
     return this;
   }
 
@@ -196,8 +197,9 @@ class MemoryQuery implements PromiseLike<{ data: any; error: null; count?: numbe
 
   then<TResult1 = { data: any; error: null; count?: number }, TResult2 = never>(
     onfulfilled?:
-      | ((value: { data: any; error: null; count?: number }) =>
-        TResult1 | PromiseLike<TResult1>)
+      | ((
+        value: { data: any; error: null; count?: number },
+      ) => TResult1 | PromiseLike<TResult1>)
       | null,
     onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
   ): PromiseLike<TResult1 | TResult2> {
@@ -238,7 +240,7 @@ export class ProcessOneMemorySupabase {
       download: (path: string) => {
         const bytes = this.storageObjects.get(`${bucket}/${path}`);
         return Promise.resolve({
-          data: bytes ? new Blob([bytes]) : null,
+          data: bytes ? new Blob([bytes.slice().buffer as ArrayBuffer]) : null,
           error: bytes ? null : { message: "not_found" },
         });
       },
@@ -248,7 +250,9 @@ export class ProcessOneMemorySupabase {
         return Promise.resolve({ data: { path }, error: null });
       },
       remove: (paths: string[]) => {
-        for (const path of paths) this.storageObjects.delete(`${bucket}/${path}`);
+        for (const path of paths) {
+          this.storageObjects.delete(`${bucket}/${path}`);
+        }
         return Promise.resolve({ data: paths, error: null });
       },
       getPublicUrl: (path: string) => ({

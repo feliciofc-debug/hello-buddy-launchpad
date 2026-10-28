@@ -10,9 +10,8 @@ import {
   ProcessOneMemorySupabase,
 } from "./process-one-test-harness.ts";
 
-type ProcessorModule = typeof import(
-  "../whatsapp-cloud-inbound-processor/index.ts"
-);
+type ProcessorModule =
+  typeof import("../whatsapp-cloud-inbound-processor/index.ts");
 
 let processorModule: Promise<ProcessorModule> | null = null;
 
