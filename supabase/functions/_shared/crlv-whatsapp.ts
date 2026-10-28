@@ -201,8 +201,9 @@ export async function completeCrlvWithMolicar(input: {
     input.sb,
     input.documentoId,
     input.userId,
-    "completar_molicar",
+    "ler",
     {
+      completar_molicar: true,
       status: aviso ? "parcial" : "concluido",
       campos_preenchidos: filled,
     },
