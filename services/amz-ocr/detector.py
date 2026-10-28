@@ -77,8 +77,11 @@ def possible_document_text(text: str, colored_background: bool) -> bool:
     if len(real_words) < 3:
         return False
     text_lines = sum(1 for line in text.splitlines() if line.strip())
-    old_layout_rule = text_lines >= 25 or (
-        colored_background and text_lines >= 8
+    # CRLV antigo em matricial gera muitas linhas OCR, mas também muitas
+    # palavras reais; foto de carro pode ter dezenas de linhas de ruído com
+    # poucas palavras legíveis.
+    old_layout_rule = len(real_words) >= 15 and (
+        text_lines >= 25 or (colored_background and text_lines >= 8)
     )
     return old_layout_rule
 

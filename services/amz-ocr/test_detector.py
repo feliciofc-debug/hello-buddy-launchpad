@@ -65,14 +65,13 @@ class DetectorTest(unittest.TestCase):
 
     def test_possible_document_requires_dense_real_text(self) -> None:
         car_scene = "\n".join(
-            [
-                "RENAULT KWID",
-                "CARRO BRANCO",
-                "ARVORES AO FUNDO",
-                "OFERTA DA LOJA",
-                "VEICULO NO PATIO",
-                "MODELO COMPACTO",
-                "FOTO EXTERNA",
+            ["||| 123", "---- 456", "12 34"] * 15
+            + [
+                "GOL BRANCO",
+                "GRADE FERRO",
+                "ARVORES FUNDO",
+                "PATIO LOJA",
+                "FOTO VEICULO",
                 "CEU AZUL",
             ]
         )
@@ -91,9 +90,69 @@ class DetectorTest(unittest.TestCase):
         dense_document = "\n".join(
             f"campo sintetico linha {index:02d}" for index in range(25)
         )
-        self.assertTrue(possible_document_text(car_scene, True))
+        self.assertFalse(possible_document_text(car_scene, True))
         self.assertTrue(possible_document_text(old_crlv, True))
         self.assertTrue(possible_document_text(dense_document, False))
+
+    def test_old_layout_rule_rejects_noisy_car_photo_ocr(self) -> None:
+        noise_lines = [
+            "||| ||| 123 456",
+            "---- ----",
+            "12 34 56 78",
+        ] * 17
+        noise_lines.extend(
+            [
+                "GOL BRANCO",
+                "GRADE FERRO",
+                "ARVORES FUNDO",
+                "PATIO LOJA",
+                "FOTO VEICULO",
+                "CEU AZUL",
+            ]
+        )
+        car_ocr = "\n".join(noise_lines)
+        self.assertGreaterEqual(sum(1 for line in car_ocr.splitlines() if line.strip()), 52)
+        self.assertFalse(possible_document_text(car_ocr, True))
+
+    def test_old_layout_rule_accepts_dense_legacy_crlv_ocr(self) -> None:
+        words = [
+            "REPUBLICA",
+            "FEDERATIVA",
+            "BRASIL",
+            "DETRAN",
+            "CERTIFICADO",
+            "REGISTRO",
+            "LICENCIAMENTO",
+            "VEICULO",
+            "RENAVAM",
+            "PLACA",
+            "CHASSI",
+            "MARCA",
+            "MODELO",
+            "FABRICACAO",
+            "COMBUSTIVEL",
+            "CATEGORIA",
+            "PROPRIETARIO",
+            "MUNICIPIO",
+            "EXERCICIO",
+            "ANTERIOR",
+            "POTENCIA",
+            "CILINDRADA",
+            "COR",
+            "PREDOMINANTE",
+            "DOCUMENTO",
+            "IDENTIDADE",
+            "TRANSITO",
+        ]
+        lines = []
+        for index in range(95):
+            word = words[index % len(words)]
+            lines.append(f"{word} {index:03d} ***")
+        crlv_ocr = "\n".join(lines)
+        self.assertTrue(possible_document_text(crlv_ocr, True))
+
+    def test_strong_term_alone_still_marks_possible_document(self) -> None:
+        self.assertTrue(possible_document_text("DETRAN", False))
 
     def test_any_strong_fuzzy_keyword_or_identifier_is_possible(self) -> None:
         for text in (
