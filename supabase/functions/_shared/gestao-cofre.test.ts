@@ -56,7 +56,7 @@ Deno.test("SEG-DOC — SHA-256 é estável para detectar duplicado", async () =>
   assertEquals(a.length, 64);
 });
 
-Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () => {
+Deno.test("VEIC-WPP-2 — repetido relê falha e reaproveita somente sucesso", async () => {
   const upload = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
@@ -64,7 +64,9 @@ Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () 
     new URL("../gestao-cofre/index.ts", import.meta.url),
   );
   const duplicateFlow = upload.slice(upload.indexOf("if (duplicate)"));
-  assertStringIncludes(duplicateFlow, "await readCrlv(input)");
+  assertStringIncludes(duplicateFlow, "previousSuccessfulReading(");
+  assertStringIncludes(duplicateFlow, ": await readCrlv(input)");
+  assertStringIncludes(duplicateFlow, "reusedSuccessfulRead");
   assertStringIncludes(duplicateFlow, "veiculo_id");
   assertStringIncludes(duplicateFlow, "troca_id");
   assertStringIncludes(duplicateFlow, "reaproveitado: true");

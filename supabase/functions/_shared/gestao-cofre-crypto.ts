@@ -99,6 +99,24 @@ export async function cifrarDadosPessoais(
   return new TextDecoder().decode(bytes);
 }
 
+export async function decifrarDadosPessoais(
+  payload: string,
+  keyBase64?: string,
+): Promise<Record<string, unknown>> {
+  const bytes = await decifrarCofreBytes(
+    new TextEncoder().encode(payload),
+    keyBase64,
+  );
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    throw new Error("Dados pessoais do documento inválidos");
+  }
+}
+
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const hash = new Uint8Array(
     await crypto.subtle.digest("SHA-256", ownedBuffer(bytes)),

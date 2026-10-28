@@ -2,6 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0
 import {
   cifrarCofreBytes,
   cifrarDadosPessoais,
+  decifrarDadosPessoais,
   sha256Hex,
 } from "./gestao-cofre-crypto.ts";
 import { lerCrlvLocal } from "./crlv-leitura.ts";
@@ -134,6 +135,7 @@ export type GestaoCofreUploadResult = {
   leituraReason: CrlvLeituraReason | null;
   metricasOcr: CrlvOcrMetricas | null;
   duplicate: boolean;
+  reusedSuccessfulRead: boolean;
 };
 
 function crlvFailureReason(error: unknown): CrlvLeituraReason {
@@ -144,6 +146,60 @@ function crlvFailureReason(error: unknown): CrlvLeituraReason {
   ) return "ocr_timeout";
   if (/n[aã]o configurado|ausente/i.test(message)) return "ocr_not_configured";
   return "ocr_failed";
+}
+
+async function previousSuccessfulReading(
+  duplicate: Record<string, unknown>,
+): Promise<CrlvParserResultado | null> {
+  if (duplicate.status !== "lido") return null;
+  const stored = duplicate.campos_veiculo;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return null;
+  }
+  const sections = stored as Record<string, unknown>;
+  const veiculo = sections.veiculo;
+  const documento = sections.documento;
+  const observacoes = sections.observacoes;
+  if (
+    !veiculo || typeof veiculo !== "object" || Array.isArray(veiculo) ||
+    !documento || typeof documento !== "object" || Array.isArray(documento) ||
+    !observacoes || typeof observacoes !== "object" ||
+    Array.isArray(observacoes)
+  ) return null;
+  const vehicleFields = veiculo as CrlvParserResultado["veiculo"];
+  const core = [
+    vehicleFields.placa,
+    vehicleFields.renavam,
+    vehicleFields.chassi,
+    vehicleFields.marca_modelo_versao,
+    vehicleFields.ano_modelo,
+  ];
+  if (core.filter((field) => field?.valor != null).length < 3) return null;
+  let pessoais: Record<string, unknown> = {};
+  if (typeof duplicate.dados_pessoais_cifrados === "string") {
+    try {
+      pessoais = await decifrarDadosPessoais(
+        duplicate.dados_pessoais_cifrados,
+      );
+    } catch {
+      return null;
+    }
+  }
+  const personalField = (value: unknown) => ({
+    valor: typeof value === "string" && value.trim() ? value : null,
+    confianca: "media" as const,
+  });
+  return {
+    veiculo: vehicleFields,
+    documento: documento as CrlvParserResultado["documento"],
+    proprietario: {
+      nome: personalField(pessoais.nome),
+      cpf_cnpj: personalField(pessoais.cpf_cnpj),
+    },
+    observacoes: observacoes as CrlvParserResultado["observacoes"],
+    fonte: "ocr",
+    leitura_fraca: false,
+  };
 }
 
 async function readCrlv(
@@ -280,10 +336,21 @@ export async function gestaoCofreUpload(
   }
   const sha256 = await sha256Hex(input.bytes);
   const { data: duplicate } = await input.sb.from("gestao_documento")
-    .select("id,tipo,status").eq("user_id", input.userId).eq("sha256", sha256)
+    .select("id,tipo,status,campos_veiculo,dados_pessoais_cifrados")
+    .eq("user_id", input.userId).eq("sha256", sha256)
     .is("deleted_at", null).maybeSingle();
   if (duplicate) {
-    const reread = await readCrlv(input);
+    const previous = await previousSuccessfulReading(
+      duplicate as Record<string, unknown>,
+    );
+    const reread = previous
+      ? {
+        leitura: previous,
+        leituraErro: null,
+        leituraReason: null,
+        metricasOcr: null,
+      }
+      : await readCrlv(input);
     const patch: Record<string, unknown> = {
       origem: input.origem,
       status: reread.leitura ? "lido" : (duplicate.status || "recebido"),
@@ -310,11 +377,12 @@ export async function gestaoCofreUpload(
       input.sb,
       String(duplicate.id),
       input.userId,
-      reread.leitura ? "ler" : "ler_falha",
+      previous ? "reaproveitar_leitura" : reread.leitura ? "ler" : "ler_falha",
       {
         ...(reread.metricasOcr ?? {}),
         ...(reread.leituraReason ? { reason: reread.leituraReason } : {}),
         reaproveitado: true,
+        releitura: !previous,
       },
     );
     return {
@@ -322,6 +390,7 @@ export async function gestaoCofreUpload(
       sha256,
       ...reread,
       duplicate: true,
+      reusedSuccessfulRead: Boolean(previous),
     };
   }
 
@@ -394,6 +463,7 @@ export async function gestaoCofreUpload(
           leituraReason: null,
           metricasOcr: null,
           duplicate: true,
+          reusedSuccessfulRead: false,
         };
       }
     }
@@ -435,5 +505,6 @@ export async function gestaoCofreUpload(
     leituraReason,
     metricasOcr,
     duplicate: false,
+    reusedSuccessfulRead: false,
   };
 }

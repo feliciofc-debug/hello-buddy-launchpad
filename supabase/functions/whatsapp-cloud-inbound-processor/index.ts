@@ -26435,7 +26435,9 @@ export async function processOne(queueId: string) {
               summary += `\nVinculei ao ${linked.label} do estoque.`;
             }
             reply = stored.duplicate
-              ? `Esse documento já estava no cofre. Refiz a leitura.\n${summary}`
+              ? stored.reusedSuccessfulRead
+                ? `Esse documento já estava no cofre. Reaproveitei a leitura anterior bem-sucedida.\n${summary}`
+                : `Esse documento já estava no cofre. Refiz a leitura.\n${summary}`
               : summary;
             buttons = crlvWhatsappActionButtons(
               stored.documentoId,

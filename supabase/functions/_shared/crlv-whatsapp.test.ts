@@ -3,7 +3,10 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { parseCrlvText } from "./crlv-parser.ts";
-import { sha256Hex } from "./gestao-cofre-crypto.ts";
+import {
+  cifrarDadosPessoais,
+  sha256Hex,
+} from "./gestao-cofre-crypto.ts";
 import {
   autoLinkCrlvToStock,
   completeCrlvWithMolicar,
@@ -297,6 +300,7 @@ Deno.test({
         lerCrlv: true,
       });
       assertEquals(result.duplicate, true);
+      assertEquals(result.reusedSuccessfulRead, false);
       assertEquals(result.leitura?.veiculo.placa.valor, "ABC1234");
       assertEquals(ocrCalls, 1);
       assertEquals(db.tables.gestao_documento[0].status, "lido");
@@ -306,6 +310,66 @@ Deno.test({
       else Deno.env.set("AMZ_OCR_URL", oldUrl);
       if (oldToken == null) Deno.env.delete("AMZ_OCR_TOKEN");
       else Deno.env.set("AMZ_OCR_TOKEN", oldToken);
+      if (oldKey == null) Deno.env.delete("DOC_COFRE_KEY");
+      else Deno.env.set("DOC_COFRE_KEY", oldKey);
+    }
+  },
+});
+
+Deno.test({
+  name: "VEIC-WPP-2 — arquivo repetido reaproveita somente leitura bem-sucedida",
+  permissions: { env: true },
+  fn: async () => {
+    const bytes = new Uint8Array([8, 8, 8]);
+    const sha256 = await sha256Hex(bytes);
+    const oldKey = Deno.env.get("DOC_COFRE_KEY");
+    const oldFetch = globalThis.fetch;
+    Deno.env.set(
+      "DOC_COFRE_KEY",
+      btoa(String.fromCharCode(...new Uint8Array(32).fill(4))),
+    );
+    const parsed = parseCrlvText(OCR_TEXT, "ocr");
+    globalThis.fetch = (() => {
+      throw new Error("OCR não deve rodar para leitura bem-sucedida");
+    }) as typeof fetch;
+    const db = new ProcessOneMemorySupabase({
+      gestao_documento: [{
+        id: "00000000-0000-4000-8000-000000000002",
+        user_id: "11111111-1111-4111-8111-111111111111",
+        sha256,
+        status: "lido",
+        campos_veiculo: {
+          veiculo: parsed.veiculo,
+          documento: parsed.documento,
+          observacoes: parsed.observacoes,
+        },
+        dados_pessoais_cifrados: await cifrarDadosPessoais({
+          nome: parsed.proprietario.nome.valor,
+          cpf_cnpj: parsed.proprietario.cpf_cnpj.valor,
+        }),
+        deleted_at: null,
+      }],
+      gestao_documento_acesso: [],
+    });
+    try {
+      const result = await gestaoCofreUpload({
+        sb: db as never,
+        userId: "11111111-1111-4111-8111-111111111111",
+        bytes,
+        mime: "image/jpeg",
+        tipo: "crlv",
+        origem: "whatsapp",
+        lerCrlv: true,
+      });
+      assertEquals(result.duplicate, true);
+      assertEquals(result.reusedSuccessfulRead, true);
+      assertEquals(result.leitura?.veiculo.placa.valor, "LMC5764");
+      assertEquals(
+        result.leitura?.proprietario.cpf_cnpj.valor,
+        "52998224725",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
       if (oldKey == null) Deno.env.delete("DOC_COFRE_KEY");
       else Deno.env.set("DOC_COFRE_KEY", oldKey);
     }
