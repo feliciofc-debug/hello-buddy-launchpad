@@ -23,9 +23,14 @@ class OcrMetrics:
     variante_vencedora: str
     tempo_ms: int
     n_campos_validos: int
+    reason: str | None = None
 
     def public(self) -> dict[str, str | int]:
-        return asdict(self)
+        return {
+            key: value
+            for key, value in asdict(self).items()
+            if value is not None
+        }
 
 
 @dataclass(frozen=True)
@@ -62,25 +67,38 @@ def valid_crlv_fields(text: str) -> set[str]:
     )
     fields: set[str] = set()
     plate_source = _after_label(normalized, r"PLACA(?:\s+ANTERIOR/UF)?")
-    plate = re.search(
-        r"\b[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})\b",
-        plate_source or normalized,
-    )
+    plate_pattern = r"\b[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})\b"
+    plate = re.search(plate_pattern, plate_source)
+    if not plate:
+        plate = re.search(plate_pattern, normalized)
     if plate:
         fields.add("placa")
 
-    chassis_source = re.sub(
-        r"[^A-Z0-9]",
-        "",
-        _after_label(normalized, r"CHASSI"),
+    chassis_source = _after_label(normalized, r"CHASS(?:I|1)")
+    chassis_match = re.search(
+        r"\b[A-HJ-NPR-Z0-9]{17}\b",
+        chassis_source or normalized,
     )
-    chassis = chassis_source[:17]
+    chassis = chassis_match.group(0) if chassis_match else ""
     if re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", chassis):
         fields.add("chassi")
 
-    renavam_source = _after_label(normalized, r"(?:CODIGO\s+)?RENAVAM")
-    renavam = re.sub(r"\D", "", renavam_source)[:11]
-    if _renavam_valid(renavam):
+    renavam_sources = [
+        _after_label(normalized, r"(?:CODIGO\s+)?RENAVA(?:M|N)"),
+    ]
+    legacy_row = re.search(
+        r"(?:VIA\s+)?COD\.?\s+RENAVA(?:M|N)\s+RNTRC\s+EXERCICIO"
+        r"\s*\n([^\n]+)",
+        normalized,
+    )
+    if legacy_row:
+        renavam_sources.append(legacy_row.group(1))
+    renavam_candidates = (
+        match.group(0)
+        for source in renavam_sources
+        for match in re.finditer(r"\b\d{11}\b", source)
+    )
+    if any(_renavam_valid(value) for value in renavam_candidates):
         fields.add("renavam")
     return fields
 
@@ -203,7 +221,6 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
     rgb = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
     rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
     rgb = _resize_max(rgb, 1600)
-    rgb = _osd_oriented(rgb)
     cropped, perspective = crop_document(rgb)
     # O Paddle recebe no máximo 1600 px. O OSD/corte pode alterar as dimensões,
     # então a trava é aplicada novamente imediatamente antes das variantes.
@@ -228,7 +245,8 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
     ]
 
 
-def _paddle_engine():
+def _paddle_engine(full_document: bool = False):
+    del full_document
     global _PADDLE
     if _PADDLE is not None:
         return _PADDLE
@@ -238,10 +256,11 @@ def _paddle_engine():
 
             _PADDLE = PaddleOCR(
                 device="cpu",
-                # O PP-OCRv6 small usa o reconhecedor multilíngue que cobre
-                # português e demais idiomas latinos.
                 text_detection_model_name="PP-OCRv6_small_det",
-                text_recognition_model_name="PP-OCRv6_small_rec",
+                text_recognition_model_name="latin_PP-OCRv5_mobile_rec",
+                # EXIF já é aplicado na entrada. No CRLV antigo, os modelos de
+                # orientação chegaram a inverter a página e não melhoraram a
+                # leitura, enquanto consumiam muito mais memória.
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
@@ -253,7 +272,16 @@ def _paddle_engine():
 
 
 def preload_paddle() -> None:
-    _paddle_engine()
+    _paddle_engine(full_document=False)
+
+
+def _strip_cjk(value: str) -> str:
+    return re.sub(
+        r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
+        r"\uf900-\ufaff\uac00-\ud7af]",
+        "",
+        value,
+    )
 
 
 def _paddle_input(image: np.ndarray) -> np.ndarray:
@@ -266,19 +294,22 @@ def _paddle_input(image: np.ndarray) -> np.ndarray:
     return image
 
 
-def _paddle_reader(image: np.ndarray) -> tuple[str, float]:
+def _paddle_reader(
+    image: np.ndarray,
+    *,
+    full_document: bool = False,
+) -> tuple[str, float]:
     image = _paddle_input(image)
     texts: list[str] = []
     scores: list[float] = []
-    for result in _paddle_engine().predict(image):
+    for result in _paddle_engine(full_document).predict(image):
         recognized = list(result["rec_texts"])
         confidences = [float(value) for value in result["rec_scores"]]
-        texts.extend(
-            str(text).strip()
-            for text, score in zip(recognized, confidences)
-            if str(text).strip() and score >= 0.35
-        )
-        scores.extend(score for score in confidences if score >= 0.35)
+        for text, score in zip(recognized, confidences):
+            clean = _strip_cjk(str(text)).strip()
+            if clean and score >= 0.35:
+                texts.append(clean)
+                scores.append(score)
     confidence = sum(scores) / len(scores) if scores else 0.0
     return "\n".join(texts), confidence
 
@@ -331,16 +362,46 @@ def recognize_crlv_image(
     image: Image.Image,
     *,
     paddle_reader: Reader | None = None,
+    normal_paddle_reader: Reader | None = None,
     tesseract_reader: Reader | None = None,
     timeout_seconds: float = 18,
+    full_document: bool = False,
     progress_callback: Callable[[OcrResult], None] | None = None,
 ) -> OcrResult:
     started = time.monotonic()
     deadline = started + timeout_seconds
     variants = preprocessing_variants(image)
-    paddle = paddle_reader or _paddle_reader
+    full_unavailable = False
+    full_failures = 0
+    if paddle_reader is not None:
+        paddle = paddle_reader
+    elif full_document:
+        try:
+            _paddle_engine(full_document=True)
+        except Exception:
+            full_unavailable = True
+            paddle = normal_paddle_reader or (
+                lambda value: _paddle_reader(value, full_document=False)
+            )
+        else:
+            paddle = lambda value: _paddle_reader(value, full_document=True)
+    else:
+        paddle = lambda value: _paddle_reader(value, full_document=False)
     fallback = tesseract_reader or _tesseract_reader
     engine = "paddleocr"
+    reason: str | None = (
+        "paddle_full_indisponivel" if full_unavailable else None
+    )
+
+    def tracked_paddle(value: np.ndarray) -> tuple[str, float]:
+        nonlocal full_failures
+        try:
+            return paddle(value)
+        except Exception:
+            if full_document and not full_unavailable:
+                full_failures += 1
+            raise
+
     def progress(text: str, variant: str, fields: int) -> None:
         if progress_callback:
             progress_callback(OcrResult(
@@ -350,15 +411,33 @@ def recognize_crlv_image(
                     variante_vencedora=variant,
                     tempo_ms=round((time.monotonic() - started) * 1000),
                     n_campos_validos=fields,
+                    reason=reason,
                 ),
             ))
 
     text, variant, fields, _ = _run_variants(
         variants,
-        paddle,
+        tracked_paddle,
         deadline,
         progress,
     )
+    if (
+        full_document
+        and not text.strip()
+        and not full_unavailable
+        and full_failures > 0
+        and time.monotonic() < deadline
+    ):
+        reason = "paddle_full_indisponivel"
+        normal_paddle = normal_paddle_reader or (
+            lambda value: _paddle_reader(value, full_document=False)
+        )
+        text, variant, fields, _ = _run_variants(
+            variants,
+            normal_paddle,
+            deadline,
+            progress,
+        )
     # Tesseract é reserva somente quando o Paddle não devolveu texto algum.
     # Campo não reconhecido ainda é resultado parcial útil para conferência.
     if not text.strip() and time.monotonic() < deadline:
@@ -376,5 +455,6 @@ def recognize_crlv_image(
             variante_vencedora=variant,
             tempo_ms=round((time.monotonic() - started) * 1000),
             n_campos_validos=fields,
+            reason=reason,
         ),
     )

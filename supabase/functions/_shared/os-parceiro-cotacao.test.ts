@@ -156,7 +156,7 @@ Deno.test("DOC-0.1 — orçamento de parceiro não cai no cofre antes da cotaç�
   ));
   assertEquals(
     inbound.indexOf("isProtectedDocument") <
-      inbound.indexOf("textoDeOrcamentoParceiroMedia(doc)"),
+      inbound.indexOf("textoDeOrcamentoParceiroMedia("),
     true,
   );
   assertStringIncludes(inbound, "Isso é o orçamento da OS #");

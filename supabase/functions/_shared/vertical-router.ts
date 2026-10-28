@@ -143,7 +143,7 @@ export function ownerMediaAutomotiveContext(input: {
 export function isAutomotiveTenant(segment?: string | null): boolean {
   const value = normalize(segment || "");
   if (
-    /\b(consorcio|segur\w*|financeir\w*|autoescola|oficina|lava[\s-]?jato|locadora|aluguel|auto center|auto pecas)\b/
+    /\b(segur\w*|financeir\w*|autoescola|oficina|lava[\s-]?jato|locadora|aluguel|auto center|auto pecas)\b/
       .test(value)
   ) {
     return false;
@@ -386,7 +386,7 @@ export function resolveVertical(input: {
   }
 
   const automotive = isAutomotiveTenant(effectiveSegment);
-  // Fora de revenda, inclusive consórcio/seguro/oficina/locadora, a foto
+  // Fora de revenda, inclusive seguro/oficina/locadora, a foto
   // continua no especialista geral. FIPE explícita é uma capacidade pontual,
   // não uma troca para o especialista de veículos.
   if (!automotive) {

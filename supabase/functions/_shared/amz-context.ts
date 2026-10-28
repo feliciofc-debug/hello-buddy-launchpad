@@ -178,10 +178,10 @@ export async function buildAmzContext(
   }
 
   // ---------- PARCEIRO COMERCIAL (AMZ-only por enquanto) ----------
-  // Marcelo, Renata, sócios etc — só quando o TENANT recebedor é a AMZ.
+  // Contatos comerciais e sócios — só quando o TENANT recebedor é a AMZ.
   // Em tenants não-AMZ este bloco NÃO roda: os contatos_comerciais do Felicio
   // nunca vazam pro agente de outro cliente (isolamento obrigatório para
-  // modelo Ademicon: consultor A não vê carteira do consultor B).
+  // Consultor A não vê a carteira do consultor B.
   if (isAmzTenant) {
     try {
       const tail10 = phone.slice(-10);

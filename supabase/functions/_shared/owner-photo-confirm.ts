@@ -44,6 +44,16 @@ export function ownerPhotoConfirmButtons() {
   };
 }
 
+export function ownerAutomotivePhotoConfirmButtons() {
+  return {
+    body: "Confirme o que aparece na foto antes de continuar.",
+    buttons: [
+      { id: "owner_photo:confirm_vehicle", title: "É um veículo" },
+      { id: "owner_photo:correct", title: "Corrigir" },
+    ],
+  };
+}
+
 export function parseOwnerPhotoConfirmInteractiveId(
   text: string,
 ): "confirm_product" | "confirm_vehicle" | "correct" | null {

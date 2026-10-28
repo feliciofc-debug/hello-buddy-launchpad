@@ -138,7 +138,7 @@ Deno.test("DOC-0.2 — possível documento permanece bloqueado para IA", async (
   assertEquals(result.possivel_documento, true);
 });
 
-Deno.test("DOC-0 — resposta do CRLV nunca contém nome ou CPF completos", () => {
+Deno.test("VEIC-WPP-1 — resposta completa do CRLV mascara somente CPF/CNPJ", () => {
   const parsed = parseCrlvText(`
 PLACA: ABC1D23
 RENAVAM: 12345678900
@@ -150,10 +150,28 @@ CPF/CNPJ: 529.982.247-25
 OBSERVACOES: ALIENACAO FIDUCIARIA: BANCO SINTETICO
 `);
   const reply = respostaCrlvWhatsApp(parsed);
-  assertEquals(reply.includes("PESSOA SINTETICA COMPLETA"), false);
+  assertEquals(
+    reply.startsWith("✅ CRLV lido"),
+    true,
+  );
+  assertEquals(reply.includes("PESSOA SINTETICA COMPLETA"), true);
   assertEquals(reply.includes("529.982.247-25"), false);
-  assertEquals(reply.includes("Pessoa"), true);
-  assertEquals(reply.includes("***.***.247-**"), true);
+  assertEquals(reply.includes("***.982.247-**"), true);
+  for (
+    const label of [
+      "Placa:",
+      "Renavam:",
+      "Chassi:",
+      "Marca/modelo/versão:",
+      "Ano fabricação/modelo:",
+      "Cor:",
+      "Combustível:",
+      "Categoria:",
+      "Município/UF:",
+      "Proprietário:",
+      "CPF/CNPJ:",
+    ]
+  ) assertEquals(reply.includes(`\n${label}`), true);
 });
 
 Deno.test("DOC-0 — tipos do detector mapeiam para o cofre", () => {
@@ -199,14 +217,12 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
     true,
   );
   assertEquals(
-    flow.includes("checked.documento || checked.possivel_documento"),
+    flow.includes("partnerChecked?.possivel_documento ? partnerChecked : null"),
     false,
   );
   assertEquals(
-    flow.includes(
-      "partnerChecked?.possivel_documento ? partnerChecked : null",
-    ),
-    false,
+    flow.includes("partnerChecked?.documento || partnerOcrProtected"),
+    true,
   );
   const generalGate = flow.indexOf(
     "// DOC-0 — portão local ANTES das demais rotas",
@@ -216,7 +232,7 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
     const externalRoute of [
       "classifyPhotoVertical",
       "processVitrineTrocaInboundPhoto",
-      'fetch("https://ai.gateway.lovable.dev',
+      "const aiResult = await callGemini(",
     ]
   ) {
     assertEquals(
@@ -247,6 +263,17 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
   assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);
   assertEquals(source.includes("image_to_osd"), true);
+  assertEquals(source.includes("oriented.rotate(90"), true);
+  assertEquals(source.includes("ImageOps.autocontrast"), true);
+  assertEquals(
+    fullOcr.includes(
+      'text_recognition_model_name="latin_PP-OCRv5_mobile_rec"',
+    ),
+    true,
+  );
+  assertEquals(fullOcr.includes("use_doc_orientation_classify=False"), true);
+  assertEquals(fullOcr.includes("use_doc_unwarping=False"), true);
+  assertEquals(fullOcr.includes("use_textline_orientation=False"), true);
   assertEquals(
     source.includes("_pil_images(raw, content_type, first_page_only=True)"),
     true,
@@ -272,10 +299,101 @@ Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativ
   );
   const flow = source.slice(source.indexOf("// PASSO 6.7 — Baixa mídias"));
   const possibleGate = flow.indexOf("if (possibleDocument)");
-  const externalAi = flow.indexOf('fetch("https://ai.gateway.lovable.dev');
+  const externalAi = flow.indexOf("const aiResult = await callGemini(");
   assertEquals(possibleGate >= 0, true);
   assertEquals(possibleGate < externalAi, true);
   assertEquals(source.includes("Guardar e ler"), true);
   assertEquals(source.includes("Não é documento"), true);
   assertEquals(source.includes("releasedPossibleDocument"), true);
+});
+
+Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai na IA", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  assertEquals(
+    source.includes(
+      "const interactiveId = extractWhatsAppInteractiveId(row.payload);",
+    ),
+    true,
+  );
+  const possibleStart = source.indexOf(
+    'const possibleAction = String(interactiveId ?? "").match(',
+  );
+  const documentActions = source.indexOf(
+    "// DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.",
+  );
+  const possibleFlow = source.slice(possibleStart, documentActions);
+  assertEquals(possibleStart >= 0, true);
+  assertEquals(possibleFlow.includes("relerCrlvDocumentoCofre"), true);
+  assertEquals(
+    possibleFlow.includes("CRLV_NAO_LIDO_MENSAGEM"),
+    true,
+  );
+  assertEquals(possibleFlow.includes("await doneQueue(row.id)"), true);
+  assertEquals(possibleFlow.includes("callGemini("), false);
+  assertEquals(
+    source.includes(
+      "/^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i",
+    ),
+    true,
+  );
+});
+
+Deno.test("VEIC-WPP-1 — Guardar e ler encerra o turno sem cair na IA genérica", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const action = source.slice(
+    source.indexOf("const possibleAction"),
+    source.indexOf("// DOC-0 — ações dos botões"),
+  );
+  assertEquals(action.includes("relerCrlvDocumentoCofre"), true);
+  assertEquals(action.includes("CRLV_NAO_LIDO_MENSAGEM"), true);
+  assertEquals(action.includes("callGemini"), false);
+  assertEquals(action.includes("crlv_read: false"), true);
+  assertEquals(
+    action.includes('String(interactiveId ?? "").match'),
+    true,
+  );
+});
+
+Deno.test("PRIV-1 — documento certo ou possível recebe marca de proteção", async () => {
+  for (const key of ["documento", "possivel_documento"] as const) {
+    const candidate = { ...image };
+    const result = await verificarDocumentoNoPortao(
+      candidate,
+      () =>
+        Promise.resolve({
+          documento: key === "documento",
+          possivel_documento: key === "possivel_documento",
+          tipo: key === "documento" ? "cnh" as const : null,
+        }),
+    );
+    assertEquals(result.media.protected_document, true);
+  }
+});
+
+Deno.test("PRIV-1 — mídia protegida tem barreiras antes de toda visão tardia", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  assertEquals(
+    source.includes(
+      "media = media.filter((item) => !isProtectedDocumentMedia(item))",
+    ),
+    true,
+  );
+  assertEquals(
+    source.includes(
+      '!isProtectedDocumentMedia(m) &&\n      (m.kind === "image" || m.kind === "video")',
+    ),
+    true,
+  );
+  assertEquals(
+    source.includes(
+      "const externalAiMedia = media.filter((item) =>\n      !isProtectedDocumentMedia(item)",
+    ),
+    true,
+  );
 });

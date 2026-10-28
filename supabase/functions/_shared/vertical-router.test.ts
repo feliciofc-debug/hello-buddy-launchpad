@@ -178,7 +178,6 @@ Deno.test("visão separa carro de caneca e baixa confiança pede confirmação",
 Deno.test("ramos automotivos adjacentes não são classificados como revenda", () => {
   for (
     const segment of [
-      "Consórcio de veículos",
       "Seguradora automotiva",
       "Financeira de carros",
       "Autoescola",
@@ -292,9 +291,9 @@ Deno.test("especialistas expõem somente ferramentas e botões da própria verti
   );
 });
 
-Deno.test("consórcio com foto de carro permanece no especialista geral", () => {
+Deno.test("seguradora com foto de carro permanece no especialista geral", () => {
   const decision = resolveVertical({
-    tenantSegment: "Consórcio Ademicon",
+    tenantSegment: "Seguradora",
     vision: { route: "veiculo", confidence: 0.99 },
   });
   assertEquals(decision.route, "geral");
@@ -302,9 +301,9 @@ Deno.test("consórcio com foto de carro permanece no especialista geral", () => 
   assertEquals(decision.reason, "ramo_nao_automotivo");
 });
 
-Deno.test("consórcio acessa FIPE somente por pedido explícito", () => {
+Deno.test("seguradora acessa FIPE somente por pedido explícito", () => {
   const decision = resolveVertical({
-    tenantSegment: "Consórcio",
+    tenantSegment: "Seguradora",
     text: "qual a FIPE do Onix 2022?",
   });
   assertEquals(decision.route, "geral");
@@ -387,8 +386,8 @@ Deno.test("FIX-VEIC-2 — admin automático tem contexto automotivo para rotas d
   );
   assertEquals(
     ownerMediaAutomotiveContext({
-      tenantSegment: "consórcio",
-      effectiveSegment: "consórcio",
+      tenantSegment: "seguradora",
+      effectiveSegment: "seguradora",
       isAdmin: true,
       demoMode: true,
     }),
@@ -399,7 +398,7 @@ Deno.test("FIX-VEIC-2 — admin automático tem contexto automotivo para rotas d
 Deno.test("modo demonstração fixa ramo por seis horas e expira", () => {
   const now = Date.parse("2026-10-07T13:00:00.000Z");
   const demo = {
-    segment: "consórcio",
+    segment: "seguradora",
     expires_at: "2026-10-07T19:00:00.000Z",
   };
   const active = resolveVertical({
@@ -420,14 +419,14 @@ Deno.test("modo demonstração fixa ramo por seis horas e expira", () => {
   assertEquals(expired.demoMode, undefined);
   assertEquals(
     withDemoModeLabel("Recebi a foto.", active),
-    "Modo demonstração: consórcio\n\nRecebi a foto.",
+    "Modo demonstração: seguradora\n\nRecebi a foto.",
   );
 });
 
 Deno.test("comandos de demonstração e confirmação são determinísticos", () => {
-  assertEquals(parseDemoSegmentCommand("demonstrar como consórcio"), {
+  assertEquals(parseDemoSegmentCommand("demonstrar como seguradora"), {
     action: "set",
-    segment: "consorcio",
+    segment: "seguradora",
   });
   assertEquals(parseDemoSegmentCommand("sair da demonstração"), {
     action: "exit",
@@ -456,7 +455,7 @@ Deno.test("comando de demonstração não altera decisão de conta cliente", () 
   assertEquals(command?.action, "set");
   const decision = resolveVertical({
     isAdmin: false,
-    tenantSegment: "Consórcio",
+    tenantSegment: "Seguradora",
     text: "demonstrar como revenda de veículos",
     vision: { route: "veiculo", confidence: 0.99 },
   });
@@ -464,14 +463,14 @@ Deno.test("comando de demonstração não altera decisão de conta cliente", () 
 });
 
 Deno.test("especialista geral recebe contexto do ramo sem transformar carro em venda", () => {
-  const prompt = generalSpecialistPrompt("Consórcio Ademicon");
+  const prompt = generalSpecialistPrompt("Seguradora Central");
   assert(
-    prompt.includes("Contexto obrigatório do negócio: Consórcio Ademicon"),
+    prompt.includes("Contexto obrigatório do negócio: Seguradora Central"),
   );
   assert(prompt.includes("não ofereça FIPE, km, repasse"));
   assert(prompt.includes("Não ofereça nem consulte FIPE automaticamente"));
   assert(
-    generalSpecialistPrompt("Consórcio", true).includes(
+    generalSpecialistPrompt("Seguradora", true).includes(
       "consulta de FIPE foi pedida explicitamente",
     ),
   );

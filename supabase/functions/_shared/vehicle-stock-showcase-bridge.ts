@@ -58,7 +58,7 @@ async function postSendMessageOnce(
       apikey: ctx.serviceKey,
     },
     // logOutboundMessage (cloud-log.ts) só upsert conversa por user_id+telefone,
-    // insere whatsapp_cloud_messages e atualiza last_message_at — sem Silvester/hooks.
+    // insere whatsapp_cloud_messages e atualiza last_message_at sem hooks paralelos.
     // O processor não reenvia quando a vitrine já handled; dedup por wamid evita duplicata.
     body: JSON.stringify({
       user_id: ctx.userId,

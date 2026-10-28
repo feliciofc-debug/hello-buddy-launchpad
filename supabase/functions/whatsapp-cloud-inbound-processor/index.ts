@@ -105,10 +105,6 @@ import {
   getPendingVitrineEstoque,
   processVitrineTrocaInboundPhoto,
 } from "../_shared/vehicle-stock-showcase-bridge.ts";
-import {
-  shouldFireSilvesterExtractHook,
-  silvesterDossieEnabledForTenant,
-} from "../_shared/silvester-dossie-gate.ts";
 import { loadTenantVehicleStockGate } from "../_shared/vehicle-inventory-tenant.ts";
 import {
   isVitrineRetomadaOptOutText,
@@ -126,6 +122,10 @@ import {
   injectForcedFetchAsSystemContext,
   stripToolCallsToSystemContext,
 } from "../_shared/jarvis-gemini-message-safety.ts";
+import {
+  isJarvisPureGreeting,
+  tryProcessJarvisServiceMenu,
+} from "../_shared/jarvis-service-menu.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
 import {
@@ -149,6 +149,10 @@ import {
   shouldRunVitrineEarlyCapture,
   vitrineFormNeedsAudioTranscriptBeforeShowcase,
 } from "../_shared/vehicle-stock-whatsapp.ts";
+import {
+  extractWhatsAppInteractiveId,
+  stripWhatsAppInteractiveMarkers,
+} from "../_shared/whatsapp-interactive-id.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -182,10 +186,12 @@ import {
   DOCUMENTO_CLIENTE_RESPOSTA,
   DOCUMENTO_DETECTOR_INDISPONIVEL,
   isDocumentoGateCandidate,
+  isProtectedDocumentMedia,
   respostaCrlvWhatsApp,
   tipoDocumentoCofre,
   verificarDocumentoNoPortao,
 } from "../_shared/documento-portao.ts";
+import { commentOnLocallyExtractedDocument } from "../_shared/document-privacy.ts";
 import {
   cleanupDocumentPhotoPending,
   isUnrelatedPhotoConfirmationMessage,
@@ -193,9 +199,18 @@ import {
 } from "../_shared/document-photo-pending.ts";
 import {
   auditGestaoDocumento,
+  CRLV_NAO_LIDO_MENSAGEM,
   gestaoCofreUpload,
+  relerCrlvDocumentoCofre,
 } from "../_shared/gestao-cofre-upload.ts";
 import { decifrarCofreBytes } from "../_shared/gestao-cofre-crypto.ts";
+import {
+  autoLinkCrlvToStock,
+  completeCrlvWithMolicar,
+  crlvFromTypedPlate,
+  crlvWhatsappActionButtons,
+  resolvePendingCrlvPlate,
+} from "../_shared/crlv-whatsapp.ts";
 import {
   getTenantLogoDataUrl,
   getTenantLogoStorageLocation,
@@ -387,7 +402,6 @@ import {
   hasSocialPostRequest,
   hasVideoPublicationRequest,
   isCarouselLibraryMedia,
-  selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
@@ -496,7 +510,13 @@ import {
   vehiclePostFipeVideoTheme,
 } from "../_shared/vehicle-post-fipe-menu.ts";
 import {
+  bindAnuncioMediaToArgs,
+  staleVehicleMediaContextPatch,
+  vehicleIdentificationBundleForMedia,
+} from "../_shared/anuncio-media-context.ts";
+import {
   parseVehiclePhotoActionId,
+  parseVehiclePhotoActionInteractive,
   vehiclePhotoDirectActionList,
 } from "../_shared/vehicle-photo-direct-menu.ts";
 import {
@@ -694,9 +714,6 @@ import {
   resolveNichoDoConteudo,
 } from "../_shared/content-niche.ts";
 import {
-  selectRecentOriginalPhoto,
-} from "../_shared/anuncio-source-media.ts";
-import {
   detectPhotoBoxesByVariant,
   parseFotoBoxFromVisionResponse,
   photoBoxForStyle,
@@ -768,6 +785,7 @@ import {
   savedVisionDescription,
 } from "../_shared/media-received-copy.ts";
 import {
+  ownerAutomotivePhotoConfirmButtons,
   ownerPhotoConfirmButtons,
   ownerPhotoConfirmedProductTitle,
   ownerPhotoCorrectionPrompt,
@@ -922,7 +940,22 @@ async function chamarGatewayImagem(
 
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+type ProcessorSupabaseClient = ReturnType<typeof createClient>;
+
+let sb = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+/** AUDIT-BOTOES: troca isolada da dependência para executar processOne real. */
+export function setProcessOneSupabaseForTest(
+  client: ProcessorSupabaseClient,
+): () => void {
+  const previous = sb;
+  sb = client;
+  return () => {
+    sb = previous;
+  };
+}
 
 type QueueRow = {
   id: string;
@@ -1011,7 +1044,7 @@ async function groupIfNewerLeadTextExists(row: QueueRow): Promise<boolean> {
   return true;
 }
 
-function extractText(payload: any): string {
+function extractText(payload: any, interactiveId: string | null = null): string {
   if (!payload) return "";
   if (payload.text?.body) return payload.text.body;
   const vitrineButtonText = formatCarouselVitrineButtonText(payload.button);
@@ -1019,15 +1052,13 @@ function extractText(payload: any): string {
   if (payload.button?.text) return payload.button.text;
   if (payload.interactive?.button_reply?.title) {
     const title = String(payload.interactive.button_reply.title);
-    const id = String(payload.interactive.button_reply.id || "");
+    const id = interactiveId ?? "";
     return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
   }
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
-    const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|vehicle_model_fix:|vehicle_photo_edit:|gestao_troca_wa:)/i.test(id)
-      ? `${title}\n<<INTERACTIVE_ID:${id}>>`
-      : title;
+    const id = interactiveId ?? "";
+    return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
   }
   if (payload.image?.caption) return payload.image.caption;
   if (payload.video?.caption) return payload.video.caption;
@@ -1036,6 +1067,7 @@ function extractText(payload: any): string {
 }
 
 function buildUserContent(userText: string, media: MediaExtract[]): any {
+  media = media.filter((item) => !isProtectedDocumentMedia(item));
   if (media.length === 0) return userText || "(mensagem sem texto)";
   const hasAudio = media.some((m) => m.kind === "audio");
   const hasImage = media.some((m) => m.kind === "image");
@@ -2219,6 +2251,7 @@ async function toolEditarImagem(
     originalSourceMediaId?: string;
     libraryContext?: string;
     vehicleEdit?: boolean;
+    agentState?: AgentConvState;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -2246,43 +2279,42 @@ async function toolEditarImagem(
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
   }
-  if (!imageInput && ctx.sourceMediaId) {
-    const { data: source, error } = await sb
-      .from("midias_whatsapp")
-      .select("id, midia_url")
-      .eq("id", ctx.sourceMediaId)
-      .eq("user_id", ctx.userId)
-      .eq("tipo", "foto")
-      .maybeSingle();
-    if (error || !source?.midia_url) {
+  if (!imageInput && ctx.fromNumber) {
+    const latest = await resolveUltimaMidia({
+      userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
+      agentState: ctx.agentState,
+    }, "foto_usuario");
+    if (latest.erro) {
       return JSON.stringify({
         erro: "imagem_origem_indisponivel",
-        detalhe: error?.message,
+        detalhe: latest.erro,
       });
     }
-    imageInput = String(source.midia_url);
+    if (latest.midia?.midia_url) {
+      imageInput = String(latest.midia.midia_url);
+      ctx.sourceMediaId = String(latest.midia.id);
+      ctx.originalSourceMediaId = String(latest.midia.id);
+    }
+  }
+  if (!imageInput && ctx.sourceMediaId) {
+    const source = await resolverMidiaBibliotecaPorId(
+      ctx.userId,
+      ctx.sourceMediaId,
+    );
+    if (source.erro || !source.midia?.midia_url) {
+      return JSON.stringify({
+        erro: "imagem_origem_indisponivel",
+        detalhe: source.erro,
+      });
+    }
+    imageInput = String(source.midia.midia_url);
   }
   if (
     !imageInput &&
     /^https?:\/\//i.test(String(ctx.imageInputUrl || ""))
   ) {
     imageInput = String(ctx.imageInputUrl);
-  } else if (!imageInput) {
-    try {
-      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      const { data: rec } = await sb
-        .from("midias_whatsapp")
-        .select("midia_url, created_at")
-        .eq("user_id", ctx.userId)
-        .eq("telefone_origem", ctx.fromNumber)
-        .eq("tipo", "foto")
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
-    } catch (e) {
-      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
-    }
   }
   if (!imageInput) {
     return JSON.stringify({
@@ -2569,27 +2601,13 @@ async function toolApplyTenantLogoOverlay(
   if (current) {
     sourceBytes = base64Decode(current.base64);
   } else {
-    const interactionId = String(
-      ctx.sourceMediaId ||
-        ctx.agentState?.last_media_interaction?.media_id || "",
-    ).trim();
-    let query = sb.from("midias_whatsapp")
-      .select("id, midia_url, created_at")
-      .eq("user_id", ctx.userId)
-      .eq("telefone_origem", ctx.fromNumber)
-      .eq("tipo", "foto");
-    query = interactionId
-      ? query.eq("id", interactionId)
-      : query.gte(
-        "created_at",
-        new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      ).order("created_at", { ascending: false }).limit(1);
-    const { data, error } = await query.maybeSingle();
-    if (error) {
+    const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+    if (latest.erro) {
       return JSON.stringify({ ok: false, erro: "foto_recente_indisponivel" });
     }
-    if (data?.midia_url) {
-      const response = await fetch(String(data.midia_url), {
+    if (latest.midia?.midia_url) {
+      ctx.sourceMediaId = String(latest.midia.id);
+      const response = await fetch(String(latest.midia.midia_url), {
         signal: AbortSignal.timeout(30_000),
       });
       if (response.ok) {
@@ -3343,6 +3361,10 @@ type PendingFipeState =
 type AgentConvState = {
   vehicle?: Record<string, unknown>;
   general?: Record<string, unknown>;
+  pending_crlv_placa?: {
+    documento_id: string;
+    created_at: string;
+  } | null;
   vertical_router?: {
     pending_choice?: {
       media_id?: string;
@@ -3435,6 +3457,7 @@ type AgentConvState = {
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
     args: Record<string, unknown>;
+    media_id?: string;
     created_at: string;
     awaiting_store_details?: boolean;
     store_name?: string;
@@ -3454,10 +3477,12 @@ type AgentConvState = {
   } | null;
   pending_anuncio_photo?: {
     stage: "choice" | "preference_confirmation" | "treatment_retry";
+    media_id?: string;
     args?: Record<string, unknown>;
     preference?: AnuncioPhotoPreference;
     created_at: string;
   } | null;
+  pending_anuncio_photo_mismatch?: { asked_at: string } | null;
   last_anuncio?: LastAnuncio | null;
   pending_anuncio_post?: PendingAnuncioPost | null;
   pending_client_logo?: {
@@ -3480,6 +3505,9 @@ type AgentConvState = {
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
+
+const CRLV_PLACA_DIGITADA_PROMPT =
+  "📄 Guardei o documento no cofre. Não consegui ler a placa pela foto. Digite a placa do veículo (ex.: ABC1234 ou ABC1D23) que eu completo com os dados da Molicar.";
 
 type PendingVideoSetupStage =
   | "awaiting_tema"
@@ -3714,7 +3742,7 @@ async function tenantVerticalSegment(userId: string): Promise<string | null> {
 async function classifyPhotoVertical(
   media: MediaExtract | undefined,
 ): Promise<ReturnType<typeof parseVerticalVisionResult>> {
-  if (!media || media.kind !== "image") return null;
+  if (!media || media.kind !== "image" || isProtectedDocumentMedia(media)) return null;
   try {
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -3761,6 +3789,7 @@ async function identifyVehiclePhoto(
   source: MediaExtract | string | undefined,
 ): Promise<VehicleIdentification | null> {
   if (!source) return null;
+  if (typeof source !== "string" && isProtectedDocumentMedia(source)) return null;
   const imageUrl = typeof source === "string"
     ? source
     : source.kind === "image"
@@ -3917,18 +3946,26 @@ async function beginVehicleIdentification(
       media_routes: mediaRoutes,
       updated_at: new Date().toISOString(),
     };
+    const lastMediaInteraction = {
+      media_id: first.id,
+      at: pending.created_at,
+    };
     await saveAgentState(sb, conversation, {
       pending_vehicle_identification: pending,
       last_vehicle_photo_context: pending,
+      last_media_interaction: lastMediaInteraction,
       vertical_router,
     }, current);
     current.pending_vehicle_identification = pending;
     current.last_vehicle_photo_context = pending;
+    current.last_media_interaction = lastMediaInteraction;
     current.vertical_router = vertical_router;
     ctx.agentState = current;
   }
   if (vehicleIdentificationUsesDirectActionMenu(identification)) {
-    const interactiveList = vehiclePhotoDirectActionList(identification);
+    const interactiveList = vehiclePhotoDirectActionList(identification, {
+      mediaId: first.id,
+    });
     return {
       text: interactiveList.body,
       interactiveList,
@@ -4198,7 +4235,7 @@ function enforceForwardTruth(
 function pedeAtencaoDoDono(text: string): boolean {
   const low = normalizeContactLookupText(text);
   if (!low) return false;
-  return /(orcamento|simulacao|simular|simule|proposta|valores|valor da|quanto custa|quanto fica|preco|desconto|negociar|negociacao|parcela|financiamento|carta de credito)/.test(low);
+  return /(orcamento|simulacao|simular|simule|proposta|valores|valor da|quanto custa|quanto fica|preco|desconto|negociar|negociacao|parcela|financiamento)/.test(low);
 }
 
 // Cliente encerrou o atendimento / optou por esperar o dono?
@@ -4251,7 +4288,7 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
     ownerFirst,
   ].filter(Boolean).join("|")})\\b`, "i").test(low);
   const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
-  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|consorcio|carta|credito|parcela|prazo)\b/i.test(low);
+  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|credito|parcela|prazo)\b/i.test(low);
   const teamShouldReply = /\b(equipe|consultor|gerente|responsavel|atendente)\b.*\b(me\s+(enviar|enviarem|mandar|mandarem|retornar|retornarem|chamar|chamarem)|entrar em contato|falar comigo)\b/i.test(low);
   return (hasRecipient && (hasForwardVerb || hasBusinessAsk)) || teamShouldReply;
 }
@@ -4259,7 +4296,7 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
 function isOwnerHandoffQuestion(raw: string): boolean {
   const low = normalizeContactLookupText(raw);
   if (!low) return false;
-  const commercialTopic = /\b(consorcio|plano|carta|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento|contemplacao|ademicon)\b/i.test(low);
+  const commercialTopic = /\b(plano|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento)\b/i.test(low);
   const asksForDecision = /\b(consigo|consegue|pode|posso|tem|existe|quanto|qual|como|fazer|faz|da pra|da para|quero|preciso|me passa|me envia|me manda)\b/i.test(low) || /\?/.test(raw);
   const needsHuman = /\b(\d+\s*meses|100\s*meses|plano|proposta|orcamento|simulacao|equipe|consultor|responsavel)\b/i.test(low);
   return commercialTopic && asksForDecision && needsHuman;
@@ -4329,7 +4366,7 @@ async function inferContatoComercialFromText(text: string, userId: string): Prom
     if (haystack.includes(` ${nome} `)) score += 30;
     if (firstName.length >= 4 && haystack.includes(` ${firstName} `)) score += 10;
 
-    // Mensagens compostas pelo Jarvis costumam começar com "Oi Marcelo..." e também
+    // Mensagens compostas pelo Jarvis costumam começar com uma saudação nominal e também
     // citar "assistente do Felício". O alvo é o nome saudado no começo, não Felício.
     if (firstName.length >= 4) {
       const greeting = new RegExp(`^(oi|ola|olá|bom dia|boa tarde|boa noite)\\s+${firstName}\\b`, "i");
@@ -4422,7 +4459,7 @@ async function toolEnviarMensagemContatoComercial(
   }
 
   // Fallback extra: se o modelo ainda inventar UUID e não mandar nome_busca,
-  // tenta inferir pelo nome-alvo no texto composto (ex: "Oi Marcelo...").
+  // tenta inferir pelo nome-alvo no texto composto (ex: "Oi Renata...").
   if (!contato) {
     contato = await inferContatoComercialFromText(mensagem, ctx.userId);
   }
@@ -6789,13 +6826,7 @@ async function gerarTresOpcoesRedeSocial(
 - Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
 - Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.`;
 
-  const descLower = `${produto.nome} ${produto.descricao || ""} ${produto.categoria || ""}`.toLowerCase();
-  const ehConsorcio = /consorci|consórci|carta\s+de\s+cr[eé]dito/.test(descLower);
-  const regraConsorcio = ehConsorcio
-    ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
-    : "";
-
-  const ehVeiculo = !ehConsorcio && niche === "veiculo"
+  const ehVeiculo = niche === "veiculo"
     ? `
 ========================================
 🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
@@ -6826,7 +6857,7 @@ COMO USAR:
     : "";
 
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
-${guiaTom}${regraConsorcio}${ehVeiculo}
+${guiaTom}${ehVeiculo}
 ${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
@@ -8426,35 +8457,111 @@ function tempoRelativoMidia(createdAt: string): string {
   return `há ${Math.floor(horas / 24)} dias`;
 }
 
+type UltimaMidiaTipo =
+  | "foto_usuario"
+  | "grupo_fotos_usuario"
+  | "foto_conversa"
+  | "video"
+  | "conversa";
+
+const ULTIMA_MIDIA_FIELDS =
+  "id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at";
+
+/**
+ * Fonte única para referências implícitas de mídia do dono.
+ *
+ * Criação usa `foto_usuario`/`grupo_fotos_usuario`; publicação usa a linha do
+ * tempo completa (`conversa`, `foto_conversa` ou `video`). O timestamp da
+ * interação vence `created_at`, permitindo que uma mídia deduplicada e
+ * reenviada volte a ser a última sem criar outra linha.
+ */
+export async function resolveUltimaMidia(
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+  tipo: UltimaMidiaTipo,
+): Promise<{ midia: any | null; midias?: any[]; erro?: string }> {
+  if (tipo === "grupo_fotos_usuario") {
+    const ids = ctx.agentState?.pending_image_composition?.media_ids ?? [];
+    if (!ids.length) {
+      const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+      return {
+        ...latest,
+        midias: latest.midia ? [latest.midia] : [],
+      };
+    }
+    const { data, error } = await sb
+      .from("midias_whatsapp")
+      .select(ULTIMA_MIDIA_FIELDS)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .eq("tipo", "foto")
+      .eq("origem", "whatsapp")
+      .in("id", ids);
+    if (error) return { midia: null, midias: [], erro: error.message };
+    const byId = new Map((data ?? []).map((row: any) => [String(row.id), row]));
+    const ordered = ids.map((id) => byId.get(id)).filter(Boolean);
+    return { midia: ordered.at(-1) ?? null, midias: ordered };
+  }
+
+  let query = sb
+    .from("midias_whatsapp")
+    .select(ULTIMA_MIDIA_FIELDS)
+    .eq("user_id", ctx.userId)
+    .eq("telefone_origem", ctx.fromNumber);
+  if (tipo === "foto_usuario") {
+    query = query.eq("tipo", "foto").eq("origem", "whatsapp");
+  } else if (tipo === "foto_conversa") {
+    query = query.eq("tipo", "foto");
+  } else if (tipo === "video") {
+    query = query.eq("tipo", "video");
+  } else {
+    query = query.in("tipo", ["foto", "video"]);
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) return { midia: null, erro: error.message };
+
+  const candidates = [...(data ?? [])];
+  const interaction = ctx.agentState?.last_media_interaction ?? null;
+  const interactionId = String(interaction?.media_id || "");
+  if (interactionId && !candidates.some((row: any) => row.id === interactionId)) {
+    const { data: interacted, error: interactedError } = await sb
+      .from("midias_whatsapp")
+      .select(ULTIMA_MIDIA_FIELDS)
+      .eq("id", interactionId)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .maybeSingle();
+    if (interactedError) {
+      return { midia: null, erro: interactedError.message };
+    }
+    const compatible = interacted &&
+      (tipo === "conversa" ||
+        (tipo === "video" && interacted.tipo === "video") ||
+        (tipo === "foto_conversa" && interacted.tipo === "foto") ||
+        (tipo === "foto_usuario" &&
+          interacted.tipo === "foto" &&
+          interacted.origem === "whatsapp"));
+    if (compatible) candidates.push(interacted);
+  }
+
+  const interactionAt = Date.parse(String(interaction?.at || ""));
+  candidates.sort((left: any, right: any) => {
+    const effectiveAt = (row: any) => Math.max(
+      Date.parse(String(row.created_at || "")) || Number.NEGATIVE_INFINITY,
+      row.id === interactionId && Number.isFinite(interactionAt)
+        ? interactionAt
+        : Number.NEGATIVE_INFINITY,
+    );
+    return effectiveAt(right) - effectiveAt(left);
+  });
+  return { midia: candidates[0] ?? null };
+}
+
 async function buscarUltimaMidiaDaConversa(
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<{ midia: any | null; erro?: string }> {
-  const { data, error } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .in("tipo", ["foto", "video"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return { midia: null, erro: error.message };
-
-  const selectedId = selectLatestImplicitMediaId(data, ctx.agentState?.last_media_interaction ?? null);
-  if (!selectedId || selectedId === data?.id) return { midia: data ?? null };
-
-  // Uma mídia reencaminhada pode ser deduplicada e conservar o created_at
-  // antigo. Nesse caso, last_media_interaction.at representa o evento mais
-  // recente da conversa e o ID deduplicado deve vencer.
-  const { data: interacted, error: interactedError } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("id", selectedId)
-    .eq("user_id", ctx.userId)
-    .in("tipo", ["foto", "video"])
-    .maybeSingle();
-  if (interactedError) return { midia: null, erro: interactedError.message };
-  return { midia: interacted ?? data ?? null };
+  return await resolveUltimaMidia(ctx, "conversa");
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
@@ -8691,7 +8798,6 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
 const CATEGORIAS_ASSUNTO: Array<{ nome: string; re: RegExp }> = [
   { nome: "veiculo", re: /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|sed[aã]|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|flex|turbo|km\s*rodados?|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|civic|corolla|creta|onix|hb20|compass|tracker|hilux|ranger)\b/i },
   { nome: "imovel", re: /\b(im[oó]vel|apartamento|casa\s+(?:à|a)\s+venda|terreno|lote|condom[ií]nio|metros\s+quadrados|m²|quartos?|su[ií]tes?)\b/i },
-  { nome: "consorcio", re: /\b(cons[oó]rcio|carta\s+de\s+cr[eé]dito|ademicon|parcelas?\s+mensais|lance)\b/i },
 ];
 
 function categoriaAssunto(texto: string): string | null {
@@ -8703,7 +8809,7 @@ function categoriaConflitante(descricaoVisual: string, briefing: string): boolea
   const catBrief = categoriaAssunto(briefing);
   if (!catBrief) return false;
   const catVisual = categoriaAssunto(descricaoVisual);
-  // Briefing fala de veículo/imóvel/consórcio e a imagem NÃO é disso → conflito.
+  // Briefing fala de veículo/imóvel e a imagem NÃO é disso → conflito.
   return catVisual !== catBrief;
 }
 
@@ -10439,7 +10545,7 @@ async function descreverFotosSalvas(
       reutilizada: salvos[i]?.reutilizada,
       contextoOriginal: salvos[i]?.contexto_original,
     }))
-    .filter((x) => x.tipo === "foto");
+    .filter((x) => x.tipo === "foto" && !isProtectedDocumentMedia(x.m));
   if (fotos.length === 0) return "";
 
   const descricoes = await Promise.all(fotos.map(async (f) => {
@@ -10631,64 +10737,18 @@ async function resolverMidiaParaPublicacao(
     return await resolverMidiaBibliotecaPorId(ctx.userId, selectedExplicitId);
   }
 
-  const nowMs = Date.now();
-  const lastInteraction = ctx.agentState?.last_media_interaction ?? null;
-  const interactionId = selectPublicationMediaId({
-    lastInteraction,
-    nowMs,
-  });
-  let interactedMedia: any | null = null;
-  if (interactionId) {
-    const interacted = await resolverMidiaBibliotecaPorId(
-      ctx.userId,
-      interactionId,
-    );
-    if (interacted.erro) return interacted;
-    if (interacted.midia && compativel(interacted.midia)) {
-      interactedMedia = interacted.midia;
-    }
-  }
-
-  const generatedSince = new Date(nowMs - 2 * 60 * 60 * 1000)
-    .toISOString();
-  let query = sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .in("tipo", ["foto", "video"])
-    .in("origem", [
-      "ia_video_motion",
-      "video_legendado",
-      "ia_whatsapp",
-      "ia_edicao",
-      "ia_composicao",
-      "anuncio_produto",
-      "whatsapp",
-      "whatsapp_pietro",
-    ])
-    .gte("created_at", generatedSince);
-  if (referencia === "video") query = query.eq("tipo", "video");
-  if (referencia === "image") query = query.eq("tipo", "foto");
-  const { data: generated, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return { midia: null, erro: error.message };
-
-  const selectedId = selectPublicationMediaId({
-    lastInteraction: interactedMedia
-      ? {
-        ...lastInteraction,
-        media_created_at: interactedMedia.created_at,
-      }
-      : null,
-    recentGenerated: generated ?? null,
-    nowMs,
-  });
-  if (selectedId === interactedMedia?.id) return { midia: interactedMedia };
-  if (selectedId === generated?.id) return { midia: generated };
-  return { midia: null };
+  const ultima = await resolveUltimaMidia(
+    ctx,
+    referencia === "video"
+      ? "video"
+      : referencia === "image"
+      ? "foto_conversa"
+      : "conversa",
+  );
+  if (ultima.erro) return ultima;
+  return ultima.midia && compativel(ultima.midia)
+    ? { midia: ultima.midia }
+    : { midia: null };
 }
 
 type ReadyLegendVideo = {
@@ -13267,7 +13327,7 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Marcelo Martins'" },
+          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Renata Lima'" },
           data_hora_sp: { type: "string", description: "Data/hora absoluta em horário de São Paulo no formato 'YYYY-MM-DD HH:MM'. Ex: '2026-07-03 15:00'." },
           minutos_a_partir_de_agora: { type: "number", description: "Alternativa: minutos até o evento a partir de agora. Ex: 20." },
         },
@@ -13279,11 +13339,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "listar_contatos_comerciais",
-      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros, prospects próximos com quem ele tem relação direta — Marcelo Martins, Renata, etc). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é / achar o ID / ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra do Marcelo', 'qual o whats da Renata'.",
+      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros e prospects próximos com quem ele tem relação direta). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é, achar o ID ou ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra da Renata', 'qual o WhatsApp do Carlos'.",
       parameters: {
         type: "object",
         properties: {
-          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'marcelo', 'ademicon'. Vazio = lista tudo." },
+          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'renata', 'oficina centro'. Vazio = lista tudo." },
         },
       },
     },
@@ -13292,14 +13352,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "enviar_mensagem_contato_comercial",
-      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pro Marcelo confirmando nossa reunião amanhã 10:30', 'avisa a Renata que...', 'faz follow-up com o cliente X'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como 'aqui é o Jarvis, assistente do Felício'.\n\n⚠️ REGRA CRÍTICA DE IDENTIFICAÇÃO DO CONTATO (leia antes de chamar):\n• NUNCA INVENTE contato_id. Só passe contato_id se veio EXATAMENTE do retorno de listar_contatos_comerciais nesta mesma conversa.\n• Se você não tem certeza absoluta do UUID, NÃO mande contato_id. Mande APENAS 'nome_busca' com o primeiro nome (ex: 'Marcelo') OU 'whatsapp' com o número que o dono forneceu.\n• Se o dono já te deu o número de telefone (ex: '5521964641312' ou '(21) 96464-1312'), passe em 'whatsapp' — o sistema faz o match automático.\n• Sempre passe 'nome_busca' junto quando não tiver certeza do contato_id — é redundância que salva.\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA.",
+      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pra Renata confirmando nossa reunião amanhã 10:30', 'avisa o Carlos que...', 'faz follow-up com o cliente X'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como assistente dele.\n\n⚠️ REGRA CRÍTICA DE IDENTIFICAÇÃO DO CONTATO (leia antes de chamar):\n• NUNCA INVENTE contato_id. Só passe contato_id se veio EXATAMENTE do retorno de listar_contatos_comerciais nesta mesma conversa.\n• Se você não tem certeza absoluta do UUID, NÃO mande contato_id. Mande APENAS 'nome_busca' com o primeiro nome (ex: 'Renata') OU 'whatsapp' com o número que o dono forneceu.\n• Se o dono já te deu o número de telefone (ex: '5511999999999'), passe em 'whatsapp' — o sistema faz o match automático.\n• Sempre passe 'nome_busca' junto quando não tiver certeza do contato_id — é redundância que salva.\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA.",
       parameters: {
         type: "object",
         properties: {
           contato_id: { type: "string", description: "UUID EXATO retornado por listar_contatos_comerciais nesta conversa. NUNCA invente. Se em dúvida, deixe vazio e use nome_busca/whatsapp." },
-          nome_busca: { type: "string", description: "Primeiro nome ou parte do nome (ex: 'Marcelo'). Use sempre que não tiver 100% de certeza do contato_id." },
+          nome_busca: { type: "string", description: "Primeiro nome ou parte do nome (ex: 'Renata'). Use sempre que não tiver 100% de certeza do contato_id." },
           whatsapp: { type: "string", description: "Número de WhatsApp do contato, se o dono forneceu (com ou sem DDD/formatação). Match automático pelos últimos 8-10 dígitos." },
-          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. SEMPRE inclua o primeiro nome do contato no início (ex: 'Oi Marcelo, tudo bem? Aqui é o Jarvis, assistente do Felício...')." },
+          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. SEMPRE inclua o primeiro nome do contato no início (ex: 'Oi Renata, tudo bem? Aqui é o Jarvis, assistente da loja...')." },
           data_hora_sp: { type: "string", description: "Opcional. Envio agendado em horário SP no formato 'YYYY-MM-DD HH:MM'. Omita pra enviar agora." },
           minutos_a_partir_de_agora: { type: "number", description: "Opcional. Alternativa a data_hora_sp: minutos até o envio." },
           tipo_acao: { type: "string", enum: ["confirmar_reuniao", "followup_proposta", "resposta_comercial", "checkin_relacionamento", "mensagem_livre"], description: "Categoria da ação pra log/analytics. Padrão: mensagem_livre." },
@@ -13818,7 +13878,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "encaminhar_recado_ao_dono",
-      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro Marcelo', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
+      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro responsável', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
       parameters: {
         type: "object",
         properties: {
@@ -13908,7 +13968,7 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
+          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a loja agenda posts e publica nas redes'." },
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
           duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
@@ -15648,41 +15708,9 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
   fromNumber: string;
   agentState?: AgentConvState;
 }): Promise<string | null> {
-  const { data: recent, error } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_url, telefone_origem, created_at")
-    .eq("user_id", ctx.userId)
-    .eq("telefone_origem", ctx.fromNumber)
-    .eq("tipo", "foto")
-    .eq("origem", "whatsapp")
-    .order("created_at", { ascending: false })
-    .limit(20);
-  if (error) throw new Error(error.message);
-
-  const interaction = ctx.agentState?.last_media_interaction ?? null;
-  const candidates = [...(recent ?? [])];
-  const interactedId = String(interaction?.media_id || "");
-  const interactedAt = Date.parse(String(interaction?.at || ""));
-  if (
-    interactedId &&
-    Number.isFinite(interactedAt) &&
-    Date.now() - interactedAt <= 30 * 60 * 1000 &&
-    !candidates.some((media: any) => media.id === interactedId)
-  ) {
-    const { data: interacted } = await sb
-      .from("midias_whatsapp")
-      .select("id, tipo, origem, midia_url, telefone_origem, created_at")
-      .eq("id", interactedId)
-      .eq("user_id", ctx.userId)
-      .eq("telefone_origem", ctx.fromNumber)
-      .eq("origem", "whatsapp")
-      .maybeSingle();
-    if (interacted) candidates.push(interacted);
-  }
-  return selectRecentOriginalPhoto({
-    candidates,
-    lastInteraction: interaction,
-  })?.midia_url ?? null;
+  const latest = await resolveUltimaMidia(ctx, "foto_usuario");
+  if (latest.erro) throw new Error(latest.erro);
+  return latest.midia?.midia_url ?? null;
 }
 
 async function buscarFotoRecenteParaFipe(ctx: {
@@ -15994,7 +16022,7 @@ async function resolveFipeModelsForYear(input: {
 async function identifyFipeVehicleFromPhoto(
   media: MediaExtract,
 ): Promise<{ brand: string; model: string; earliestYear?: number } | null> {
-  if (!media.base64) return null;
+  if (!media.base64 || isProtectedDocumentMedia(media)) return null;
   const imageUrl = `data:${media.mime || "image/jpeg"};base64,${media.base64}`;
   const prompt =
     'Identifique apenas como sugestão o veículo principal da foto. Responda SOMENTE JSON: {"brand":"marca","model":"modelo/geração","earliestYear":ano_inicial_no_Brasil_ou_null}. Não afirme o ano exato e não invente versão.';
@@ -16481,14 +16509,34 @@ async function toolCriarAnuncio(
       });
     }
 
+    const staleMediaPatch = staleVehicleMediaContextPatch(ctx.agentState);
+    if (Object.keys(staleMediaPatch).length && ctx.convId) {
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ??
+        await loadAgentState(sb, conversation);
+      await saveAgentState(sb, conversation, staleMediaPatch, current);
+      for (const [key, value] of Object.entries(staleMediaPatch)) {
+        (current as Record<string, unknown>)[key] = value;
+      }
+      ctx.agentState = current;
+    }
+
+    const explicitAnuncioMediaId = String(
+      (args as Record<string, unknown>)?._anuncio_media_id || "",
+    ).trim();
+    const latestCreateMedia = explicitAnuncioMediaId
+      ? await resolverMidiaBibliotecaPorId(ctx.userId, explicitAnuncioMediaId)
+      : await resolveUltimaMidia(ctx, "foto_usuario");
+    const anuncioMediaId = String(
+      explicitAnuncioMediaId || latestCreateMedia.midia?.id || "",
+    ).trim();
+
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
-    const anuncioMediaId = String(
-      vehiclePhotoAdMediaId(ctx.agentState) ||
-        ctx.agentState?.pending_single_photo?.media_id ||
-        ctx.agentState?.last_media_interaction?.media_id ||
-        "",
-    );
     const anuncioMediaRoute = getOwnerMediaRoute(
       ctx.agentState?.vertical_router,
       anuncioMediaId,
@@ -16507,12 +16555,49 @@ async function toolCriarAnuncio(
     );
     const anuncioVertical: "veiculo" | "geral" =
       effectiveVerticalScope === "veiculo" ? "veiculo" : "geral";
+    let identificationBundle = anuncioMediaId
+      ? vehicleIdentificationBundleForMedia({
+        agentState: ctx.agentState,
+        mediaId: anuncioMediaId,
+      })
+      : null;
+    if (
+      !identificationBundle &&
+      effectiveVerticalScope === "veiculo" &&
+      latestCreateMedia.midia?.midia_url
+    ) {
+      const identification = await identifyVehiclePhoto(
+        String(latestCreateMedia.midia.midia_url),
+      );
+      if (identification) {
+        identificationBundle = {
+          identification,
+          media_ids: [anuncioMediaId],
+        };
+      }
+    }
     const pendingVehicleIdentification =
-      ctx.agentState?.pending_vehicle_identification;
+      identificationBundle &&
+        ctx.agentState?.pending_vehicle_identification?.media_ids
+          ?.includes(anuncioMediaId)
+        ? ctx.agentState.pending_vehicle_identification
+        : identificationBundle
+        ? {
+          identification: identificationBundle.identification,
+          media_ids: identificationBundle.media_ids,
+          target: "single_ad" as const,
+          confirmed: identificationBundle.confirmed,
+          confirmed_title: identificationBundle.confirmed_title,
+          data: identificationBundle.data,
+          created_at: new Date().toISOString(),
+        }
+        : null;
     if (
       effectiveVerticalScope === "veiculo" &&
       pendingVehicleIdentification?.confirmed &&
-      pendingVehicleIdentification.data
+      pendingVehicleIdentification.data &&
+      (!anuncioMediaId ||
+        pendingVehicleIdentification.media_ids?.includes(anuncioMediaId))
     ) {
       for (
         const [key, value] of Object.entries(
@@ -16648,7 +16733,8 @@ async function toolCriarAnuncio(
         };
         const current = ctx.agentState ?? await loadAgentState(sb, conversation);
         const pending = {
-          args: { ...args },
+          args: bindAnuncioMediaToArgs({ ...args }, anuncioMediaId),
+          media_id: anuncioMediaId || undefined,
           created_at: new Date().toISOString(),
         };
         await saveAgentState(
@@ -16683,7 +16769,8 @@ async function toolCriarAnuncio(
         };
         const current = ctx.agentState ?? await loadAgentState(sb, conversation);
         const pending = {
-          args: { ...args },
+          args: bindAnuncioMediaToArgs({ ...args }, anuncioMediaId),
+          media_id: anuncioMediaId || undefined,
           created_at: new Date().toISOString(),
         };
         await saveAgentState(
@@ -16785,7 +16872,11 @@ async function toolCriarAnuncio(
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const pendingPhoto = {
         stage: "choice" as const,
-        args: { ...args, _foto_url_original: fotoUrl },
+        media_id: anuncioMediaId || undefined,
+        args: bindAnuncioMediaToArgs(
+          { ...args, _foto_url_original: fotoUrl },
+          anuncioMediaId,
+        ),
         created_at: new Date().toISOString(),
       };
       const saved = await saveAgentState(sb, conversation, {
@@ -17669,6 +17760,7 @@ async function runTool(
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
       preservarAmbiente: typeof args?.preservar_ambiente === "boolean" ? args.preservar_ambiente : undefined,
+      agentState: ctx.agentState,
     });
 
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
@@ -17959,6 +18051,19 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_vehicle_photo_batch!
       : null;
+    if (remetenteEhDono && toolCtx.agentState) {
+      const staleMediaPatch = staleVehicleMediaContextPatch(toolCtx.agentState);
+      if (Object.keys(staleMediaPatch).length && toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, staleMediaPatch, toolCtx.agentState);
+        for (const [key, value] of Object.entries(staleMediaPatch)) {
+          (toolCtx.agentState as Record<string, unknown>)[key] = value;
+        }
+      }
+    }
     let pendingVehicleIdentification = remetenteEhDono
       ? toolCtx.agentState?.pending_vehicle_identification
       : null;
@@ -17990,6 +18095,14 @@ async function callGemini(
       const patch: AgentConvState = {
         pending_vehicle_identification: next,
         ...(next ? { last_vehicle_photo_context: next } : {}),
+        ...(next?.media_ids?.[0]
+          ? {
+            last_media_interaction: {
+              media_id: next.media_ids[0],
+              at: next.created_at,
+            },
+          }
+          : {}),
       };
       if (next && toolCtx.agentState) {
         let routes = ownerMediaRoutesFromRouter(
@@ -18221,7 +18334,11 @@ async function callGemini(
       userContent,
     );
     if (remetenteEhDono && vehicleBrandPositionAction) {
-      const mediaId = vehicleBrandPositionAction.mediaId;
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const mediaId = String(latestPhoto.midia?.id || "");
+      if (!mediaId) {
+        return { text: vehicleInteractiveMissingPhotoReply() };
+      }
       const logo = await getTenantLogoDataUrl(sb, toolCtx.userId);
       if (!logo) {
         const pending = {
@@ -18687,9 +18804,10 @@ async function callGemini(
     const vehiclePhotoEditAction = remetenteEhDono
       ? parseVehiclePhotoEditInteractiveId(userContent)
       : null;
-    const vehiclePhotoAction = remetenteEhDono
-      ? parseVehiclePhotoActionId(userContent)
+    const vehiclePhotoInteractive = remetenteEhDono
+      ? parseVehiclePhotoActionInteractive(userContent)
       : null;
+    const vehiclePhotoAction = vehiclePhotoInteractive?.action ?? null;
     const vehiclePostFipeAction = remetenteEhDono
       ? parseVehiclePostFipeInteractiveId(userContent)
       : null;
@@ -18700,44 +18818,39 @@ async function callGemini(
         vehiclePostFipeAction,
     );
     if (remetenteEhDono && hasVehicleInteractiveAction) {
-      let context = resolveVehiclePhotoActionContext({
-        pending: pendingVehicleIdentification as VehiclePhotoActionContext | null,
-        saved: toolCtx.agentState?.last_vehicle_photo_context,
-        lastMediaId: toolCtx.agentState?.last_media_interaction?.media_id,
-        mediaRoutes: ownerMediaRoutesFromRouter(
-          toolCtx.agentState?.vertical_router,
-        ),
-      });
-      if (!context) {
-        const lastMediaId = String(
-          toolCtx.agentState?.last_media_interaction?.media_id || "",
-        ).trim();
-        const lastRoute = getOwnerMediaRoute(
-          toolCtx.agentState?.vertical_router,
-          lastMediaId,
-        );
-        if (lastMediaId && lastRoute?.route === "veiculo") {
-          const resolved = await resolverMidiaBibliotecaPorId(
-            toolCtx.userId,
-            lastMediaId,
-          );
-          const identification = resolved.midia?.midia_url
-            ? await identifyVehiclePhoto(String(resolved.midia.midia_url))
-            : null;
-          if (identification) {
-            context = {
-              identification,
-              media_ids: [lastMediaId],
-              target: "single_ad",
-              created_at: new Date().toISOString(),
-            };
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const latestPhotoId = String(latestPhoto.midia?.id || "").trim();
+      const known = latestPhotoId
+        ? vehicleIdentificationBundleForMedia({
+          agentState: toolCtx.agentState,
+          mediaId: latestPhotoId,
+        })
+        : null;
+      const identification = known?.identification ??
+        (latestPhoto.midia?.midia_url
+          ? await identifyVehiclePhoto(String(latestPhoto.midia.midia_url))
+          : null);
+      const context: VehiclePhotoActionContext | null =
+        latestPhotoId && identification
+          ? {
+            identification,
+            media_ids: [latestPhotoId],
+            target: "single_ad",
+            created_at: new Date().toISOString(),
+            confirmed: known?.confirmed,
+            confirmed_title: known?.confirmed_title,
+            data: known?.data,
           }
-        }
-      }
+          : null;
       if (!context) {
         return { text: vehicleInteractiveMissingPhotoReply() };
       }
-      if (!pendingVehicleIdentification) {
+      if (
+        !pendingVehicleIdentification ||
+        !pendingVehicleIdentification.media_ids?.includes(
+          context.media_ids[0] || "",
+        )
+      ) {
         pendingVehicleIdentification = {
           ...context,
           data: context.data as VehicleCarouselData | undefined,
@@ -18939,10 +19052,7 @@ async function callGemini(
       if (syntheticPostFipe) {
         const pendingId = pendingAfter;
         if (syntheticPostFipe === "ad") {
-          const mediaId = String(
-            pendingId.media_ids?.[0] ||
-              vehiclePhotoAdMediaId(toolCtx.agentState),
-          ).trim();
+          const mediaId = String(pendingId.media_ids?.[0] || "").trim();
           const data = pendingId?.data ?? {};
           const titulo = String(
             pendingId?.confirmed_title || data.titulo || "",
@@ -18953,15 +19063,18 @@ async function callGemini(
                 "Preciso da foto e do modelo confirmados antes de gerar a arte. Envie a foto de novo ou confirme o veículo.",
             };
           }
-          const raw = await toolCriarAnuncio({
-            titulo,
-            preco: data.preco,
-            ano: data.ano,
-            versao: data.versao,
-            quilometragem: data.quilometragem,
-            itens: data.opcionais,
-            cor: data.cor,
-          } as any, toolCtx);
+          const raw = await toolCriarAnuncio(
+            bindAnuncioMediaToArgs({
+              titulo,
+              preco: data.preco,
+              ano: data.ano,
+              versao: data.versao,
+              quilometragem: data.quilometragem,
+              itens: data.opcionais,
+              cor: data.cor,
+            }, mediaId) as any,
+            toolCtx,
+          );
           try {
             const parsed = JSON.parse(raw);
             return {
@@ -19298,6 +19411,10 @@ async function callGemini(
       };
     }
     if (remetenteEhDono && readyMediaScheduleChoice) {
+      const latestVideo = await resolveUltimaMidia(toolCtx, "video");
+      const scheduleMediaId = String(
+        latestVideo.midia?.id || readyMediaScheduleChoice.mediaId,
+      );
       if (readyMediaScheduleChoice.slot === "custom") {
         if (toolCtx.convId) {
           const current: AgentConvState = toolCtx.agentState ?? {};
@@ -19307,12 +19424,12 @@ async function callGemini(
             contactNumber: toolCtx.fromNumber,
           }, {
             pending_ready_media_schedule: {
-              media_id: readyMediaScheduleChoice.mediaId,
+              media_id: scheduleMediaId,
               created_at: new Date().toISOString(),
             },
           }, current);
           current.pending_ready_media_schedule = {
-            media_id: readyMediaScheduleChoice.mediaId,
+            media_id: scheduleMediaId,
             created_at: new Date().toISOString(),
           };
           toolCtx.agentState = current;
@@ -19330,7 +19447,7 @@ async function callGemini(
       }
       return {
         text: await scheduleReadyLegendVideo(
-          readyMediaScheduleChoice.mediaId,
+          scheduleMediaId,
           scheduledDate,
           toolCtx,
         ),
@@ -19371,19 +19488,22 @@ async function callGemini(
       readyMediaAction?.action === "edit" &&
       readyMediaAction.mediaType === "foto"
     ) {
-      const resolved = await resolverMidiaBibliotecaPorId(
-        toolCtx.userId,
-        readyMediaAction.mediaId,
-      );
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const resolved = latestPhoto.midia
+        ? { midia: latestPhoto.midia }
+        : await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          readyMediaAction.mediaId,
+        );
       if (!resolved.midia || resolved.midia.tipo !== "foto") {
         return {
           text:
             "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
         };
       }
-      await rememberLastMediaInteraction(toolCtx, readyMediaAction.mediaId);
+      await rememberLastMediaInteraction(toolCtx, resolved.midia.id);
       const pending = {
-        media_id: readyMediaAction.mediaId,
+        media_id: resolved.midia.id,
         created_at: new Date().toISOString(),
       };
       if (toolCtx.convId) {
@@ -19670,8 +19790,15 @@ async function callGemini(
         readyMediaAction.action === "brand" &&
         readyMediaAction.mediaType === "foto"
       ) {
+        const latestPhoto = await resolveUltimaMidia(
+          toolCtx,
+          "foto_usuario",
+        );
+        const brandMediaId = String(
+          latestPhoto.midia?.id || readyMediaAction.mediaId,
+        );
         const pending = {
-          media_id: readyMediaAction.mediaId,
+          media_id: brandMediaId,
           stage: "awaiting_position" as const,
           created_at: new Date().toISOString(),
         };
@@ -19687,14 +19814,21 @@ async function callGemini(
         }
         return {
           text: "",
-          interactiveList: vehicleBrandPositionList(readyMediaAction.mediaId),
+          interactiveList: vehicleBrandPositionList(brandMediaId),
         };
       }
       const isVideo = readyMediaAction.mediaType === "video";
+      const latestPublishMedia = await resolveUltimaMidia(
+        toolCtx,
+        isVideo ? "video" : "foto_conversa",
+      );
+      const readyMediaId = String(
+        latestPublishMedia.midia?.id || readyMediaAction.mediaId,
+      );
       const readyLegendVideo = isVideo
         ? await resolveReadyLegendVideo(
           toolCtx.userId,
-          readyMediaAction.mediaId,
+          readyMediaId,
         )
         : null;
       const readyRoute = readyMediaActionRoute({
@@ -19705,14 +19839,14 @@ async function callGemini(
       if (readyLegendVideo && readyRoute !== "social_variants") {
         if (readyRoute === "direct_video_publish") {
           return await publishReadyLegendVideo(
-            readyMediaAction.mediaId,
+            readyMediaId,
             toolCtx,
           );
         }
         if (readyRoute === "direct_video_schedule") {
           return {
             text: "Escolha quando publicar. Vou usar a mesma legenda.",
-            interactiveList: readyMediaScheduleList(readyMediaAction.mediaId),
+            interactiveList: readyMediaScheduleList(readyMediaId),
           };
         }
         const options = Array.isArray(readyLegendVideo.job.metadata?.opcoes)
@@ -19727,12 +19861,12 @@ async function callGemini(
         return {
           text: videoCaptionOptionsText(options),
           interactiveButtons: videoCaptionChoiceButtons(
-            readyMediaAction.mediaId,
+            readyMediaId,
           ),
         };
       }
       const postResult = await toolPostarMidiaBiblioteca({
-        midia_id: readyMediaAction.mediaId,
+        midia_id: readyMediaId,
         pedido_original: userContent,
         redes: ["facebook", "instagram"],
         formato: isVideo ? "reels" : "feed",
@@ -19977,6 +20111,9 @@ async function callGemini(
       ) {
         const menuList = vehiclePhotoDirectActionList(
           pendingVehicleIdentification.identification,
+          {
+            mediaId: pendingVehicleIdentification.media_ids?.[0],
+          },
         );
         return {
           text: menuList.body,
@@ -20165,7 +20302,9 @@ async function callGemini(
           text: ownerUncertainVisionConfirmMessage(
             storedRoute?.vision_description || "",
           ),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       const state = await startVehicleCarouselFlow(
@@ -20251,7 +20390,9 @@ async function callGemini(
             text: ownerUncertainVisionConfirmMessage(
               storedRoute?.vision_description || "",
             ),
-            interactiveButtons: ownerPhotoConfirmButtons(),
+            interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+              ? ownerAutomotivePhotoConfirmButtons()
+              : ownerPhotoConfirmButtons(),
           };
         }
         await saveAgentState(sb, conversation, {
@@ -20316,7 +20457,9 @@ async function callGemini(
           text: ownerProductVisionConfirmMessage(
             pendingSinglePhoto.vision_description || "",
           ),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       pendingSinglePhoto = null;
@@ -20370,7 +20513,9 @@ async function callGemini(
         await persistSinglePhoto(next);
         return {
           text: ownerProductVisionConfirmMessage(corrected),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
       if (ownerPhotoConfirmChoice === "confirm_product") {
@@ -20462,7 +20607,9 @@ async function callGemini(
       if (!ownerPhotoConfirmChoice) {
         return {
           text: ownerProductVisionConfirmMessage(vision),
-          interactiveButtons: ownerPhotoConfirmButtons(),
+          interactiveButtons: isAutomotiveTenant(toolCtx.verticalSegment)
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         };
       }
     }
@@ -21653,7 +21800,12 @@ async function callGemini(
           );
           if (toolCtx.agentState) toolCtx.agentState.pending_anuncio_cliente = null;
         }
-        const mergedArgs = {
+        const resumeMediaId = String(
+          pendingAnuncioCliente.media_id ||
+            pendingAnuncioCliente.args?._anuncio_media_id ||
+            "",
+        ).trim();
+        const mergedArgs = bindAnuncioMediaToArgs({
           ...pendingAnuncioCliente.args,
           ...(interactiveId === "anuncio_use_amz"
             ? {
@@ -21669,7 +21821,7 @@ async function callGemini(
               _usar_apenas_nome_cliente: true,
             }
             : {}),
-        };
+        }, resumeMediaId);
         const result = await toolCriarAnuncio(mergedArgs as any, {
           ...toolCtx,
           media: [],
@@ -22755,13 +22907,13 @@ async function callGemini(
     }
     if (imageCompositionIntent && remetenteEhDono) {
       try {
-        const pendingComposition = toolCtx.agentState?.pending_image_composition;
-        const pendingAge = pendingComposition?.at
-          ? Date.now() - new Date(pendingComposition.at).getTime()
-          : Number.POSITIVE_INFINITY;
-        const preferredMediaIds = pendingAge <= 15 * 60 * 1000
-          ? pendingComposition?.media_ids ?? []
-          : [];
+        const latestGroup = await resolveUltimaMidia(
+          toolCtx,
+          "grupo_fotos_usuario",
+        );
+        const preferredMediaIds = (latestGroup.midias ?? []).map((media) =>
+          String(media.id)
+        );
         const sources = await resolveCompositionSources(
           toolCtx.userId,
           toolCtx.fromNumber,
@@ -24325,6 +24477,7 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   convStateIdentity: ConversationStateIdentity;
   userId: string;
   userText: string;
+  interactiveId?: string | null;
   contactName: string | null;
   convId: string;
   hasInboundMedia: boolean;
@@ -24404,14 +24557,108 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   return { handled: true, preview: ownerStock.preview };
 }
 
+async function tryProcessJarvisServiceMenuShortcut(input: {
+  row: QueueRow;
+  userId: string;
+  userText: string;
+  convId: string;
+  fromIsOwner: boolean;
+  displayName: string | null;
+  hasBlockingMedia: boolean;
+  priorityFlowActive: boolean;
+  agentState: AgentConvState;
+  lastMessageAt: string | null;
+  tenantSegment: string | null;
+}): Promise<{ handled: boolean; preview?: string; sendError?: string }> {
+  const menu = await tryProcessJarvisServiceMenu({
+    sb,
+    userId: input.userId,
+    fromNumber: input.row.from_number,
+    text: input.userText,
+    messageType: input.row.message_type,
+    isOwner: input.fromIsOwner,
+    displayName: input.displayName,
+    hasBlockingMedia: input.hasBlockingMedia,
+    priorityFlowActive: input.priorityFlowActive,
+    agentState: input.agentState as Record<string, unknown>,
+    lastMessageAt: input.lastMessageAt,
+    tenantSegment: input.tenantSegment,
+    appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
+  });
+  if (!menu.handled) return { handled: false };
+  if (menu.clearedAgentState) {
+    const { error } = await sb.from("whatsapp_cloud_conversations").update({
+      agent_state: menu.clearedAgentState,
+    }).eq("id", input.convId).eq("user_id", input.userId).eq(
+      "contact_number",
+      input.row.from_number,
+    );
+    if (error) throw new Error(`jarvis_menu_pending_cleanup_failed:${error.message}`);
+  }
+
+  const { data: outMsg } = await sb.from("whatsapp_cloud_messages")
+    .insert({
+      conversation_id: input.convId,
+      user_id: input.userId,
+      direction: "outbound",
+      sender: "agent",
+      content: menu.text,
+      message_type: menu.interactiveList || menu.interactiveButtons
+        ? "interactive"
+        : "text",
+    })
+    .select("id")
+    .single();
+  try {
+    const sentId = await sendWhatsApp(
+      input.userId,
+      input.row.from_number,
+      menu.text,
+      undefined,
+      menu.interactiveList,
+      menu.interactiveButtons,
+      { alreadyLogged: true },
+    );
+    if (sentId && outMsg?.id) {
+      await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+        "id",
+        outMsg.id,
+      );
+    }
+    await sb.from("whatsapp_cloud_conversations").update({
+      last_message_at: new Date().toISOString(),
+    }).eq("id", input.convId);
+    return { handled: true, preview: menu.text.slice(0, 120) };
+  } catch (error) {
+    const sendError = String((error as Error).message ?? error);
+    await failQueue(input.row.id, `send_failed: ${sendError}`);
+    return {
+      handled: true,
+      preview: menu.text.slice(0, 120),
+      sendError,
+    };
+  }
+}
+
 async function tryProcessGestaoLucroShortcut(input: {
   row: QueueRow;
   convStateIdentity: ConversationStateIdentity;
   userId: string;
   userText: string;
+  interactiveId?: string | null;
   convId: string;
   hasInboundMedia: boolean;
 }): Promise<{ handled: boolean; preview?: string }> {
+  if (
+    isJarvisPureGreeting(
+      input.userText,
+      input.row.payload?.profile?.name ??
+        input.row.payload?.contacts?.[0]?.profile?.name ??
+        null,
+    )
+  ) {
+    return { handled: false };
+  }
   const baseState = migrateVerticalState(
     await loadAgentState(sb, input.convStateIdentity),
   ).state as AgentConvState;
@@ -24421,6 +24668,7 @@ async function tryProcessGestaoLucroShortcut(input: {
     userId: input.userId,
     fromNumber: input.row.from_number,
     userText: input.userText,
+    interactiveId: input.interactiveId,
     hasInboundMedia: input.hasInboundMedia,
     auth,
     agentState: baseState as Record<string, unknown>,
@@ -24446,7 +24694,7 @@ async function tryProcessGestaoLucroShortcut(input: {
         direction: "outbound",
         sender: "agent",
         content: gestao.reply,
-        message_type: "text",
+        message_type: gestao.interactiveButtons ? "interactive" : "text",
       })
       .select("id")
       .single();
@@ -24456,6 +24704,9 @@ async function tryProcessGestaoLucroShortcut(input: {
         input.userId,
         input.row.from_number,
         gestao.reply,
+        undefined,
+        undefined,
+        gestao.interactiveButtons,
       );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
@@ -24583,11 +24834,15 @@ async function tryProcessVehicleStockShowcase(input: {
   userId: string;
   userText: string;
   contactName: string | null;
+  interactiveId?: string | null;
   earlyInteractiveOnly: boolean;
   allowEarlyFormCapture?: boolean;
   agentStateSeed?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
-  const listId = String(input.row.payload?.interactive?.list_reply?.id ?? "");
+  if (isJarvisPureGreeting(input.userText, input.contactName)) {
+    return { handled: false };
+  }
+  const listId = input.interactiveId ?? "";
   const vitrineId = extractVitrineInteractiveId({
     userText: input.userText,
     listId,
@@ -24635,7 +24890,7 @@ async function tryProcessVehicleStockShowcase(input: {
   return { handled: result.handled, preview: result.replyPreview };
 }
 
-async function processOne(queueId: string) {
+export async function processOne(queueId: string) {
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
     .update({
@@ -24743,10 +24998,25 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    let userText = replyTextFromInteractiveId(extractText(row.payload));
+    const interactiveId = extractWhatsAppInteractiveId(row.payload);
+    let userText = replyTextFromInteractiveId(
+      extractText(row.payload, interactiveId),
+    );
+    const rawJarvisMenuInteractiveId = interactiveId ?? "";
+    const jarvisMenuFallbackText = userText;
+    if (
+      rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+    ) {
+      // Um clique do menu só pode ser interpretado no bloco B3, depois de
+      // todos os fluxos prioritários. O título não chega aos atalhos antigos.
+      userText = rawJarvisMenuInteractiveId;
+    }
     let commercialContactForOwner: any = null;
-    let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
-    const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
+    let inboundContent = jarvisMenuFallbackText ||
+      `(${row.message_type ?? "mídia"} sem legenda)`;
+    const directNearbySearch = row.message_type === "text"
+      ? detectNearbySearch(userText)
+      : null;
 
     // Captura localização compartilhada
     const loc = row.payload?.location;
@@ -24824,7 +25094,7 @@ async function processOne(queueId: string) {
 
     // DOC-0.2 — a mídia suspeita fica cifrada enquanto aguarda a decisão.
     // Somente "Não é documento" a libera para as rotas de IA abaixo.
-    const possibleAction = userText.match(
+    const possibleAction = String(interactiveId ?? "").match(
       /^cofre_possivel_(guardar|liberar):([0-9a-f-]{36})$/i,
     );
     if (possibleAction) {
@@ -24858,24 +25128,78 @@ async function processOne(queueId: string) {
                 status: "descartado",
               }).eq("id", documentoId).eq("user_id", userId);
             } else {
-              const stored = await gestaoCofreUpload({
+              const reread = await relerCrlvDocumentoCofre({
                 sb,
                 userId,
+                documentoId,
                 bytes,
                 mime: String(pendingDoc.mime || "image/jpeg"),
-                tipo: "crlv",
-                origem: "whatsapp",
-                lerCrlv: true,
               });
-              let reply =
-                "Documento mantido com segurança no cofre. Refiz a leitura.";
-              if (stored.leitura) {
-                reply += `\n${respostaCrlvWhatsApp(stored.leitura)}`;
+              let reply = CRLV_NAO_LIDO_MENSAGEM;
+              let buttons: WhatsAppInteractiveButtons | undefined;
+              if (!reread.leitura?.veiculo.placa.valor) {
+                const currentState = migrateVerticalState(
+                  await loadAgentState(sb, convStateIdentity),
+                ).state as AgentConvState;
+                await saveAgentState(sb, convStateIdentity, {
+                  pending_crlv_placa: {
+                    documento_id: documentoId,
+                    created_at: new Date().toISOString(),
+                  },
+                }, currentState);
+                reply = CRLV_PLACA_DIGITADA_PROMPT;
+                if (!reread.leitura) {
+                  console.warn("[crlv-leitura] skip", {
+                    reason: reread.leituraReason ?? "ocr_failed",
+                  });
+                }
+              } else if (reread.leitura) {
+                const leituraParcial = reread.leitura.leitura_fraca;
+                const completion = leituraParcial
+                  ? await completeCrlvWithMolicar({
+                    sb,
+                    userId,
+                    documentoId,
+                    leitura: reread.leitura,
+                  })
+                  : null;
+                const leitura = completion?.leitura ?? reread.leitura;
+                let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> =
+                  null;
+                try {
+                  linked = await autoLinkCrlvToStock(
+                    sb,
+                    userId,
+                    documentoId,
+                    leitura,
+                  );
+                } catch {
+                  console.warn("[crlv-leitura] skip", {
+                    reason: "stock_auto_link_failed",
+                  });
+                }
+                reply = respostaCrlvWhatsApp(leitura, {
+                  origens: completion?.origens,
+                  leituraParcial,
+                  completadoMolicar: completion?.completado,
+                  avisoMolicar: completion?.aviso,
+                });
+                if (linked) {
+                  reply += `\nVinculei ao ${linked.label} do estoque.`;
+                }
+                buttons = crlvWhatsappActionButtons(
+                  documentoId,
+                  linked?.id,
+                  leitura.veiculo.placa.valor,
+                );
               }
               const sentId = await sendWhatsApp(
                 userId,
                 row.from_number,
                 reply,
+                undefined,
+                undefined,
+                buttons,
               );
               await sb.from("whatsapp_cloud_messages").insert({
                 conversation_id: conv.id,
@@ -24883,11 +25207,128 @@ async function processOne(queueId: string) {
                 direction: "outbound",
                 sender: "agent",
                 content: reply,
-                message_type: "text",
+                message_type: buttons ? "interactive" : "text",
                 wamid: sentId,
               });
               await doneQueue(row.id);
-              return { ok: true, possible_document_saved: true };
+              return {
+                ok: true,
+                possible_document_saved: true,
+                crlv_read: !!reread.leitura,
+              };
+            }
+          }
+        }
+        if (action === "guardar") {
+          console.warn("[crlv-leitura] skip", {
+            reason: "cofre_download_failed",
+          });
+          const sentId = await sendWhatsApp(
+            userId,
+            row.from_number,
+            CRLV_NAO_LIDO_MENSAGEM,
+          );
+          await sb.from("whatsapp_cloud_messages").insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: CRLV_NAO_LIDO_MENSAGEM,
+            message_type: "text",
+            wamid: sentId,
+          });
+          await doneQueue(row.id);
+          return { ok: true, possible_document_saved: true, crlv_read: false };
+        }
+      }
+    }
+
+    if (row.message_type === "text" && userText.trim()) {
+      const currentState = migrateVerticalState(
+        await loadAgentState(sb, convStateIdentity),
+      ).state as AgentConvState;
+      const pending = currentState.pending_crlv_placa;
+      if (pending?.documento_id) {
+        const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+        if (
+          fromIsOwner ||
+          isGestaoAuthorizedPhone(row.from_number, gestaoAuth)
+        ) {
+          const decision = resolvePendingCrlvPlate(
+            pending,
+            stripWhatsAppInteractiveMarkers(userText),
+          );
+          await saveAgentState(sb, convStateIdentity, {
+            pending_crlv_placa: null,
+          }, currentState);
+          if (decision.status === "valid") {
+            const plate = decision.plate;
+            const { data: document } = await sb.from("gestao_documento")
+              .select("id,campos_veiculo")
+              .eq("id", decision.documentoId)
+              .eq("user_id", userId)
+              .is("deleted_at", null)
+              .maybeSingle();
+            if (document) {
+              const completion = await completeCrlvWithMolicar({
+                sb,
+                userId,
+                documentoId: decision.documentoId,
+                leitura: crlvFromTypedPlate(plate, document.campos_veiculo),
+                plateOrigin: "digitado",
+              });
+              let linked: Awaited<
+                ReturnType<typeof autoLinkCrlvToStock>
+              > = null;
+              try {
+                linked = await autoLinkCrlvToStock(
+                  sb,
+                  userId,
+                  decision.documentoId,
+                  completion.leitura,
+                );
+              } catch {
+                console.warn("[crlv-leitura] skip", {
+                  reason: "stock_auto_link_failed",
+                });
+              }
+              let reply = respostaCrlvWhatsApp(completion.leitura, {
+                origens: completion.origens,
+                leituraParcial: true,
+                completadoMolicar: completion.completado,
+                avisoMolicar: completion.aviso,
+              });
+              if (linked) {
+                reply += `\nVinculei ao ${linked.label} do estoque.`;
+              }
+              const buttons = crlvWhatsappActionButtons(
+                decision.documentoId,
+                linked?.id,
+                plate,
+              );
+              const sentId = await sendWhatsApp(
+                userId,
+                row.from_number,
+                reply,
+                undefined,
+                undefined,
+                buttons,
+              );
+              await sb.from("whatsapp_cloud_messages").insert({
+                conversation_id: conv.id,
+                user_id: userId,
+                direction: "outbound",
+                sender: "agent",
+                content: reply,
+                message_type: "interactive",
+                wamid: sentId,
+              });
+              await doneQueue(row.id);
+              return {
+                ok: true,
+                crlv_typed_plate: true,
+                crlv_read: true,
+              };
             }
           }
         }
@@ -24895,20 +25336,70 @@ async function processOne(queueId: string) {
     }
 
     // DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.
-    if (/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(userText)) {
+    if (
+      /^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i.test(
+        String(interactiveId ?? ""),
+      )
+    ) {
       const gestaoAuth = await loadGestaoAuthContext(sb, userId);
       if (fromIsOwner || isGestaoAuthorizedPhone(row.from_number, gestaoAuth)) {
-        const [, action, documentoId, veiculoId] = userText.match(
-          /^cofre_doc_(cadastrar|vincular|guardar|link):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
+        const [, action, documentoId, veiculoId] = String(
+          interactiveId ?? "",
+        ).match(
+          /^cofre_doc_(salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
         ) ?? [];
         let reply = "Documento mantido com segurança no cofre.";
         let interactiveList: WhatsAppInteractiveList | undefined;
-        if (action === "cadastrar") {
+        if (action === "salvar") {
+          const { data: document, error } = await sb.from("gestao_documento")
+            .update({ status: "confirmado" })
+            .eq("id", documentoId)
+            .eq("user_id", userId)
+            .is("deleted_at", null)
+            .select("veiculo_id")
+            .maybeSingle();
+          if (error) throw error;
+          await auditGestaoDocumento(sb, documentoId, userId, "confirmar", {
+            origem: "whatsapp",
+            vinculado: Boolean(document?.veiculo_id || veiculoId),
+          });
+          const linkedId = String(document?.veiculo_id || veiculoId || "")
+            .trim();
+          const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
+            Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
+          reply = linkedId
+            ? "CRLV confirmado e dados salvos. O documento ficou vinculado ao veículo correspondente do estoque."
+            : appUrl
+            ? `CRLV confirmado e dados salvos. Deixei a entrada de estoque preparada no painel:\n${appUrl}/gestao?aba=estoque&entrada_documento=${documentoId}`
+            : "CRLV confirmado e dados salvos. A entrada de estoque ficou preparada em Gestão → Estoque.";
+        } else if (action === "cadastrar") {
           const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
             Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
           reply = appUrl
             ? `Abra a entrada já preparada pelo documento:\n${appUrl}/gestao?aba=estoque&entrada_documento=${documentoId}`
             : "Documento guardado. Abra Gestão → Estoque → Entrada de veículo para continuar.";
+        } else if (action === "vistoria" || action === "troca") {
+          const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
+            Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
+          reply = appUrl
+            ? `A nova avaliação começa no painel:\n${appUrl}/gestao/trocas?documento_id=${documentoId}\nCaminho: Gestão › Vistoria e Troca`
+            : "A nova avaliação começa no painel. Caminho: Gestão › Vistoria e Troca.";
+        } else if (action === "desvincular" && veiculoId) {
+          const { error } = await sb.from("gestao_documento").update({
+            veiculo_id: null,
+          }).eq("id", documentoId).eq("user_id", userId).eq(
+            "veiculo_id",
+            veiculoId,
+          );
+          if (error) throw error;
+          await auditGestaoDocumento(
+            sb,
+            documentoId,
+            userId,
+            "desvincular",
+            { origem: "whatsapp" },
+          );
+          reply = "Vínculo com o veículo desfeito. O CRLV continua guardado.";
         } else if (action === "vincular") {
           const { data: vehicles } = await sb.from("veiculos_estoque")
             .select("id,marca,modelo,placa")
@@ -24935,7 +25426,7 @@ async function processOne(queueId: string) {
             .is("deleted_at", null).maybeSingle();
           if (vehicle && document) {
             const { error } = await sb.from("gestao_documento")
-              .update({ veiculo_id: veiculoId, status: "confirmado" })
+              .update({ veiculo_id: veiculoId })
               .eq("id", documentoId).eq("user_id", userId);
             if (error) throw error;
             await auditGestaoDocumento(sb, documentoId, userId, "confirmar", {
@@ -24981,7 +25472,8 @@ async function processOne(queueId: string) {
             row,
             convStateIdentity,
             userId,
-            userText,
+            userText: stripWhatsAppInteractiveMarkers(userText),
+            interactiveId,
             convId: conv.id,
             hasInboundMedia: false,
           });
@@ -25060,10 +25552,9 @@ async function processOne(queueId: string) {
           console.warn("[vitrine-crm] opt-out:", (e as Error).message);
         }
       }
-      const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
       const vitrineInteractiveEarly = extractVitrineInteractiveId({
         userText,
-        listId: vitrineListId,
+        listId: interactiveId ?? "",
         inboundPayload: row.payload,
       });
       const vitrineStateEarly = migrateVerticalState(
@@ -25085,7 +25576,8 @@ async function processOne(queueId: string) {
             row,
             convStateIdentity,
             userId,
-            userText,
+            userText: stripWhatsAppInteractiveMarkers(userText),
+            interactiveId,
             contactName,
             earlyInteractiveOnly: !!vitrineInteractiveEarly,
             allowEarlyFormCapture: vitrineEarlyCapture && !vitrineInteractiveEarly,
@@ -25108,7 +25600,7 @@ async function processOne(queueId: string) {
 
     // =====================================================================
     // OPT-IN GATE (Fase 1 — Meta oficial)
-    // Roda ANTES de qualquer fluxo do Silvester/Jarvis/AMZ.
+    // Roda ANTES de qualquer fluxo do Jarvis/AMZ.
     // Responsabilidades:
     //   1) STOP/opt-out UNIVERSAL — sempre respeita PARE/SAIR/STOP/DESCADASTRAR,
     //      independente do status atual (exigência Meta + LGPD).
@@ -25152,8 +25644,7 @@ async function processOne(queueId: string) {
           .trim();
         // Quick-reply de TEMPLATE chega como payload.button.{payload,text};
         // botão interativo (não-template) chega como interactive.button_reply.id.
-        const buttonId: string = row.payload?.interactive?.button_reply?.id ??
-          row.payload?.button?.payload ?? "";
+        const buttonId = interactiveId ?? "";
         const buttonTextNorm = String(
           row.payload?.button?.text ??
           row.payload?.interactive?.button_reply?.title ?? "",
@@ -25451,7 +25942,7 @@ async function processOne(queueId: string) {
               await doneQueue(row.id);
               return { ok: true, opt_in_gate: "recusado_convite" };
             }
-            // Se não classificou SIM/NÃO, NÃO consome — deixa o Silvester/Jarvis
+            // Se não classificou SIM/NÃO, NÃO consome — deixa o Jarvis
             // responder normalmente e mantém convite_enviado (dentro da janela).
           }
         }
@@ -25540,7 +26031,8 @@ async function processOne(queueId: string) {
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
+          interactiveId,
           convId: conv.id,
           hasInboundMedia: false,
         });
@@ -25573,7 +26065,7 @@ async function processOne(queueId: string) {
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
           contactName,
           convId: conv.id,
           hasInboundMedia: false,
@@ -25651,7 +26143,7 @@ async function processOne(queueId: string) {
     // A regra da Meta: o negócio pode responder livremente por 24h APÓS a última
     // mensagem do usuário. Qualquer inbound recém-chegado RESETA a janela — então
     // referenciamos o inbound ATUAL (row.created_at), não o anterior. O dono do
-    // agente é sempre exempto: responder pro próprio Marcelo não pode ser bloqueado.
+    // agente é sempre exempto: responder para o próprio dono não pode ser bloqueado.
     if (!fromIsOwner) {
       const currentInboundTs = (row as any).created_at ? new Date((row as any).created_at).getTime() : Date.now();
       const ageMs = Date.now() - currentInboundTs;
@@ -25776,6 +26268,7 @@ async function processOne(queueId: string) {
     const partnerChecks: Awaited<
       ReturnType<typeof verificarDocumentoNoPortao>
     >[] = [];
+    let partnerOcrProtected = false;
     if (
       !fromIsOwner &&
       ["document", "image"].includes(row.message_type ?? "") &&
@@ -25795,6 +26288,7 @@ async function processOne(queueId: string) {
             return deveBloquearDocumentoParceiro(checked);
           },
         });
+        partnerOcrProtected = osParceiroMedia.protectedDocument === true;
         if (osParceiroMedia.handled) {
           stopTypingHeartbeat();
           await doneQueue(row.id);
@@ -25815,7 +26309,9 @@ async function processOne(queueId: string) {
     // de documento jamais escape para IA externa.
     let detectedDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = partnerChecked?.documento ? partnerChecked : null;
+      | null = partnerChecked?.documento || partnerOcrProtected
+        ? partnerChecked
+        : null;
     let possibleDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
       | null = null;
@@ -25927,8 +26423,7 @@ async function processOne(queueId: string) {
           content: "[possível documento recebido sem análise externa]",
         }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
 
-        let reply =
-          "Recebi seu documento, guardei no cofre e avisei a equipe com segurança.";
+        let reply = DOCUMENTO_CLIENTE_RESPOSTA;
         let buttons: WhatsAppInteractiveButtons | undefined;
         if (senderIsGestao) {
           reply = "Parece um documento. Quer que eu guarde no cofre e tente ler?";
@@ -26019,31 +26514,77 @@ async function processOne(queueId: string) {
             (tipo === "crlv" || tipo === "crlv_e"),
         });
         if (senderIsGestao) {
-          if (stored.leitura) {
-            const summary = respostaCrlvWhatsApp(stored.leitura);
-            reply = stored.duplicate
-              ? `Esse documento já estava no cofre. Refiz a leitura.\n${summary}`
-              : summary;
-            if (stored.leitura.leitura_fraca) {
-              reply +=
-                "\nNão consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar.";
+          if (
+            (tipo === "crlv" || tipo === "crlv_e") &&
+            !stored.leitura?.veiculo.placa.valor
+          ) {
+            const currentState = migrateVerticalState(
+              await loadAgentState(sb, convStateIdentity),
+            ).state as AgentConvState;
+            await saveAgentState(sb, convStateIdentity, {
+              pending_crlv_placa: {
+                documento_id: stored.documentoId,
+                created_at: new Date().toISOString(),
+              },
+            }, currentState);
+            reply = CRLV_PLACA_DIGITADA_PROMPT;
+            if (!stored.leitura) {
+              console.warn("[crlv-leitura] skip", {
+                reason: stored.leituraReason ?? "ocr_failed",
+              });
             }
+          } else if (stored.leitura) {
+            const leituraParcial = stored.leitura.leitura_fraca;
+            const completion = leituraParcial
+              ? await completeCrlvWithMolicar({
+                sb,
+                userId,
+                documentoId: stored.documentoId,
+                leitura: stored.leitura,
+              })
+              : null;
+            const leitura = completion?.leitura ?? stored.leitura;
+            let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> = null;
+            try {
+              linked = await autoLinkCrlvToStock(
+                sb,
+                userId,
+                stored.documentoId,
+                leitura,
+              );
+            } catch {
+              console.warn("[crlv-leitura] skip", {
+                reason: "stock_auto_link_failed",
+              });
+            }
+            let summary = respostaCrlvWhatsApp(leitura, {
+              origens: completion?.origens,
+              leituraParcial,
+              completadoMolicar: completion?.completado,
+              avisoMolicar: completion?.aviso,
+            });
+            if (linked) {
+              summary += `\nVinculei ao ${linked.label} do estoque.`;
+            }
+            reply = stored.duplicate
+              ? stored.reusedSuccessfulRead
+                ? `Esse documento já estava no cofre. Reaproveitei a leitura anterior bem-sucedida.\n${summary}`
+                : `Esse documento já estava no cofre. Refiz a leitura.\n${summary}`
+              : summary;
+            buttons = crlvWhatsappActionButtons(
+              stored.documentoId,
+              linked?.id,
+              leitura.veiculo.placa.valor,
+            );
           } else if (stored.leituraErro) {
-            reply = `📄 Documento guardado com segurança.\n${stored.leituraErro}`;
+            reply = stored.leituraErro;
+            console.warn("[crlv-leitura] skip", {
+              reason: stored.leituraReason ?? "ocr_failed",
+            });
           } else {
             reply = stored.duplicate
               ? "📄 Este documento já estava guardado com segurança no cofre."
               : "📄 Documento guardado com segurança no cofre.";
-          }
-          if (tipo === "crlv" || tipo === "crlv_e") {
-            buttons = {
-              body: "O que você quer fazer com este CRLV?",
-              buttons: [
-                { id: `cofre_doc_cadastrar:${stored.documentoId}`, title: "Cadastrar veículo" },
-                { id: `cofre_doc_vincular:${stored.documentoId}`, title: "Vincular ao estoque" },
-                { id: `cofre_doc_guardar:${stored.documentoId}`, title: "Só guardar" },
-              ],
-            };
           }
         } else if (tenantOwnerPhone) {
           const ownerNotice =
@@ -26230,6 +26771,7 @@ async function processOne(queueId: string) {
             convStateIdentity,
             userId,
             userText: inboundContent,
+            interactiveId,
             contactName,
             earlyInteractiveOnly: false,
             allowEarlyFormCapture: true,
@@ -26271,7 +26813,10 @@ async function processOne(queueId: string) {
 
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
     // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
-    const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
+    const freshLibraryMedia = media.filter((m) =>
+      !isProtectedDocumentMedia(m) &&
+      (m.kind === "image" || m.kind === "video")
+    );
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
       const stateConversation = {
@@ -27058,7 +27603,9 @@ async function processOne(queueId: string) {
             ownerUncertainVisionConfirmMessage(visionDescription),
             verticalDecision,
           ),
-          buttons: ownerPhotoConfirmButtons(),
+          buttons: automotiveTenant
+            ? ownerAutomotivePhotoConfirmButtons()
+            : ownerPhotoConfirmButtons(),
         });
         await doneQueue(row.id);
         return { ok: true, vertical_confirmation: true };
@@ -27166,7 +27713,7 @@ async function processOne(queueId: string) {
             userId,
             to: row.from_number,
             text: withDemoModeLabel(automotive.text, verticalDecision),
-            buttons: ownerPhotoConfirmButtons(),
+            buttons: ownerAutomotivePhotoConfirmButtons(),
           });
         }
         await doneQueue(row.id);
@@ -27447,7 +27994,7 @@ async function processOne(queueId: string) {
                   ),
                   buttons: alreadyConfirmed
                     ? generalSpecialistPhotoButtons()
-                    : ownerPhotoConfirmButtons(),
+                    : ownerAutomotivePhotoConfirmButtons(),
                 });
               } else if (batchMediaRoute === "incerto") {
                 const description = repeatedVision ||
@@ -27460,7 +28007,7 @@ async function processOne(queueId: string) {
                     ownerUncertainVisionConfirmMessage(description),
                     verticalDecision,
                   ),
-                  buttons: ownerPhotoConfirmButtons(),
+                  buttons: ownerAutomotivePhotoConfirmButtons(),
                 });
               } else {
                 const identification = await beginVehicleIdentification(
@@ -27476,7 +28023,10 @@ async function processOne(queueId: string) {
                 const idAfterStart = vehicleFlowCtx.agentState
                   ?.pending_vehicle_identification?.identification ?? null;
                 const menuList = idAfterStart
-                  ? vehiclePhotoDirectActionList(idAfterStart, { repeated })
+                  ? vehiclePhotoDirectActionList(idAfterStart, {
+                    repeated,
+                    mediaId: singlePhoto.id,
+                  })
                   : identification.interactiveList;
                 const identificationText = menuList?.body ||
                   identification.text ||
@@ -28266,9 +28816,9 @@ async function processOne(queueId: string) {
     }
 
 
-    // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
+    // Atalho determinístico: quando cliente pede equipe/responsável ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
-    // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
+    // Encaminha direto para owner_phone do tenant.
     if (!fromIsOwner && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
       const explicitForward = isExplicitOwnerForwardIntent(userText, _tenantOwner?.name);
       const humanNeeded = isOwnerHandoffQuestion(userText);
@@ -28383,323 +28933,146 @@ async function processOne(queueId: string) {
       }
     }
 
-    // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
-    // Regra: nunca chamar tools, nunca buscar lugares, nunca postar. Só análise.
+    // PASSO 6.8 — arquivo/documento: cofre primeiro. Cliente nunca usa IA;
+    // responsável/gestor só pode enviar texto extraído localmente e mascarado.
     const docMedia = media.filter((m) => m.kind === "document");
-    const senderIsClient = !!tenantOwnerPhone && !fromIsOwner;
+    const documentGestaoAuth = docMedia.length > 0
+      ? await loadGestaoAuthContext(sb, userId)
+      : null;
+    const senderIsGestaoDocument = fromIsOwner ||
+      (!!documentGestaoAuth &&
+        isGestaoAuthorizedPhone(row.from_number, documentGestaoAuth));
+    const senderIsClient = !senderIsGestaoDocument;
 
-    // === CLIENTE mandou documento (RG/CNH/comprovante/PDF/imagem-doc) ===
-    // Silvester deve LER de verdade (vision multimodal), extrair dados
-    // estruturados, salvar no dossiê e responder de forma natural — não
-    // devolver análise técnica genérica tipo "certificado digital MP 2.200".
     if (docMedia.length > 0 && senderIsClient) {
       const doc = docMedia[0];
-      const label = doc.filename || `arquivo ${doc.mime}`;
-
-      const _agentNomeDoc = String(agent.agent_name || "assistente").trim();
-      const _consorcioDoc = /cons[oó]rcio|ademicon|carta\s+de\s+cr[eé]dito/i.test(`${(agent as any)?.persona || ""} ${(agent as any)?.knowledge_base || ""}`);
-      const _donoNomeDoc = ownerFirstName(_tenantOwner?.name) || "o responsável";
-      const clientVisionPrompt = `Você é o ${_agentNomeDoc}, pré-atendente ${_consorcioDoc ? `do consultor de consórcio ${_donoNomeDoc}` : `de ${_donoNomeDoc}`}. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
-
-{
-  "tipo": "rg" | "cnh" | "comprovante_residencia" | "comprovante_renda" | "ir" | "foto_bem" | "outro",
-  "legivel": true | false,
-  "resumo_humano": "1 frase curta pro cliente confirmando o que você viu, ex: 'Recebi sua CNH, João Silva, tudo legível'",
-  "dados": {
-    "nome_completo": "...", "cpf": "...", "rg": "...", "data_nascimento": "YYYY-MM-DD",
-    "profissao": "...", "renda_mensal": 0,
-    "endereco_logradouro": "...", "endereco_numero": "...", "endereco_bairro": "...",
-    "endereco_cidade": "...", "endereco_estado": "UF", "endereco_cep": "..."
-  }
-}
-
-Regras:
-- OMITA chaves que não aparecem no documento (não invente).
-- CPF só dígitos (11). Datas ISO YYYY-MM-DD. renda_mensal em número.
-- Se estiver borrado/ilegível: legivel=false e no resumo_humano peça pra reenviar mais nítido.
-- Se for CNH-e / QR-code de validação sem dados pessoais visíveis: legivel=false, resumo_humano="O arquivo é só o QR de validação da CNH-e — não mostra os dados. Consegue mandar uma foto da frente e verso da CNH?"
-- Devolva JSON PURO.`;
-
-      let vision: any = { tipo: "outro", legivel: false, resumo_humano: `Recebi *${label}*, mas não consegui ler.` };
       try {
-        const vr = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-          body: JSON.stringify({
-            model: MODEL_DEEP,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "text", text: clientVisionPrompt },
-                doc.mime.includes("pdf")
-                  ? { type: "file", file: { filename: label, file_data: `data:${doc.mime};base64,${doc.base64}` } }
-                  : { type: "image_url", image_url: { url: `data:${doc.mime};base64,${doc.base64}` } },
-              ],
-            }],
-          }),
+        await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: base64Decode(doc.base64),
+          mime: doc.mime,
+          tipo: "outro",
+          origem: "whatsapp",
+          filename: doc.filename,
+          lerCrlv: false,
         });
-        if (vr.ok) {
-          const vj = await vr.json();
-          const raw = vj?.choices?.[0]?.message?.content ?? "{}";
-          const cleaned = raw.replace(/```json\s*|\s*```/g, "").trim();
-          try { vision = JSON.parse(cleaned); } catch { /* keep default */ }
-        } else {
-          console.error("[processor][client-doc] vision falhou", vr.status, (await vr.text()).slice(0, 300));
-        }
-      } catch (e) {
-        console.error("[processor][client-doc] vision erro", (e as Error).message);
-      }
-
-      // Grava dossiê + documento (best-effort)
-      let dossieAtual: any = null;
-      try {
-        const { data: existing } = await sb
-          .from("silvester_dossies")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("telefone_cliente", row.from_number)
-          .maybeSingle();
-        if (existing) dossieAtual = existing;
-        else {
-          const { data: created } = await sb
-            .from("silvester_dossies")
-            .insert({ user_id: userId, telefone_cliente: row.from_number, nome_completo: vision?.dados?.nome_completo ?? null, status: "coletando" })
-            .select("*")
-            .single();
-          dossieAtual = created;
-        }
-
-        if (dossieAtual) {
-          // upload no storage (se bucket existir)
-          let storagePath: string | null = null;
-          try {
-            const ext = doc.mime.includes("pdf") ? "pdf" : doc.mime.includes("png") ? "png" : "jpg";
-            const path = `${userId}/${dossieAtual.id}/${crypto.randomUUID()}.${ext}`;
-            const bin = Uint8Array.from(atob(doc.base64), (c) => c.charCodeAt(0));
-            const { error: upErr } = await sb.storage.from("silvester-docs").upload(path, bin, { contentType: doc.mime, upsert: false });
-            if (!upErr) storagePath = path;
-          } catch (e) {
-            console.warn("[processor][client-doc] upload falhou", (e as Error).message);
-          }
-
-          await sb.from("silvester_documentos").insert({
-            dossie_id: dossieAtual.id,
-            user_id: userId,
-            tipo: vision?.tipo ?? "outro",
-            storage_path: storagePath,
-            mime_type: doc.mime,
-            ocr_texto: vision?.resumo_humano ?? null,
-            dados_extraidos: vision?.dados ?? {},
-            status_validacao: vision?.legivel === false ? "ilegivel" : "validado",
-            observacoes_ia: vision?.resumo_humano ?? null,
-            wamid: row.wamid ?? null,
-            processed_at: new Date().toISOString(),
-          });
-
-          const patch: Record<string, any> = {};
-          for (const [k, v] of Object.entries(vision?.dados ?? {})) {
-            if (v === null || v === undefined) continue;
-            if (typeof v === "string" && v.trim() === "") continue;
-            patch[k] = v;
-          }
-          if (Object.keys(patch).length > 0) {
-            await sb.from("silvester_dossies").update(patch).eq("id", dossieAtual.id);
-            // Recarrega para ter os dados atualizados em memória
-            const { data: fresh } = await sb.from("silvester_dossies").select("*").eq("id", dossieAtual.id).maybeSingle();
-            if (fresh) dossieAtual = fresh;
-          }
-        }
-      } catch (e) {
-        console.warn("[processor][client-doc] persist dossie falhou", (e as Error).message);
-      }
-
-      const primeiroNome = ownerFirstName(_tenantOwner?.name) || "o Marcelo";
-      const humano = (vision?.resumo_humano || "").trim();
-
-
-
-      const temNome = !!(dossieAtual?.nome_completo && String(dossieAtual.nome_completo).trim());
-      const temCpf = !!(dossieAtual?.cpf && String(dossieAtual.cpf).trim());
-      const temIdentidade = !!(dossieAtual?.rg || vision?.tipo === "cnh" || vision?.tipo === "rg");
-      const jaEncaminhado = dossieAtual?.status === "enviado";
-      const deveEncaminhar = !jaEncaminhado && temNome && temCpf && temIdentidade && !!tenantOwnerPhone;
-
-      let ownerForwardWamid: string | null = null;
-      if (deveEncaminhar) {
-        try {
-          const linhas: string[] = [];
-          linhas.push(`👋 Oi ${primeiroNome}, aqui é o ${String(agent.agent_name || "seu assistente").trim()}.`);
-          linhas.push(_consorcioDoc ? `Novo cliente interessado em consórcio, pré-atendimento concluído:` : `Novo contato de cliente, pré-atendimento concluído:`);
-          linhas.push("");
-          linhas.push(`👤 *Nome:* ${dossieAtual.nome_completo}`);
-          if (dossieAtual.cpf) linhas.push(`🆔 *CPF:* ${dossieAtual.cpf}`);
-          if (dossieAtual.rg) linhas.push(`📄 *RG:* ${dossieAtual.rg}`);
-          if (dossieAtual.data_nascimento) linhas.push(`🎂 *Nascimento:* ${dossieAtual.data_nascimento}`);
-          if (dossieAtual.profissao) linhas.push(`💼 *Profissão:* ${dossieAtual.profissao}`);
-          if (dossieAtual.renda_mensal) linhas.push(`💰 *Renda:* ${dossieAtual.renda_mensal}`);
-          linhas.push(`📱 *WhatsApp:* ${row.from_number}`);
-          linhas.push("");
-          linhas.push(`Documentos anexados no dossiê. Pode assumir o atendimento quando puder. 🙌`);
-          const recado = linhas.join("\n");
-          ownerForwardWamid = await sendWhatsApp(userId, tenantOwnerPhone!, recado);
-          await logOwnerHeadsup(userId, recado, ownerForwardWamid);
-          await sb.from("silvester_dossies").update({ status: "enviado" }).eq("id", dossieAtual.id);
-          // NÃO mutamos o bot (status="handoff") aqui: o cliente ainda pode
-          // agradecer/perguntar coisas simples ("obrigado", "quanto tempo?", etc.)
-          // e o Silvester precisa responder com naturalidade até o Marcelo assumir.
-          console.log(`[processor][silvester][handoff] dossiê ${dossieAtual.id} enviado para ${tenantOwnerPhone} wamid=${ownerForwardWamid}`);
-        } catch (e) {
-          console.warn("[processor][silvester][handoff] falhou:", (e as Error).message);
-        }
-      }
-
-      let reply: string;
-      let docSiteLinkAlreadySent = false;
-      if (vision?.legivel === false) {
-        reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
-      } else if (deveEncaminhar && ownerForwardWamid) {
-        const proto = buildForwardProof(ownerForwardWamid);
-        try {
-          const stPrev = await loadAgentState(sb, convStateIdentity);
-          docSiteLinkAlreadySent = stPrev.site_link_enviado === true;
-          await saveAgentState(sb, convStateIdentity, {
-            forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
-            ...(isAmzTenant && !docSiteLinkAlreadySent
-              ? { site_link_enviado: true }
-              : {}),
-          }, stPrev);
-        } catch (_e) { /* não bloqueia */ }
-        reply = isAmzTenant
-          ? `${humano ? humano + "\n\n" : ""}Prontinho! Já encaminhei seu cadastro completo para um dos nossos consultores agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`
-          : `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
-      } else if (deveEncaminhar) {
-        reply = isAmzTenant
-          ? `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar um dos nossos consultores agora mesmo para ele te retornar. 🙌`
-          : `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
-      } else {
-        const nomeVisto = vision?.dados?.nome_completo ? ` (${vision.dados.nome_completo})` : "";
-        reply = isAmzTenant
-          ? humano
-            ? `${humano} Já anexei no seu cadastro para um dos nossos consultores usar na proposta. 👍`
-            : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro para um dos nossos consultores. Obrigado!`
-          : humano
-          ? `${humano} Já anexei no seu cadastro pra ${primeiroNome} usar na proposta. 👍`
-          : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro pra ${primeiroNome}. Obrigado!`;
-      }
-      reply = finalizeAmzInboundReply({
-        text: reply,
-        isAmzTenant,
-        inboundFromOwner: false,
-        ownerName: _tenantOwner?.name,
-      });
-      reply = appendAmzSiteLinkAfterHandoff({
-        text: reply,
-        isAmzProspect: isAmzTenant,
-        handoffSucceeded: Boolean(deveEncaminhar && ownerForwardWamid),
-        siteLinkAlreadySent: docSiteLinkAlreadySent,
-      }).text;
-
-      const { data: outMsg } = await sb
-        .from("whatsapp_cloud_messages")
-        .insert({
+      } catch {
+        const failure =
+          "Recebi o documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
           conversation_id: conv.id,
           user_id: userId,
           direction: "outbound",
           sender: "agent",
-          content: reply,
+          content: failure,
           message_type: "text",
-        })
-        .select("id")
-        .single();
-
-      let sendError: string | null = null;
-      try {
-        const docReplyParts = reply.split("<<SPLIT>>")
-          .map((part) => part.trim())
-          .filter(Boolean);
-        const sentId = await sendWhatsApp(
-          userId,
-          row.from_number,
-          docReplyParts[0] ?? reply,
-        );
-        for (const part of docReplyParts.slice(1)) {
-          await sendWhatsApp(userId, row.from_number, part);
-        }
-        if (sentId && outMsg?.id) {
-          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
-        }
-      } catch (e) {
-        sendError = String((e as Error).message ?? e);
-      }
-      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
-
-      if (sendError) {
-        await failQueue(row.id, `send_failed: ${sendError}`);
-        return { ok: false, reason: "send_failed", error: sendError };
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "client_document_secure_store_failed" };
       }
 
+      await sb.from("whatsapp_cloud_messages").update({
+        content: "[documento recebido com segurança]",
+      }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+      if (tenantOwnerPhone) {
+        const ownerNotice =
+          "📄 Um cliente enviou um documento. Guardei no cofre com segurança e não enviei o conteúdo para IA externa.";
+        try {
+          const ownerWamid = await sendWhatsApp(
+            userId,
+            tenantOwnerPhone,
+            ownerNotice,
+          );
+          await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+        } catch {
+          // O documento continua protegido mesmo se o aviso falhar.
+        }
+      }
+      const sentId = await sendWhatsApp(
+        userId,
+        row.from_number,
+        DOCUMENTO_CLIENTE_RESPOSTA,
+      );
+      await sb.from("whatsapp_cloud_messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        direction: "outbound",
+        sender: "agent",
+        content: DOCUMENTO_CLIENTE_RESPOSTA,
+        message_type: "text",
+        wamid: sentId,
+      });
       await doneQueue(row.id);
-      return { ok: true, client_doc_processed: true, tipo: vision?.tipo, legivel: vision?.legivel };
+      return { ok: true, client_document_secured: true };
     }
 
     if (docMedia.length > 0) {
       const doc = docMedia[0]; // trata 1 por vez (o mais comum no WhatsApp)
-      const extracted = await extractDocumentText(doc.base64, doc.mime, doc.filename);
       const label = doc.filename || `arquivo ${doc.mime}`;
+      try {
+        await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: base64Decode(doc.base64),
+          mime: doc.mime,
+          tipo: "outro",
+          origem: "whatsapp",
+          filename: doc.filename,
+          lerCrlv: false,
+        });
+      } catch {
+        const failure =
+          "Recebi o arquivo, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: failure,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "document_secure_store_failed" };
+      }
+      await sb.from("whatsapp_cloud_messages").update({
+        content: "[arquivo guardado com segurança]",
+      }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
 
+      const extracted = await extractDocumentText(
+        doc.base64,
+        doc.mime,
+        doc.filename,
+      );
       let reply: string;
       if (!extracted.supported || !extracted.text) {
-        reply = extracted.note
-          ? `Recebi o arquivo *${label}*, mas ${extracted.note}`
-          : `Recebi *${label}*, mas não consegui ler o conteúdo. Se puder, manda em .md, .txt, .json ou .pdf com texto.`;
+        reply =
+          "📄 Arquivo guardado com segurança no cofre. Não enviei o conteúdo para IA externa.";
       } else {
         const truncNote = extracted.truncated
           ? `\n\n(Obs: o documento é grande — analisei os primeiros ~60 mil caracteres.)`
           : "";
-        const userComment = userText ? `\n\nContexto que o dono mandou junto: "${userText}"` : "";
-        const docPrompt = [
-          `O dono (Felício) te enviou um documento/projeto pelo WhatsApp para você COMENTAR.`,
-          `Sua tarefa: LEIA o conteúdo abaixo e responda como o Jarvis — assistente do Felício —`,
-          `com um comentário útil, honesto e direto: pontos fortes, riscos, o que falta, sugestões práticas.`,
-          `Formato: WhatsApp (curto, parágrafos claros, sem tabelas ASCII). Máx ~250 palavras.`,
-          `NÃO use nenhuma ferramenta (nada de busca de lugares, nada de pesquisar_web, nada de postar).`,
-          `Só análise textual do que está aqui.${userComment}`,
-          ``,
-          `NOME DO ARQUIVO: ${label}`,
-          `TIPO: ${extracted.kind}`,
-          ``,
-          `--- CONTEÚDO ---`,
-          extracted.text,
-          `--- FIM ---`,
-        ].join("\n");
-
         try {
-          const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: escolherModelo({ kind: "document" }),
-              temperature: 0.5,
-              messages: [
-                { role: "system", content: "Você é o Jarvis, assistente pessoal do Felício. Leia o documento enviado e comente com franqueza técnica e prática. Nunca invente informação. Nunca peça localização. Nunca ofereça buscar lugares." },
-                { role: "user", content: docPrompt },
-              ],
-            }),
+          const comment = await commentOnLocallyExtractedDocument({
+            audience: "gestao",
+            text: extracted.text,
+            filename: label,
+            kind: extracted.kind,
+            context: userText,
+            apiKey: LOVABLE_API_KEY,
+            model: escolherModelo({ kind: "document" }),
           });
-          if (!aiRes.ok) {
-            const t = await aiRes.text();
-            throw new Error(`gateway ${aiRes.status}: ${t.slice(0, 200)}`);
-          }
-          const aiJson = await aiRes.json();
-          const aiText = aiJson?.choices?.[0]?.message?.content?.trim();
-          reply = aiText || `Li o arquivo *${label}*, mas não consegui montar o comentário agora. Tenta reenviar em alguns segundos.`;
-          if (extracted.truncated) reply += truncNote;
-        } catch (e) {
-          console.error("[processor][document] falha modelo:", (e as Error).message);
-          reply = `Recebi e li *${label}*, mas travei ao gerar o comentário (${(e as Error).message.slice(0, 120)}). Tenta reenviar.`;
+          reply = comment.sent
+            ? `${comment.reply}${truncNote}`
+            : "📄 Arquivo guardado com segurança no cofre. Não enviei o conteúdo para IA externa.";
+        } catch {
+          console.error("[processor][document] falha ao comentar texto mascarado");
+          reply =
+            "📄 Arquivo guardado com segurança no cofre. Não consegui gerar o comentário agora.";
         }
       }
 
@@ -28750,7 +29123,14 @@ Regras:
         return { ok: false, reason: "send_failed", error: sendError };
       }
       await doneQueue(row.id);
-      return { ok: true, document_commented: true, filename: label, kind: extracted.kind, truncated: extracted.truncated };
+      return {
+        ok: true,
+        document_secured: true,
+        document_commented:
+          !reply.includes("Arquivo guardado com segurança no cofre"),
+        kind: extracted.kind,
+        truncated: extracted.truncated,
+      };
     }
 
 
@@ -28793,7 +29173,7 @@ Regras:
           console.log(`[processor][contact-memory] hit for ${row.from_number} -> ${match.nome}`);
 
           // 🔔 HEADS-UP AO DONO: contato comercial respondeu — Jarvis reporta ao Felício.
-          // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
+          // Assim, quando contatos comerciais respondem (ex: confirmando reunião),
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
             if (!fromIsOwner && userText && userText.trim().length > 0) {
@@ -28864,7 +29244,7 @@ Regras:
     let mediaBlock = media.length > 0
       ? inboundFromOwner
         ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🏷️ ANÚNCIO: se ele pedir arte/anúncio de produto (veículo, imóvel, máquina, item de loja) e passar dados (modelo, ano, km, preço, garantia), chame criar_anuncio DEPOIS de salvar, NESTA MESMA RESPOSTA — 'titulo' = modelo, 'subtitulo' = ano/câmbio, cada dado citado em 'itens' exatamente como ele escreveu, 'preco' com o valor dito. Nunca invente dado.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- ⛔ REGRA DE PUBLICAÇÃO PÓS-EDIÇÃO: se você chamou editar_imagem (ou criar_anuncio) e ele pedir pra POSTAR, a mídia a publicar é SEMPRE a versão TRATADA — chame postar_midia_biblioteca passando o midia_id retornado por aquela tool. É PROIBIDO publicar a foto original enviada por ele.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
-        : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
+        : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável. Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
     if (media.length > 0 && inboundFromOwner) {
       mediaBlock += `\n- PUBLICAÇÃO SEM ID: chame postar_midia_biblioteca sem midia_id. O sistema usará a última foto ou vídeo deste fio de conversa e informará qual mídia escolheu antes das copies.`;
@@ -28887,7 +29267,7 @@ Regras:
       if (m0 && media.length === 0) {
           recentMediaBlock = inboundFromOwner
             ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Se ele pedir pra COLOCAR/INCLUIR a LOGO ou a MARCA em algum ponto da foto (xícara, camisa, parede, carro), use OBRIGATORIAMENTE modo='aplicar_logo' — a foto dele é mantida igual e só a marca é aplicada; é PROIBIDO gerar outra foto. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
-            : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim manda pro Marcelo", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
+            : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim, manda pro responsável", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
         if (inboundFromOwner) {
           recentMediaBlock = recentMediaBlock.replace(
             /- Se o dono pedir pra POSTAR\/DIVULGAR[\s\S]*?(?=\n- 🏷️ ANÚNCIO\/ARTE:)/,
@@ -28993,75 +29373,13 @@ Regras:
     }
 
     // Bloco de identidade do RESPONSÁVEL (dono do tenant) — injeta quando quem fala é CLIENTE/CONTATO (não o dono).
-    // Sem isso, o agente não sabe quem é "Marcelo/Felício/chefe" e cai em respostas do tipo "não sei qual Marcelo".
+    // Sem isso, o agente pode não reconhecer referências ao dono/chefe configurado.
     let ownerHintBlock = "";
     const _fromNumForPrompt = String(row.from_number || "");
-    const _tenantNichoTxt = `${(agent as any)?.persona || ""} ${(agent as any)?.knowledge_base || ""} ${(agent as any)?.greeting || ""}`;
-    const _tenantConsorcio = /cons[oó]rcio|ademicon|carta\s+de\s+cr[eé]dito/i.test(_tenantNichoTxt);
     if (!inboundFromOwner && _tenantOwner?.name) {
       const nomeCompleto = _tenantOwner.name.trim();
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
       ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n\n=== REGRA DE OURO DO ENCAMINHAMENTO (NUNCA VIOLE) ===\n- Quando o cliente pedir algo que você não pode resolver (orçamento, simulação, valores, negociação) ou pedir falar com alguém da casa, chame \`encaminhar_recado_ao_dono\` IMEDIATAMENTE, SEM ANUNCIAR ANTES. Não escreva nada sobre envio antes da ferramenta rodar.\n- Só DEPOIS de a ferramenta retornar \`ok: true\`, confirme ao cliente que o recado foi enviado — e a confirmação DEVE terminar com o comprovante (protocolo) devolvido pela ferramenta.\n- É PROIBIDO dizer que encaminhou, que vai encaminhar, que passou o recado, ou que o dono/${primeiroNome} vai retornar, sem que a ferramenta tenha retornado \`ok: true\`.\n- Se a ferramenta falhar (\`ok\` diferente de true ou \`erro\`), diga ao cliente que houve um problema no envio e peça o nome e o telefone dele para retorno. NUNCA invente entrega.\n- Confirmação modelo (só com ok: true), 1 linha curta:\n   1) "Prontinho, acabei de mandar seu recado aqui pro ${primeiroNome} — assim que ele puder, te retorna. <protocolo>"\n- PROIBIDO terminar mensagem com convite ou pergunta de cortesia ("é só me chamar", "qualquer dúvida", "fico à disposição", "posso te ajudar em mais algo?"). A resposta termina no raciocínio.\n- O sistema pergunta o nome do cliente automaticamente DEPOIS do encaminhamento — você NUNCA pede o nome antes de encaminhar.\n- Se o cliente responder que quer ir adiantando com você, ATENDA NORMALMENTE. Se preferir aguardar o ${primeiroNome}, respeite e se coloque à disposição.\n- Nunca recite o texto do recado nem o telefone de ninguém.\n\n=== COLETA NATURAL DE DADOS DO CLIENTE (LEVE, SEM INSISTIR) ===\n- Logo no início da conversa, de forma leve e humanizada, pergunte UMA VEZ: nome do cliente e o que ele precisa. O telefone padrão já é o próprio WhatsApp dele (${_fromNumForPrompt}) — só peça outro se ele oferecer.\n- Se o cliente NÃO responder, **NÃO repita a pergunta, NÃO insista, NÃO trave o atendimento**. Siga ajudando normalmente com o que ele quiser falar.\n- Guarde mentalmente o que ele informar espontaneamente.\n- SEMPRE que chamar \`encaminhar_recado_ao_dono\`, inclua no topo do \`recado\`:\n    Nome: <nome informado, ou "não informado">\n    Telefone: <telefone informado pelo cliente; se não informou, use ${_fromNumForPrompt}>\n  Depois, 1-3 linhas do que o cliente quer.`;
-      if (_tenantConsorcio) {
-        ownerHintBlock += `\n\n=== PRÉ-ATENDIMENTO DE CONSÓRCIO — OFERECER UMA VEZ, RESPEITAR RESPOSTA ===\n- Quando o cliente demonstrar INTERESSE em consórcio (ex: "quero contratar", "tenho interesse", "como funciona", "quero uma proposta", "quero falar sobre consórcio"), você DEVE oferecer UMA VEZ o pré-atendimento antes de encaminhar pro ${primeiroNome}. Assim o ${primeiroNome} já recebe o cliente com tudo pronto.\n- Ofereça de forma natural, em UMA mensagem só, algo como:\n  "Que ótimo! Pra já adiantar e o ${primeiroNome} te retornar com a proposta na mão, posso te fazer umas perguntinhas rápidas e recolher uns documentos (RG/CNH, comprovante de residência e de renda)? Assim ele já monta tudo antes de te ligar. Se preferir falar direto com ele, também tudo bem — é só me avisar."\n- Se o cliente ACEITAR: colete um item por vez, com ritmo de conversa (bem/valor da carta/prazo → nome completo/CPF → RG ou CNH → comprovante de residência → comprovante de renda → IR se tiver). Cada documento/dado recebido, agradeça leve e siga pro próximo. Se ele parar de responder ou pular etapa, DEIXE PRA LÁ e siga pro handoff.\n- Se o cliente RECUSAR ou preferir falar direto: respeite, NÃO insista, e faça o handoff automático pro ${primeiroNome}.\n- Se o cliente IGNORAR a oferta e responder outra coisa: siga o rumo dele, não repita a oferta.\n- REGRA DE OURO: **oferecer o pré-atendimento é OBRIGATÓRIO uma vez em conversas com interesse em consórcio, mas insistir é PROIBIDO.**\n\n=== HANDOFF AUTOMÁTICO AO FINAL DO ATENDIMENTO (OBRIGATÓRIO) ===\n- Assim que você PERCEBER que o atendimento chegou ao fim naturalmente, chame \`encaminhar_recado_ao_dono\` AUTOMATICAMENTE — SEM esperar o cliente pedir. O ${primeiroNome} PRECISA receber o resumo de todo cliente que passou por você.\n- Sinais de que o atendimento acabou (dispare o handoff assim que UM deles ocorrer):\n  • Cliente se despediu ("valeu", "obrigado", "tá bom então", "depois eu vejo", "vou pensar", "qualquer coisa te falo", 👍/🙏).\n  • Cliente demonstrou interesse concreto E você já concluiu (ou ele recusou) o pré-atendimento — hora de passar pro ${primeiroNome}.\n  • Cliente mandou documento(s) e não continuou a conversa em ~1-2 mensagens.\n  • Você já respondeu a dúvida principal e o cliente ficou em silêncio por várias trocas / mandou só "ok".\n- **AVISE O CLIENTE** antes/depois do handoff automático: "Perfeito, vou passar tudo isso pro ${primeiroNome} agora — ele te retorna em breve com a proposta." Não é surpresa: o cliente precisa saber que o próximo contato será do ${primeiroNome}.\n- REGRA ANTI-DUPLICATA: chame \`encaminhar_recado_ao_dono\` **UMA VEZ POR ATENDIMENTO**. Se já encaminhou nesta conversa e o cliente voltou a falar depois, só encaminhe de novo se surgiu FATO NOVO relevante (novo documento, mudou de ideia, quer fechar agora, etc.).\n- O recado deve conter:\n    Nome: <nome do cliente ou "não informado">\n    Telefone: <telefone do cliente; se não informou, ${_fromNumForPrompt}>\n    Status: <"Interessado — quer proposta" | "Só tirou dúvida" | "Mandou documentos" | "Vai pensar" | resumo curto do estágio>\n    Dados coletados: <bem, valor da carta, prazo, CPF, renda, etc. — só o que foi informado>\n    Documentos recebidos: <lista, ou "nenhum">\n    Resumo (2-4 linhas): o que o cliente quer, o que você já explicou, o que ${primeiroNome} precisa fazer ao retornar.`;
-      }
-    }
-
-    // === SILVESTER DOSSIÊ — fire-and-forget ===
-    // Para conversas com CLIENTE (não-dono), dispara extração/atualização de dossiê em background.
-    // Não bloqueia a resposta ao cliente. Roda para texto E mídia.
-    const silvesterEnabled = await silvesterDossieEnabledForTenant(sb, userId);
-    if (
-      shouldFireSilvesterExtractHook({
-        inboundFromOwner,
-        tenantOwnerPhone,
-        silvesterEnabled,
-      })
-    ) {
-      try {
-        // Coleta mídias JÁ salvas (fotos/PDFs) da biblioteca dessa conversa (últimos 10min)
-        const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: recentMidias } = await sb
-          .from("midias_whatsapp")
-          .select("midia_url, tipo, created_at, telefone_origem")
-          .eq("user_id", userId)
-          .eq("telefone_origem", row.from_number)
-          .in("tipo", ["foto"])
-          .gte("created_at", cutoff)
-          .order("created_at", { ascending: false })
-          .limit(5);
-        const mediaPayload = (recentMidias ?? []).map((m: any) => ({ url: m.midia_url }));
-
-        // Coleta últimas mensagens de texto do cliente (para extração de dados)
-        const { data: recentTexts } = await sb
-          .from("whatsapp_cloud_messages")
-          .select("content, direction, created_at")
-          .eq("conversation_id", conv.id)
-          .eq("direction", "inbound")
-          .order("created_at", { ascending: false })
-          .limit(8);
-        const textoConversa = (recentTexts ?? []).reverse().map((m: any) => m.content).filter(Boolean).join("\n");
-
-        const payload = {
-          user_id: userId,
-          telefone_cliente: row.from_number,
-          nome_cliente: contactName || null,
-          owner_phone: tenantOwnerPhone,
-          media: mediaPayload,
-          texto_conversa: textoConversa,
-        };
-        // fire-and-forget
-        fetch(`${SUPABASE_URL}/functions/v1/silvester-extract-document`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${SERVICE_KEY}`,
-          },
-          body: JSON.stringify(payload),
-        }).then((r) => console.log(`[silvester-hook] fired status=${r.status}`)).catch((e) => console.warn("[silvester-hook] err", (e as Error).message));
-      } catch (e) {
-        console.warn("[silvester-hook] setup falhou:", (e as Error).message);
-      }
     }
 
     // EBOOK DE PRESENTE (multi-tenant): só entra no prompt se o tenant configurou
@@ -29296,7 +29614,8 @@ Regras:
       ? migratedAgentState.vertical_router?.last_route ?? null
       : null;
     const textVerticalDecision = resolveVertical({
-      text: audioTranscript || userText,
+      text: audioTranscript ||
+        stripWhatsAppInteractiveMarkers(userText),
       tenantSegment,
       selectedRoute: selectedVertical,
       pendingRoute: fromIsOwner
@@ -29355,6 +29674,10 @@ Regras:
         textVerticalDecision.route,
       )
       : migratedAgentState;
+    const pureMenuGreeting = isJarvisPureGreeting(
+      audioTranscript?.trim() || userText,
+      contactName,
+    );
     let verticalChoiceResolution: {
       text: string;
       buttons?: WhatsAppInteractiveButtons;
@@ -29395,6 +29718,7 @@ Regras:
       fromIsOwner &&
       automotiveOwnerAccount &&
       pendingVerticalChoice?.awaiting_correction &&
+      !pureMenuGreeting &&
       userText.trim() &&
       !/<<INTERACTIVE_ID:/i.test(userText)
     ) {
@@ -29416,7 +29740,7 @@ Regras:
       }, agentState);
       verticalChoiceResolution = {
         text: ownerUncertainVisionConfirmMessage(corrected),
-        buttons: ownerPhotoConfirmButtons(),
+        buttons: ownerAutomotivePhotoConfirmButtons(),
       };
     } else if (
       fromIsOwner &&
@@ -29525,6 +29849,7 @@ Regras:
       pendingVerticalChoice &&
       !verticalChoiceId &&
       !ownerPhotoConfirmChoice &&
+      !pureMenuGreeting &&
       !/<<INTERACTIVE_ID:/i.test(userText) &&
       userText.trim()
     ) {
@@ -29540,7 +29865,7 @@ Regras:
     let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
       handled: false,
     };
-    try {
+    if (!pureMenuGreeting) try {
       const limitValueText = audioTranscript || userText;
       const limitValueAction = resolveMetaAdsLimitValueInput({
         text: limitValueText,
@@ -29673,13 +29998,18 @@ Regras:
         };
       }
     }
-    if (!fromIsOwner && !metaAdsQuestionarioResult.handled) {
+    if (
+      !pureMenuGreeting &&
+      !fromIsOwner &&
+      !metaAdsQuestionarioResult.handled
+    ) {
       try {
         const vitrineLate = await tryProcessVehicleStockShowcase({
           row,
           convStateIdentity,
           userId,
-          userText,
+          userText: stripWhatsAppInteractiveMarkers(userText),
+          interactiveId,
           contactName,
           earlyInteractiveOnly: false,
           agentStateSeed: agentState,
@@ -29697,6 +30027,61 @@ Regras:
         console.error("[vehicle-vitrine][late]", (e as Error).message);
       }
     }
+    try {
+      const menuInputText = rawJarvisMenuInteractiveId.toLowerCase().startsWith(
+          "jarvis_menu:",
+        )
+        ? rawJarvisMenuInteractiveId
+        : audioTranscript?.trim() ||
+          stripWhatsAppInteractiveMarkers(userText);
+      const jarvisMenu = await tryProcessJarvisServiceMenuShortcut({
+        row,
+        userId,
+        userText: menuInputText,
+        convId: conv.id,
+        fromIsOwner,
+        displayName: fromIsOwner
+          ? _tenantOwner.name ?? contactName
+          : contactName,
+        hasBlockingMedia: media.some((item) => item.kind !== "audio"),
+        priorityFlowActive: !!verticalChoiceResolution ||
+          metaAdsQuestionarioResult.handled,
+        agentState,
+        lastMessageAt: existingConv?.last_message_at ?? null,
+        tenantSegment: textAutomotiveEffectiveSegment,
+      });
+      if (jarvisMenu.handled) {
+        stopTypingHeartbeat();
+        if (jarvisMenu.sendError) {
+          return {
+            ok: false,
+            reason: "send_failed",
+            error: jarvisMenu.sendError,
+          };
+        }
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          jarvis_menu: true,
+          preview: jarvisMenu.preview,
+        };
+      }
+      if (
+        rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+      ) {
+        // Flag desligada ou remetente sem acesso: o ID fica inerte e o fluxo
+        // anterior recebe apenas o rótulo humano do botão/lista.
+        userText = jarvisMenuFallbackText;
+      }
+    } catch (error) {
+      console.error("[jarvis-service-menu]", (error as Error).message);
+      if (
+        rawJarvisMenuInteractiveId.toLowerCase().startsWith("jarvis_menu:")
+      ) {
+        userText = jarvisMenuFallbackText;
+      }
+    }
+
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
     if (!persistedForward?.protocolo && !fromIsOwner) {
       const recovered = await recoverForwardProof(userId, row.from_number);
@@ -29748,7 +30133,10 @@ Regras:
       (audioTranscript
         ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
         : userText);
-    const userContent = buildUserContent(userTextComAudio, media);
+    const externalAiMedia = media.filter((item) =>
+      !isProtectedDocumentMedia(item)
+    );
+    const userContent = buildUserContent(userTextComAudio, externalAiMedia);
 
     let reply = "";
     let generatedImageUrl: string | undefined;
@@ -29777,10 +30165,10 @@ Regras:
         } catch (e) {
           console.warn("[gestao-consulta][auth]", (e as Error).message);
         }
-        const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
+        const aiResult = await callGemini(systemPromptWithDate, history, userContent, externalAiMedia.length > 0, {
           userId,
           fromNumber: row.from_number,
-          media,
+          media: externalAiMedia,
           convId: conv.id,
           agentState,
           vertical: textVerticalDecision.route,

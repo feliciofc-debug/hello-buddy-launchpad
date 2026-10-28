@@ -402,7 +402,7 @@ export default function ContatosComerciais() {
                 <Input
                   value={form.nome}
                   onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                  placeholder="Ex: Marcelo Silva"
+                  placeholder="Ex: Renata Silva"
                 />
               </div>
               <div>
@@ -428,7 +428,7 @@ export default function ContatosComerciais() {
                 <Input
                   value={form.empresa}
                   onChange={(e) => setForm({ ...form, empresa: e.target.value })}
-                  placeholder="Ex: Ademicon"
+                  placeholder="Ex: Oficina Centro"
                 />
               </div>
               <div>
@@ -453,7 +453,7 @@ export default function ContatosComerciais() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="marcelo@ademicon.com.br"
+                  placeholder="contato@oficinacentro.com.br"
                 />
               </div>
             </div>

@@ -30,6 +30,9 @@ Deno.test("FIX-VEIC-3 B4 — cancelar campanha no questionário", () => {
 
 Deno.test("FIX-VEIC-3 B2 — gerar_imagem bloqueado no fluxo foto veículo", () => {
   assert(blockGerarImagemForVehiclePhotoFlow({
-    pending_vehicle_identification: { media_ids: ["m1"] },
+    pending_vehicle_identification: {
+      media_ids: ["m1"],
+      created_at: new Date().toISOString(),
+    },
   }));
 });

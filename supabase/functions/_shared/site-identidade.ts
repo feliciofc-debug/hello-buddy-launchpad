@@ -456,7 +456,7 @@ export function segmentoDe(texto: string): string {
   if (isPremiumVehicleRetailBusiness(texto)) {
     return PREMIUM_VEHICLE_RETAIL_SEGMENT;
   }
-  // Conta quantas vezes cada segmento aparece: "consórcio" citado 10 vezes
+  // Conta quantas vezes cada segmento aparece no conteúdo analisado.
   // pesa mais do que uma menção solta a "veículo".
   let melhor = "outros";
   let maior = 0;

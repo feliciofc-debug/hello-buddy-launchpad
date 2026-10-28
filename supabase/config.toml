@@ -262,10 +262,6 @@ verify_jwt = false
 [functions.process-email-queue]
 verify_jwt = true
 
-[functions.test-multi-tenant-owner]
-verify_jwt = false
-
-
 [functions.video-transcrever-legendas]
 verify_jwt = true
 
@@ -403,6 +399,9 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.gestao-fechamento-dia]
+verify_jwt = true
+
+[functions.jarvis-cartilha-pdf]
 verify_jwt = true
 
 [functions.gestao-cofre]

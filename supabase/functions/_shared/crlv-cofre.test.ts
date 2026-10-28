@@ -22,7 +22,7 @@ CPF/CNPJ: 529.982.247-25
 `);
   const safe = safeCrlvReading(parsed);
   assertEquals(safe.proprietario.primeiro_nome, "Pessoa");
-  assertEquals(safe.proprietario.cpf_cnpj_mascarado, "***.***.247-**");
+  assertEquals(safe.proprietario.cpf_cnpj_mascarado, "***.982.247-**");
   const json = JSON.stringify(safe);
   assertEquals(json.includes("PESSOA SINTETICA COMPLETA"), false);
   assertEquals(json.includes("52998224725"), false);
@@ -99,7 +99,7 @@ Deno.test("DOC-1 — fluxo guarda arquivo cifrado antes dos metadados", async ()
     new URL("../gestao-cofre/index.ts", import.meta.url),
   );
   assertStringIncludes(endpoint, "safeCrlvReading(result.leitura)");
-  assertStringIncludes(endpoint, 'body.troca_id ?? doc.troca_id');
+  assertStringIncludes(endpoint, "body.troca_id ?? doc.troca_id");
   assertStringIncludes(endpoint, '.from("gestao_troca").update(patch)');
 });
 
@@ -107,7 +107,7 @@ Deno.test("DOC-1.2 — auditoria recebe somente métricas do OCR", async () => {
   const source = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
-  assertStringIncludes(source, 'metricasOcr ?? {}');
+  assertStringIncludes(source, "metricasOcr ?? {}");
   assertStringIncludes(source, '"ler"');
   assertEquals(
     /auditGestaoDocumento\([\s\S]{0,250}(texto|leitura\.texto)/i.test(source),

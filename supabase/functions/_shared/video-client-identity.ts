@@ -168,7 +168,7 @@ function cleanVideoClientCandidate(value: string): string | null {
     ) ||
     /^(?:\d+\s*)?(?:s|segundos?|minutos?|vertical|horizontal|quadrado|reels?|stories?|feed)$/i
       .test(name) ||
-    /^(?:consorcio|imovel|produto|servico|campanha|divulgacao)$/.test(
+    /^(?:imovel|produto|servico|campanha|divulgacao)$/.test(
       normalized,
     )
   ) {

@@ -25,8 +25,10 @@ RUN TMPDIR=/tmp mkdir -p "$HOME" \
     && python -c "from ocr_engine import preload_paddle; preload_paddle()" \
     && chmod -R a+rX "$HOME"
 
+USER nobody
+RUN python -c "import socket; socket.socket.connect = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('network disabled during model check')); from ocr_engine import preload_paddle; preload_paddle()"
+
 ENV TMPDIR=/dev/shm
 
-USER nobody
 EXPOSE 3011
 CMD ["uvicorn", "app:app", "--host", "127.0.0.1", "--port", "3011", "--no-access-log"]

@@ -11,6 +11,69 @@ function normalize(value: string): string {
     .trim();
 }
 
+const STRONG_DOCUMENT_PHRASES = [
+  ["DETRAN"],
+  ["RENAVAM"],
+  ["CHASSI"],
+  ["CERTIFICADO", "DE", "REGISTRO"],
+  ["LICENCIAMENTO"],
+  ["REPUBLICA", "FEDERATIVA"],
+  ["MINISTERIO", "DAS", "CIDADES"],
+  ["SECRETARIA", "NACIONAL", "DE", "TRANSITO"],
+  ["HABILITACAO"],
+  ["CARTEIRA", "NACIONAL"],
+  ["REGISTRO", "GERAL"],
+  ["CPF"],
+  ["DOCUMENTO", "DE", "IDENTIDADE"],
+  ["PROPRIETARIO"],
+] as const;
+
+function oneEditOrLess(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    return [...left].filter((char, index) => char !== right[index]).length <= 1;
+  }
+  let shorter = left;
+  let longer = right;
+  if (shorter.length > longer.length) [shorter, longer] = [longer, shorter];
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < shorter.length && j < longer.length) {
+    if (shorter[i] === longer[j]) {
+      i++;
+      j++;
+    } else {
+      edits++;
+      j++;
+      if (edits > 1) return false;
+    }
+  }
+  return true;
+}
+
+function hasStrongDocumentPhrase(text: string): boolean {
+  const tokens = normalize(text).match(/[A-Z0-9]+/g) ?? [];
+  return STRONG_DOCUMENT_PHRASES.some((phrase) =>
+    tokens.some((_, offset) =>
+      offset + phrase.length <= tokens.length &&
+      phrase.every((expected, index) =>
+        oneEditOrLess(tokens[offset + index], expected)
+      )
+    )
+  );
+}
+
+function hasDocumentPattern(text: string): boolean {
+  const normalized = normalize(text);
+  const digitRuns = normalized.match(/\b[\d./-]{11,18}\b/g) ?? [];
+  if (
+    digitRuns.some((raw) => [11, 14].includes(raw.replace(/\D/g, "").length))
+  ) return true;
+  return /\b[A-HJ-NPR-Z0-9]{17}\b/.test(normalized);
+}
+
 function cpfValid(value: string): boolean {
   if (!/^\d{11}$/.test(value) || /^(\d)\1{10}$/.test(value)) return false;
   const digit = (length: number) => {
@@ -88,7 +151,51 @@ export function classificarDocumentoIdentidade(
   return { documento: false, tipo: null };
 }
 
+export function classificarTextoDocumentoProtegido(
+  rawText: string,
+): { documento: boolean; tipo: DocumentoIdentidadeTipo } {
+  const identity = classificarDocumentoIdentidade(rawText);
+  if (identity.documento) return identity;
+
+  const text = normalize(rawText);
+  const formattedCpfs = text.match(/\b\d{3}[.\s]\d{3}[.\s]\d{3}[-\s]\d{2}\b/g) ??
+    [];
+  const labelledCpf = text.match(/\bCPF\b[^\d]{0,12}[\d.\s-]{11,20}/g) ?? [];
+  if (
+    [...formattedCpfs, ...labelledCpf].some((value) =>
+      cpfValid(value.replace(/\D/g, "").slice(-11))
+    )
+  ) {
+    return { documento: true, tipo: "outro" };
+  }
+
+  const rg = text.match(
+    /\b(?:RG|REGISTRO GERAL)\b[^\dX]{0,12}([0-9X][0-9X.\s-]{5,15})/,
+  )?.[1];
+  const rgDigits = rg?.replace(/[^0-9X]/g, "") ?? "";
+  if (rgDigits.length >= 7 && rgDigits.length <= 12) {
+    return { documento: true, tipo: "rg" };
+  }
+
+  const cnh = text.match(
+    /\b(?:CNH|NUMERO DA CNH|REGISTRO CNH)\b[^\d]{0,15}(\d[\d.\s-]{8,16})/,
+  )?.[1];
+  const cnhDigits = cnh?.replace(/\D/g, "") ?? "";
+  if (cnhDigits.length >= 9 && cnhDigits.length <= 12) {
+    return { documento: true, tipo: "cnh" };
+  }
+
+  if (hasStrongDocumentPhrase(text) || hasDocumentPattern(text)) {
+    return { documento: true, tipo: "outro" };
+  }
+
+  return { documento: false, tipo: null };
+}
+
 export const documentoDetectorInternals = {
   cpfValid,
   cnpjValid,
+  hasDocumentPattern,
+  hasStrongDocumentPhrase,
+  oneEditOrLess,
 };

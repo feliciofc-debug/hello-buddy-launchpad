@@ -1,5 +1,7 @@
+import { stripGestaoOpaqueTokens } from "./gestao-text-sanitize.ts";
+
 function normalizeText(text: string): string {
-  return String(text || "")
+  return stripGestaoOpaqueTokens(text)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();

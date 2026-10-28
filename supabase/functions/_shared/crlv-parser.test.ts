@@ -2,6 +2,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { respostaCrlvWhatsApp } from "./documento-portao.ts";
 import { parseCrlvText, validarRenavam } from "./crlv-parser.ts";
 
 const CRLV_E_SINTETICO = `
@@ -105,6 +106,115 @@ Deno.test("DOC-1 — campos inválidos ficam vazios", () => {
   assertEquals(result.leitura_fraca, true);
   assertEquals(validarRenavam("12345678900"), true);
   assertEquals(validarRenavam("12345678901"), false);
+});
+
+Deno.test("VEIC-WPP-1 — parser reconhece CRLV antigo em papel", () => {
+  const result = parseCrlvText(
+    `
+CERTIFICADO DE REGISTRO E LICENCIAMENTO DE VEICULO
+PLACA: LMC-5764
+RENAVAM: 12345678900
+CHASSI: 9BWZZZ377VT004251
+MARCA / MODELO: VOLKSWAGEN GOL CL 1.6
+ANO FAB / ANO MOD: 1998 1999
+COR: VERDE
+COMBUSTIVEL: GASOLINA
+ESPECIE / TIPO: PASSAGEIRO AUTOMOVEL
+CATEGORIA: PARTICULAR
+MUNICIPIO: RIO DE JANEIRO
+UF: RJ
+NOME: PESSOA SINTETICA COMPLETA
+CPF/CNPJ: 529.982.247-25
+`,
+    "ocr",
+  );
+  assertEquals(result.veiculo.placa.valor, "LMC5764");
+  assertEquals(
+    result.veiculo.marca_modelo_versao.valor,
+    "VOLKSWAGEN GOL CL 1.6",
+  );
+  assertEquals(result.veiculo.ano_fabricacao.valor, 1998);
+  assertEquals(result.veiculo.ano_modelo.valor, 1999);
+  assertEquals(result.documento.municipio.valor, "RIO DE JANEIRO");
+  assertEquals(result.documento.uf.valor, "RJ");
+  assertEquals(result.proprietario.nome.valor, "PESSOA SINTETICA COMPLETA");
+  assertEquals(result.leitura_fraca, false);
+});
+
+Deno.test("OCR-FIX-2 — parser reconhece linhas matriciais do CRLV verde antigo", () => {
+  const result = parseCrlvText(
+    `
+REPUBLICA FEDERATIVA DO BRASIL
+MINISTERIO DAS CIDADES
+DETRAN - RJ
+Nº 012345678901
+CERTIFICADO DE REGISTRO E LICENCIAMENTO DE VEICULO
+VIA COD. RENAVAN RNTRC EXERCICIO
+1 12345678900 ******** 2016
+NOME
+FULANO DE TAL SILVA / **** RES.CONTRAN No 310/09 ****
+CPF/CNPJ PLACA
+123.456.789-09 ABC1234
+PLACA ANT/UF CHASS1
+*******/** 9BWZZZ377VT004251
+ESPECIE TIPO COMBUSTIVEL
+PAS/AUTOMOVEL/NAO APLIC ALCO/GASOL
+MARCA/MODELO ANO FAB ANO MOD
+TOYOTA/COROLLA ALTISFLEX 2014 2015
+CAP/POT/CIL CATEGORIA COR PREDOMINANTE
+5 PAS/154/1987 PARTIC PRATA
+LOCAL DATA
+RIO DE JANEIRO 23/03/2016
+`,
+    "ocr",
+  );
+  assertEquals(result.veiculo.placa.valor, "ABC1234");
+  assertEquals(result.veiculo.renavam.valor, "12345678900");
+  assertEquals(result.veiculo.chassi.valor, "9BWZZZ377VT004251");
+  assertEquals(
+    result.veiculo.marca_modelo_versao.valor,
+    "TOYOTA/COROLLA ALTISFLEX",
+  );
+  assertEquals(result.veiculo.ano_fabricacao.valor, 2014);
+  assertEquals(result.veiculo.ano_modelo.valor, 2015);
+  assertEquals(result.veiculo.cor.valor, "PRATA");
+  assertEquals(result.veiculo.combustivel.valor, "flex");
+  assertEquals(
+    result.veiculo.especie_tipo.valor,
+    "PAS/AUTOMOVEL/NAO APLIC",
+  );
+  assertEquals(result.veiculo.categoria.valor, "PARTIC");
+  assertEquals(result.veiculo.potencia_cv.valor, 154);
+  assertEquals(result.veiculo.cilindrada_cc.valor, 1987);
+  assertEquals(result.documento.municipio.valor, "RIO DE JANEIRO");
+  assertEquals(result.documento.uf.valor, "RJ");
+  assertEquals(result.documento.data_emissao.valor, "2016-03-23");
+  assertEquals(result.proprietario.nome.valor, "FULANO DE TAL SILVA");
+  assertEquals(result.proprietario.cpf_cnpj.valor, "12345678909");
+  assertEquals(result.leitura_fraca, false);
+
+  const response = respostaCrlvWhatsApp(result);
+  assertStringIncludes(response, "CPF/CNPJ: ***.456.789-**");
+  assertEquals(response.includes("123.456.789-09"), false);
+});
+
+Deno.test("CRLV-FIM — aceita chassi único de 17 caracteres sem rótulo", () => {
+  const result = parseCrlvText(
+    "CERTIFICADO DE REGISTRO\n9BWZZZ377VT004251\nCOR PRATA",
+    "ocr",
+  );
+  assertEquals(result.veiculo.chassi, {
+    valor: "9BWZZZ377VT004251",
+    confianca: "baixa",
+  });
+});
+
+Deno.test("CRLV-FIM — não escolhe entre dois chassis sem rótulo", () => {
+  const result = parseCrlvText(
+    "9BWZZZ377VT004251\n8APZZZ1234T567890",
+    "ocr",
+  );
+  assertEquals(result.veiculo.chassi.valor, null);
 });
 
 Deno.test("DOC-1 — leitura e parser não importam IA externa", async () => {

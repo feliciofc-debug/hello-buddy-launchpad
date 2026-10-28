@@ -6,6 +6,7 @@ import {
   molicarProviderStatus,
   sanitizeMolicarProcedencia,
 } from "../_shared/molicar-procedencia.ts";
+import { maybeNotifyMolicarProcedenciaOwner } from "../_shared/molicar-procedencia-notify.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -34,7 +35,9 @@ Deno.serve(async (req) => {
     const db = molicarAdminClient();
     const { data: protocol, error: findError } = await db
       .from("molicar_procedencia")
-      .select("id, status")
+      .select(
+        "id, user_id, placa, solicitacao_id, notificar_whatsapp, status",
+      )
       .eq("protocolo", jobId)
       .maybeSingle();
     if (findError) throw findError;
@@ -77,6 +80,21 @@ Deno.serve(async (req) => {
       },
     );
     if (error) throw error;
+    if (
+      changed && protocol.solicitacao_id && protocol.notificar_whatsapp
+    ) {
+      try {
+        await maybeNotifyMolicarProcedenciaOwner(
+          db,
+          protocol.user_id,
+          protocol.solicitacao_id,
+        );
+      } catch {
+        console.warn("[molicar-procedencia] notify_skip", {
+          reason: "whatsapp_notify_failed",
+        });
+      }
+    }
     return molicarJson({ success: true, duplicate: !changed });
   } catch (error) {
     return molicarJson(

@@ -3,6 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  ownerAutomotivePhotoConfirmButtons,
   ownerPhotoConfirmButtons,
   ownerPhotoConfirmedProductTitle,
   ownerProductVisionConfirmMessage,
@@ -21,6 +22,13 @@ Deno.test("produto — mensagem com descrição da visão e botões", () => {
   assertEquals(
     ownerPhotoConfirmButtons().buttons.map((b) => b.title),
     ["Sim, é produto", "É um veículo", "Corrigir"],
+  );
+});
+
+Deno.test("DOC-SEG-2 — loja automotiva nunca oferece produto em foto", () => {
+  assertEquals(
+    ownerAutomotivePhotoConfirmButtons().buttons.map((button) => button.title),
+    ["É um veículo", "Corrigir"],
   );
 });
 

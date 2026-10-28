@@ -48,8 +48,8 @@ Deno.test("reconhece pedido para refazer vídeo sem tratar como criação nova",
 
 Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou formato", () => {
   assertEquals(
-    extractVideoClientName("cria um vídeo da Ademicon sobre consórcio"),
-    "Ademicon",
+    extractVideoClientName("cria um vídeo da Autovia sobre seminovos"),
+    "Autovia",
   );
   assertEquals(
     extractVideoClientName("cria um vídeo de 30 segundos para a AMZ Ofertas"),
@@ -57,9 +57,9 @@ Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou
   );
   assertEquals(
     extractVideoClientName(
-      "cria um vídeo de 45 segundos sobre consórcio de imóvel da Ademicon, formato vertical...",
+      "cria um vídeo de 45 segundos sobre seminovos da Autovia, formato vertical...",
     ),
-    "Ademicon",
+    "Autovia",
   );
   assertEquals(
     extractVideoClientName("faz um vídeo da AMZ Ofertas"),
@@ -69,7 +69,7 @@ Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou
 
 Deno.test("marca pedida igual à marca normalizada do tenant usa identidade própria", () => {
   assertEquals(isSameVideoBrandName("AMZ Ofertas", "amz ofertas"), true);
-  assertEquals(isSameVideoBrandName("Ademicon", "AMZ Ofertas"), false);
+  assertEquals(isSameVideoBrandName("Autovia", "AMZ Ofertas"), false);
   assertEquals(isSameVideoBrandName(null, "AMZ Ofertas"), false);
 });
 
@@ -97,24 +97,24 @@ Deno.test("logo manual do cliente tem prioridade sobre logo encontrada no site",
 Deno.test("vídeo do cliente usa nome pedido, logo confiável e cores automaticamente", () => {
   assertEquals(
     extractVideoClientName(
-      "Faça um vídeo institucional da Ademicon usando https://ademicon.com.br",
+      "Faça um vídeo institucional da Autovia usando https://autovia.example",
     ),
-    "Ademicon",
+    "Autovia",
   );
   assertEquals(
     resolveAutomaticVideoSiteIdentity({
-      requestedClientName: "Ademicon",
-      siteBrandName: "Ademicon Consórcio",
-      siteUrl: "https://ademicon.com.br",
+      requestedClientName: "Autovia",
+      siteBrandName: "Autovia Veículos",
+      siteUrl: "https://autovia.example",
       colors: ["#ee3124", "#ffffff", "#ee3124"],
       logoConfidence: "high",
       logoDataUrl: "data:image/png;base64,bG9nbw==",
     }),
     {
-      clientName: "Ademicon",
+      clientName: "Autovia",
       colors: ["#ee3124", "#ffffff"],
       useSiteLogo: true,
-      summary: "Ademicon — logo do site + cores #ee3124 · #ffffff",
+      summary: "Autovia — logo do site + cores #ee3124 · #ffffff",
     },
   );
 });
@@ -173,7 +173,7 @@ Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interat
   }
   assertEquals(
     canRunClientLogoRegistrationShortcut({
-      text: "Salve essa logo como logo da Ademicon",
+      text: "Salve essa logo como logo da Autovia",
       hasPendingVideoSetup: false,
     }),
     true,
@@ -187,7 +187,7 @@ Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interat
   );
   assertEquals(
     canRunClientLogoRegistrationShortcut({
-      text: "essa é a logo da Ademicon",
+      text: "essa é a logo da Autovia",
       hasPendingVideoSetup: false,
     }),
     true,

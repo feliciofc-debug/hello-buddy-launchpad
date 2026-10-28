@@ -59,6 +59,7 @@ export type GestaoFechamentoDia = {
     receber7Dias: number;
     pagarVencido: number;
     receberVencido: number;
+    contasVencidas?: number;
     despesaOperacionalHoje: number;
     repasseHoje: number;
     trocoHoje: number;
@@ -789,6 +790,9 @@ export async function buildGestaoFechamentoDia(
       receberVencido: soma((c) =>
         c.tipo === "receber" && emAberto(c) && String(c.vencimento) < dia
       ),
+      contasVencidas: contas.filter((c) =>
+        emAberto(c) && String(c.vencimento) < dia
+      ).length,
       despesaOperacionalHoje: soma((c) =>
         c.tipo === "pagar" && c.natureza === "operacional" && pagoNoDia(c)
       ),

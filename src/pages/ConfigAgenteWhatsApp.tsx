@@ -376,7 +376,7 @@ export default function ConfigAgenteWhatsApp() {
                 id="owner_name"
                 value={config.owner_name}
                 onChange={(event) => update("owner_name", event.target.value)}
-                placeholder="Ex.: Marcelo Silva"
+                placeholder="Ex.: Renata Silva"
               />
             </div>
             <div className="space-y-2">

@@ -12,12 +12,12 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
-from detector import classify_document
+from detector import classify_document, possible_document_text
 from ocr_engine import OcrMetrics, OcrResult, preload_paddle, recognize_crlv_image
 
 MAX_BYTES = 15 * 1024 * 1024
-OCR_TIMEOUT_SECONDS = 25
-OCR_INTERNAL_DEADLINE_SECONDS = 18
+OCR_TIMEOUT_SECONDS = 40
+OCR_INTERNAL_DEADLINE_SECONDS = 38
 DETECT_TIMEOUT_SECONDS = 8
 register_heif_opener()
 
@@ -100,6 +100,7 @@ def _osd_rotate(image: Image.Image) -> Image.Image | None:
             np.array(image),
             config="--psm 0",
             output_type=pytesseract.Output.DICT,
+            timeout=0.7,
         )
         angle = int(osd.get("rotate", 0)) % 360
         return image if angle == 0 else image.rotate(-angle, expand=True)
@@ -116,27 +117,56 @@ def _possible_document_background(image: Image.Image) -> bool:
     return float(np.count_nonzero(green_or_blue)) / green_or_blue.size >= 0.35
 
 
+def _detect_text(
+    image: Image.Image,
+    deadline: float,
+) -> tuple[bool, str | None, bool]:
+    if time.monotonic() >= deadline:
+        return False, None, True
+    try:
+        text = pytesseract.image_to_string(
+            _preprocess(image),
+            lang="por",
+            config="--oem 1 --psm 11",
+            timeout=max(0.1, deadline - time.monotonic()),
+        )
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():
+            return False, None, True
+        raise
+    documento, tipo = classify_document(text)
+    possivel = not documento and possible_document_text(
+        text,
+        _possible_document_background(image),
+    )
+    if not documento and not possivel and time.monotonic() >= deadline:
+        return False, None, True
+    return documento, tipo, possivel
+
+
 def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
+    deadline = time.monotonic() + DETECT_TIMEOUT_SECONDS
     image = _resize(image, 1400)
     oriented = _osd_rotate(image) or image
-    text = pytesseract.image_to_string(
-        _preprocess(oriented),
-        lang="por",
-        config="--oem 1 --psm 11",
-    )
-    documento, tipo = classify_document(text)
-    text_lines = [line for line in text.splitlines() if line.strip()]
-    possivel = (
-        not documento and
-        (
-            len(text_lines) >= 25 or
-            (
-                len(text_lines) >= 8 and
-                _possible_document_background(oriented)
-            )
-        )
-    )
-    return documento, tipo, possivel
+    result = _detect_text(oriented, deadline)
+    if result[0] or result[2]:
+        return result
+
+    # O portão privilegia sensibilidade: se a primeira passada não encontra
+    # sinal, tenta as orientações de celular e uma variante de alto contraste.
+    contrast = ImageOps.autocontrast(oriented.convert("L")).convert("RGB")
+    for candidate in (
+        oriented.rotate(90, expand=True),
+        oriented.rotate(180, expand=True),
+        oriented.rotate(270, expand=True),
+        contrast,
+    ):
+        result = _detect_text(candidate, deadline)
+        if result[0] or result[2]:
+            return result
+        if time.monotonic() >= deadline:
+            return False, None, True
+    return False, None, False
 
 
 def _ocr(
@@ -156,6 +186,7 @@ def _ocr(
         result = recognize_crlv_image(
             image,
             timeout_seconds=remaining,
+            full_document=True,
             progress_callback=(
                 (lambda partial: progress.__setitem__(slice(None), [partial]))
                 if progress is not None
@@ -173,6 +204,7 @@ def _ocr(
         variante_vencedora=winner.variante_vencedora,
         tempo_ms=round((time.monotonic() - started) * 1000),
         n_campos_validos=winner.n_campos_validos,
+        reason=winner.reason,
     )
 
 
@@ -224,7 +256,7 @@ async def ocr(
                 "text": partial[0].text,
                 "metrics": partial[0].metrics.public(),
             }
-        raise HTTPException(status_code=504, detail="OCR excedeu 25 segundos") from exc
+        raise HTTPException(status_code=504, detail="OCR excedeu 40 segundos") from exc
     except Exception as exc:
         # Não incluir conteúdo, metadados pessoais nem detalhes do decoder.
         raise HTTPException(status_code=422, detail="não foi possível ler o arquivo") from exc

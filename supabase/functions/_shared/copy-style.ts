@@ -260,7 +260,7 @@ export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyS
   }
 
 
-  // Assinatura só quando o template compartilhado da rede pede (ex: Ademicon).
+  // Assinatura só quando o template compartilhado da rede pede.
   if (style.assinar && style.assinatura) {
     const assin = `— ${style.assinatura}`;
     if (!base.includes(assin) && !base.includes(style.assinatura)) {

@@ -253,16 +253,16 @@ Deno.test("encaminhamento direto anonimiza somente o tenant AMZ", () => {
     isAmzTenant: false,
     humanNeeded: false,
     explicitForward: true,
-    ownerName: "Marcelo Silva",
+    ownerName: "Renata Silva",
     protocol: "(protocolo #ABC123 · 10:30)",
-  }), "Certo, já encaminhei para Marcelo. (protocolo #ABC123 · 10:30)");
+  }), "Certo, já encaminhei para Renata. (protocolo #ABC123 · 10:30)");
 });
 
 Deno.test("rede final de não-dono AMZ remove nome configurado e Felicio", () => {
   assertEquals(
     finalizeAmzNonOwnerText(
-      "O Felicio falou com Marcelo Silva. Vou confirmar com o Marcelo.",
-      "Marcelo Silva",
+      "O Felicio falou com Renata Silva. Vou confirmar com Renata.",
+      "Renata Silva",
     ),
     "um consultor da AMZ falou com um consultor da AMZ. Vou confirmar com um consultor da AMZ.",
   );

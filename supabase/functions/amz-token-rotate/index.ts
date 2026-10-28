@@ -12,15 +12,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
   const AMZ_PHONE_NUMBER_ID = "1136417836228337";
-  const TEST_TO = "5521964641312"; // Marcelo — número passado como destino do Teste A
+  const TEST_TO = Deno.env.get("WHATSAPP_AMZ_TEST_TO") ?? "";
 
   const token = Deno.env.get("WHATSAPP_AMZ_SYSTEM_USER_TOKEN") ?? "";
   const url = Deno.env.get("SUPABASE_URL")!;
   const srk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(url, srk);
 
-  if (!token) {
-    return new Response(JSON.stringify({ ok: false, step: "env", error: "WHATSAPP_AMZ_SYSTEM_USER_TOKEN ausente" }), {
+  if (!token || !TEST_TO) {
+    return new Response(JSON.stringify({ ok: false, step: "env", error: "Token ou destino de teste ausente" }), {
       headers: { ...cors, "Content-Type": "application/json" }, status: 200,
     });
   }

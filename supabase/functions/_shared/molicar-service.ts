@@ -6,6 +6,7 @@ import {
 import {
   molicarAccessToken,
   type MolicarCredentials,
+  MolicarHttpError,
   type MolicarToken,
   molicarVehicleQuery,
   requestMolicarToken,
@@ -15,8 +16,16 @@ import {
   normalizeMolicarIdentity,
   parseMolicarResponse,
 } from "./molicar-parser.ts";
+import { equivalentBrazilianPlates } from "./vehicle-plate.ts";
 
 type Db = SupabaseClient<any, "public", any>;
+export const MOLICAR_DAILY_LIMIT = 30;
+
+export class MolicarDailyLimitError extends Error {
+  constructor() {
+    super(`Limite diário da Molicar atingido (${MOLICAR_DAILY_LIMIT}/dia).`);
+  }
+}
 
 export type MolicarConta = {
   client_id: string;
@@ -74,7 +83,9 @@ export async function resolveMolicarConta(
   return { conta, credentials: fallback };
 }
 
-async function persistedToken(conta: MolicarConta): Promise<MolicarToken | null> {
+async function persistedToken(
+  conta: MolicarConta,
+): Promise<MolicarToken | null> {
   if (!conta.access_token_enc || !conta.token_expires_at) return null;
   try {
     return {
@@ -186,11 +197,66 @@ function publicSnapshot(row: Record<string, unknown>, cache: boolean) {
     molicar_id: row.molicar_id,
     placa: row.placa,
     vin: row.vin,
+    renavam: row.renavam,
     fipe_codigo: row.fipe_codigo,
     dados: row.dados,
     precos: row.precos,
     procedencia: row.procedencia,
+    not_found: snapshotNotFound(row),
   };
+}
+
+function saoPauloDateKey(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function saoPauloDayStartIso(now = new Date()): string {
+  return `${saoPauloDateKey(now)}T03:00:00.000Z`;
+}
+
+export function assertMolicarDailyLimit(count: number): void {
+  if (count >= MOLICAR_DAILY_LIMIT) throw new MolicarDailyLimitError();
+}
+
+async function enforceDailyLimit(db: Db, userId: string): Promise<void> {
+  const { count, error } = await db.from("molicar_consulta")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("consultado_em", saoPauloDayStartIso());
+  if (error) throw error;
+  assertMolicarDailyLimit(Number(count ?? 0));
+}
+
+function snapshotNotFound(row: Record<string, unknown>): boolean {
+  if (Number(row.http_status) === 404) return true;
+  return /RESOURCE_NOT_FOUND/i.test(JSON.stringify(row.dados ?? {}));
+}
+
+function semanticNotFound(payload: unknown): boolean {
+  return /"?(?:status|code)"?\s*:\s*"?RESOURCE_NOT_FOUND"?/i.test(
+    JSON.stringify(payload ?? {}),
+  );
+}
+
+function sameSaoPauloDay(value: unknown, now = new Date()): boolean {
+  const date = new Date(String(value ?? ""));
+  return Number.isFinite(date.getTime()) &&
+    saoPauloDateKey(date) === saoPauloDateKey(now);
+}
+
+export function isMolicarNotFoundCacheFresh(
+  row: Record<string, unknown>,
+  now = new Date(),
+): boolean {
+  return snapshotNotFound(row) && sameSaoPauloDay(row.consultado_em, now);
 }
 
 async function findCache(
@@ -200,14 +266,14 @@ async function findCache(
 ) {
   let query = db.from("molicar_consulta")
     .select(
-      "id, molicar_id, placa, vin, fipe_codigo, dados, precos, procedencia, consultado_em, origem, veiculo_id, troca_id",
+      "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem, veiculo_id, troca_id",
     )
     .eq("user_id", userId)
     .gte("consultado_em", new Date(Date.now() - 365 * 86_400_000).toISOString())
     .order("consultado_em", { ascending: false })
     .limit(1);
   query = identity.placa
-    ? query.eq("placa", identity.placa)
+    ? query.in("placa", equivalentBrazilianPlates(identity.placa))
     : query.eq("vin", identity.vin);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
@@ -234,8 +300,16 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
   force?: unknown;
 }) {
   const identity = normalizeMolicarIdentity(input);
+  const origem = ["entrada", "estoque", "troca", "refresh", "manual"].includes(
+      String(input.origem),
+    )
+    ? String(input.origem)
+    : "manual";
   const { conta, credentials } = await resolveMolicarConta(db, userId);
   const cached = await findCache(db, userId, identity);
+  if (cached && isMolicarNotFoundCacheFresh(cached)) {
+    return { ...publicSnapshot(cached, true), quota: null };
+  }
   if (
     cached && input.force !== true &&
     isMolicarPriceCacheFresh(cached, conta.atualizar_preco_dias)
@@ -265,6 +339,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     return { ...publicSnapshot(cached, true), quota: null };
   }
 
+  await enforceDailyLimit(db, userId);
   const quota = await consumeQuota(db, userId);
   let result: Awaited<ReturnType<typeof molicarVehicleQuery>>;
   try {
@@ -273,19 +348,39 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
       getToken: await molicarTokenProvider(db, userId, conta, credentials),
     });
   } catch (error) {
+    if (error instanceof MolicarHttpError && error.status === 404) {
+      const notFoundSnapshot = {
+        user_id: userId,
+        placa: identity.placa,
+        vin: identity.vin,
+        molicar_id: null,
+        veiculo_id: input.veiculo_id ? String(input.veiculo_id) : null,
+        troca_id: input.troca_id ? String(input.troca_id) : null,
+        origem,
+        http_status: 404,
+        dados: { decoder: { status: "RESOURCE_NOT_FOUND" } },
+        precos: {},
+        procedencia: null,
+        renavam: null,
+        fipe_codigo: null,
+      };
+      const { data: saved, error: saveError } = await db.from(
+        "molicar_consulta",
+      ).insert(notFoundSnapshot).select(
+        "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
+      ).single();
+      if (saveError) throw saveError;
+      return { ...publicSnapshot(saved, false), quota };
+    }
     if (shouldRefundMolicarQuota(error)) {
       await refundQuota(db, userId);
     }
     throw error;
   }
   const parsed = parseMolicarResponse(result.body);
+  const notFound = semanticNotFound(result.body);
   const placa = identity.placa ?? parsed.placa;
   const vin = identity.vin ?? parsed.vin;
-  const origem = ["entrada", "estoque", "troca", "refresh", "manual"].includes(
-      String(input.origem),
-    )
-    ? String(input.origem)
-    : "manual";
   const snapshot = {
     user_id: userId,
     placa,
@@ -295,8 +390,10 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     troca_id: input.troca_id ? String(input.troca_id) : null,
     origem,
     http_status: result.status,
-    dados: parsed.dados,
-    precos: parsed.precos,
+    dados: notFound
+      ? { ...parsed.dados, decoder: { status: "RESOURCE_NOT_FOUND" } }
+      : parsed.dados,
+    precos: notFound ? {} : parsed.precos,
     procedencia: parsed.procedencia,
     renavam: parsed.renavam,
     fipe_codigo: parsed.fipeCodigo,
@@ -305,7 +402,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     snapshot,
   )
     .select(
-      "id, molicar_id, placa, vin, fipe_codigo, dados, precos, procedencia, consultado_em, origem",
+      "id, molicar_id, placa, vin, renavam, fipe_codigo, dados, precos, procedencia, http_status, consultado_em, origem",
     )
     .single();
   if (error) throw error;

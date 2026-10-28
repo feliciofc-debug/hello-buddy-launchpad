@@ -251,7 +251,7 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
             rows={3}
             value={tema}
             onChange={(e) => setTema(e.target.value)}
-            placeholder="Sobre o que é o post? Ex: por que tanta gente confunde consórcio com financiamento"
+            placeholder="Sobre o que é o post? Ex: como escolher um seminovo com segurança"
           />
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">

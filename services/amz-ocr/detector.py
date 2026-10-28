@@ -1,4 +1,89 @@
 import re
+import unicodedata
+
+_REAL_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
+_STRONG_TERMS = (
+    ("DETRAN",),
+    ("RENAVAM",),
+    ("CHASSI",),
+    ("CERTIFICADO", "DE", "REGISTRO"),
+    ("LICENCIAMENTO",),
+    ("REPUBLICA", "FEDERATIVA"),
+    ("MINISTERIO", "DAS", "CIDADES"),
+    ("SECRETARIA", "NACIONAL", "DE", "TRANSITO"),
+    ("HABILITACAO",),
+    ("CARTEIRA", "NACIONAL"),
+    ("REGISTRO", "GERAL"),
+    ("CPF",),
+    ("DOCUMENTO", "DE", "IDENTIDADE"),
+    ("PROPRIETARIO",),
+)
+
+
+def _normalize(value: str) -> str:
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFD", str(value).upper())
+        if unicodedata.category(char) != "Mn"
+    )
+
+
+def _one_edit_or_less(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    if len(left) == len(right):
+        return sum(a != b for a, b in zip(left, right)) <= 1
+    short_index = 0
+    long_index = 0
+    edits = 0
+    while short_index < len(left) and long_index < len(right):
+        if left[short_index] == right[long_index]:
+            short_index += 1
+            long_index += 1
+            continue
+        edits += 1
+        long_index += 1
+        if edits > 1:
+            return False
+    return True
+
+
+def _has_strong_term(text: str) -> bool:
+    tokens = re.findall(r"[A-Z0-9]+", _normalize(text))
+    for phrase in _STRONG_TERMS:
+        width = len(phrase)
+        for offset in range(0, len(tokens) - width + 1):
+            if all(
+                (
+                    tokens[offset + index] == expected
+                    if len(expected) < 6
+                    else _one_edit_or_less(tokens[offset + index], expected)
+                )
+                for index, expected in enumerate(phrase)
+            ):
+                return True
+    return False
+
+
+def possible_document_text(text: str, colored_background: bool) -> bool:
+    if _has_strong_term(text) or _has_document_pattern(text):
+        return True
+
+    real_words = _REAL_WORD_RE.findall(text)
+    if len(real_words) < 3:
+        return False
+    text_lines = sum(1 for line in text.splitlines() if line.strip())
+    # CRLV antigo em matricial gera muitas linhas OCR, mas também muitas
+    # palavras reais; foto de carro pode ter dezenas de linhas de ruído com
+    # poucas palavras legíveis.
+    old_layout_rule = len(real_words) >= 15 and (
+        text_lines >= 25 or (colored_background and text_lines >= 8)
+    )
+    return old_layout_rule
 
 
 def _cpf_valid(value: str) -> bool:
@@ -35,6 +120,15 @@ def _renavam_valid(value: str) -> bool:
     remainder = (total * 10) % 11
     digit = 0 if remainder == 10 else remainder
     return digit == int(value[10])
+
+
+def _has_document_pattern(text: str) -> bool:
+    text = _normalize(text)
+    for raw in re.findall(r"\b[\d./-]{11,18}\b", text):
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) in (11, 14):
+            return True
+    return bool(re.search(r"\b[A-HJ-NPR-Z0-9]{17}\b", text))
 
 
 def _has_valid_pattern(text: str) -> bool:

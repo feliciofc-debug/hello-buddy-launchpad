@@ -11,15 +11,33 @@ const MENU_INSTRUCTION = "Escolha o que fazer com este veículo.";
 const FORBIDDEN_VISIBLE_DETAIL =
   /\b(pre[cç]o|R\$|fipe|vers[aã]o|quilometragem|\bkm\b|motor\s*\d|\d{4}\b|\b20\d{2}\b|\b19\d{2}\b)\b/i;
 
-export function vehiclePhotoActionId(action: string): string {
-  return `${VEHICLE_PHOTO_ACTION_PREFIX}${action}`;
+const VEHICLE_PHOTO_ACTION_MEDIA_RE =
+  /^([a-z]+)(?::([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?$/i;
+
+export function vehiclePhotoActionId(action: string, mediaId?: string): string {
+  const base = `${VEHICLE_PHOTO_ACTION_PREFIX}${action}`;
+  const id = String(mediaId || "").trim();
+  return id ? `${base}:${id}` : base;
 }
 
-export function parseVehiclePhotoActionId(text: string): string | null {
+export function parseVehiclePhotoActionInteractive(
+  text: string,
+): { action: string; mediaId?: string } | null {
   const match = String(text || "").match(
     /<<INTERACTIVE_ID:vehicle_photo_action:([^>]+)>>/i,
   );
-  return match?.[1]?.trim().toLowerCase() || null;
+  const raw = match?.[1]?.trim().toLowerCase();
+  if (!raw) return null;
+  const parsed = raw.match(VEHICLE_PHOTO_ACTION_MEDIA_RE);
+  if (!parsed?.[1]) return null;
+  return {
+    action: parsed[1],
+    mediaId: parsed[2]?.toLowerCase(),
+  };
+}
+
+export function parseVehiclePhotoActionId(text: string): string | null {
+  return parseVehiclePhotoActionInteractive(text)?.action ?? null;
 }
 
 function clipListBody(value: string): string {
@@ -159,8 +177,9 @@ const VEHICLE_PHOTO_DIRECT_ROWS = [
 
 export function vehiclePhotoDirectActionList(
   identification: VehicleIdentification | null,
-  options?: { repeated?: boolean },
+  options?: { repeated?: boolean; mediaId?: string },
 ) {
+  const mediaId = String(options?.mediaId || "").trim();
   return {
     body: vehiclePhotoDirectMenuBody({
       identification,
@@ -172,7 +191,13 @@ export function vehiclePhotoDirectActionList(
       VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS.has(
         row.id.replace(VEHICLE_PHOTO_ACTION_PREFIX, ""),
       )
-    ),
+    ).map((row) => {
+      const action = row.id.replace(VEHICLE_PHOTO_ACTION_PREFIX, "");
+      return {
+        ...row,
+        id: vehiclePhotoActionId(action, mediaId || undefined),
+      };
+    }),
   };
 }
 

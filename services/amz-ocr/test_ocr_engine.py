@@ -16,7 +16,8 @@ try:
         _paddle_input,
         _paddle_reader,
         _run_variants,
-        _osd_oriented,
+        _strip_cjk,
+        preload_paddle,
         preprocessing_variants,
         recognize_crlv_image,
         valid_crlv_fields,
@@ -90,14 +91,79 @@ def synthetic_old_crlv(
     "dependências OCR são instaladas na imagem Docker",
 )
 class OcrEngineTest(unittest.TestCase):
-    def test_osd_fallback_rotates_portrait_document(self) -> None:
-        portrait = np.zeros((1400, 500, 3), dtype=np.uint8)
+    def test_preload_loads_single_latin_engine(self) -> None:
         with unittest.mock.patch(
-            "ocr_engine.pytesseract.image_to_osd",
-            side_effect=RuntimeError("sem confiança"),
-        ):
-            oriented = _osd_oriented(portrait)
-        self.assertEqual(oriented.shape[:2], (500, 1400))
+            "ocr_engine._paddle_engine",
+        ) as engine:
+            preload_paddle()
+        self.assertEqual(
+            engine.call_args_list,
+            [
+                unittest.mock.call(full_document=False),
+            ],
+        )
+
+    def test_full_document_failure_uses_normal_paddle_before_tesseract(
+        self,
+    ) -> None:
+        normal_calls = 0
+        tesseract_calls = 0
+
+        def full_reader(_image: np.ndarray) -> tuple[str, float]:
+            raise RuntimeError("full engine unavailable")
+
+        def normal_reader(_image: np.ndarray) -> tuple[str, float]:
+            nonlocal normal_calls
+            normal_calls += 1
+            return (
+                "PLACA\nABC1234\nCHASS1\n9BWZZZ377VT004251",
+                0.8,
+            )
+
+        def tesseract_reader(_image: np.ndarray) -> tuple[str, float]:
+            nonlocal tesseract_calls
+            tesseract_calls += 1
+            return ("", 0.0)
+
+        result = recognize_crlv_image(
+            synthetic_old_crlv(),
+            paddle_reader=full_reader,
+            normal_paddle_reader=normal_reader,
+            tesseract_reader=tesseract_reader,
+            timeout_seconds=5,
+            full_document=True,
+        )
+        self.assertGreater(normal_calls, 0)
+        self.assertEqual(tesseract_calls, 0)
+        self.assertEqual(result.metrics.motor, "paddleocr")
+        self.assertEqual(
+            result.metrics.reason,
+            "paddle_full_indisponivel",
+        )
+        self.assertEqual(
+            valid_crlv_fields(result.text),
+            {"placa", "chassi"},
+        )
+
+    def test_old_layout_fields_accept_long_label_ocr_typos(self) -> None:
+        text = """
+        VIA COD. RENAVAN RNTRC EXERCICIO
+        1 12345678900 ******** 2016
+        CPF/CNPJ PLACA
+        123.456.789-09 ABC1234
+        PLACA ANT/UF CHASS1
+        *******/** 9BWZZZ377VT004251
+        """
+        self.assertEqual(
+            valid_crlv_fields(text),
+            {"placa", "renavam", "chassi"},
+        )
+
+    def test_removes_residual_cjk_without_losing_latin_text(self) -> None:
+        self.assertEqual(
+            _strip_cjk("車両 PLACA ABC1234 漢字 COR PRATA"),
+            " PLACA ABC1234  COR PRATA",
+        )
 
     def test_parser_selects_valid_fields_instead_of_longest_text(self) -> None:
         image = synthetic_old_crlv()
@@ -206,13 +272,12 @@ class OcrEngineTest(unittest.TestCase):
         importlib.util.find_spec("paddleocr") is not None,
         "PaddleOCR não instalado",
     )
-    def test_real_paddle_reads_rotated_noisy_green_crlv(self) -> None:
+    def test_real_latin_paddle_reads_noisy_green_crlv_without_rotation(self) -> None:
         os.environ["AMZ_OCR_CPU_THREADS"] = "2"
-        landscape = synthetic_old_crlv(rotation=0, jpeg_quality=58).resize(
+        image = synthetic_old_crlv(rotation=0, jpeg_quality=58).resize(
             (1400, 500),
             Image.Resampling.LANCZOS,
         )
-        image = landscape.transpose(Image.Transpose.ROTATE_270)
         started = time.monotonic()
         result = recognize_crlv_image(image, timeout_seconds=18)
         elapsed = time.monotonic() - started
@@ -223,7 +288,7 @@ class OcrEngineTest(unittest.TestCase):
         self.assertLess(elapsed, 12)
         print(
             "OCR_SYNTHETIC_METRICS "
-            "threads=2 size=500x1400 rotation=90 "
+            "threads=2 size=1400x500 rotation=0 "
             f"motor={result.metrics.motor} "
             f"variant={result.metrics.variante_vencedora} "
             f"elapsed_ms={round(elapsed * 1000)}"

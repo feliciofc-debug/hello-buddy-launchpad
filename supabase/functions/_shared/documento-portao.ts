@@ -1,6 +1,7 @@
-import { safeCrlvReading } from "./crlv-cofre.ts";
+import { maskOwnerDocument } from "./crlv-cofre.ts";
 import { detectarDocumentoLocal } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
+import type { CrlvFieldOrigins } from "./crlv-whatsapp.ts";
 import { decodeBase64Cofre } from "./gestao-cofre-crypto.ts";
 import type { MediaExtract } from "./whatsapp-media.ts";
 import { extractDocumentText } from "./document-extract.ts";
@@ -17,8 +18,6 @@ export type DocumentoPortaoResultado = {
 export function deveBloquearDocumentoParceiro(
   resultado: Pick<DocumentoPortaoResultado, "documento" | "possivel_documento">,
 ): boolean {
-  // Com cotação ativa, mídia apenas suspeita ainda precisa chegar ao fluxo de
-  // orçamento. Somente um documento oficialmente reconhecido fica bloqueado.
   return resultado.documento;
 }
 
@@ -26,6 +25,19 @@ export function isDocumentoGateCandidate(media: MediaExtract): boolean {
   return media.kind === "image" ||
     (media.kind === "document" &&
       (media.mime === "application/pdf" || media.mime.startsWith("image/")));
+}
+
+export function markProtectedDocumentMedia<T extends MediaExtract>(
+  media: T,
+): T {
+  media.protected_document = true;
+  return media;
+}
+
+export function isProtectedDocumentMedia(
+  media: MediaExtract | null | undefined,
+): boolean {
+  return media?.protected_document === true;
 }
 
 export async function verificarDocumentoNoPortao(
@@ -45,10 +57,12 @@ export async function verificarDocumentoNoPortao(
         media.filename,
       );
       if (extracted.text.trim()) {
+        const classification = classificarDocumentoIdentidade(extracted.text);
+        if (classification.documento) markProtectedDocumentMedia(media);
         return {
           media,
           bytes,
-          ...classificarDocumentoIdentidade(extracted.text),
+          ...classification,
           possivel_documento: false,
         };
       }
@@ -57,6 +71,9 @@ export async function verificarDocumentoNoPortao(
     }
   }
   const result = await detector(bytes, media.mime);
+  if (result.documento || result.possivel_documento) {
+    markProtectedDocumentMedia(media);
+  }
   return { media, bytes, ...result };
 }
 
@@ -69,41 +86,72 @@ export function tipoDocumentoCofre(
   return "outro";
 }
 
-function ending(value: unknown, length: number): string {
-  const clean = String(value ?? "").replace(/\W/g, "");
-  return clean ? clean.slice(-length) : "não lido";
-}
-
-export function respostaCrlvWhatsApp(parser: CrlvParserResultado): string {
-  const safe = safeCrlvReading(parser);
+export function respostaCrlvWhatsApp(
+  parser: CrlvParserResultado,
+  options: {
+    origens?: CrlvFieldOrigins;
+    leituraParcial?: boolean;
+    completadoMolicar?: boolean;
+    avisoMolicar?: string | null;
+  } = {},
+): string {
   const vehicle = parser.veiculo;
-  const model = vehicle.marca_modelo_versao.valor || "veículo não identificado";
-  const year = vehicle.ano_modelo.valor || vehicle.ano_fabricacao.valor ||
-    "ano não lido";
-  const owner = safe.proprietario.primeiro_nome || "não identificado";
-  const ownerDocument = safe.proprietario.cpf_cnpj_mascarado
-    ? ` (${safe.proprietario.cpf_cnpj_mascarado})`
-    : "";
+  const read = (value: unknown) =>
+    value == null || String(value).trim() === "" ? "não lido" : String(value);
+  const withOrigin = (
+    value: unknown,
+    section: keyof CrlvFieldOrigins,
+    field: string,
+  ) => {
+    const rendered = read(value);
+    const origin = options.origens?.[section]?.[field];
+    return rendered === "não lido" || !origin
+      ? rendered
+      : `${rendered} (origem: ${origin})`;
+  };
+  const ownerDocument = maskOwnerDocument(
+    parser.proprietario.cpf_cnpj.valor,
+  ) ?? "não lido";
+  const plate = read(vehicle.placa.valor);
+  const typedPlate = options.origens?.veiculo?.placa === "digitado";
+  const header = options.leituraParcial
+    ? options.completadoMolicar
+      ? typedPlate
+        ? `✅ Usei a placa ${plate} digitada e completei pela Molicar:`
+        : `✅ Li a placa ${plate} no documento e completei pela Molicar:`
+      : typedPlate
+      ? `✅ Usei a placa ${plate} digitada.`
+      : `✅ Li a placa ${plate} no documento.`
+    : "✅ CRLV lido";
   const lines = [
-    `📄 Li o documento: ${
-      vehicle.placa.valor || "placa não lida"
-    } · ${model} · ${year} · chassi final ${
-      ending(vehicle.chassi.valor, 4)
-    } · renavam final ${ending(vehicle.renavam.valor, 3)}.`,
-    `Proprietário: ${owner}${ownerDocument}.`,
+    header,
+    `Placa: ${withOrigin(vehicle.placa.valor, "veiculo", "placa")}`,
+    `Renavam: ${withOrigin(vehicle.renavam.valor, "veiculo", "renavam")}`,
+    `Chassi: ${withOrigin(vehicle.chassi.valor, "veiculo", "chassi")}`,
+    `Marca/modelo/versão: ${
+      withOrigin(
+        vehicle.marca_modelo_versao.valor,
+        "veiculo",
+        "marca_modelo_versao",
+      )
+    }`,
+    `Ano fabricação/modelo: ${
+      withOrigin(vehicle.ano_fabricacao.valor, "veiculo", "ano_fabricacao")
+    }/${withOrigin(vehicle.ano_modelo.valor, "veiculo", "ano_modelo")}`,
+    `Cor: ${withOrigin(vehicle.cor.valor, "veiculo", "cor")}`,
+    `Combustível: ${
+      withOrigin(vehicle.combustivel.valor, "veiculo", "combustivel")
+    }`,
+    `Categoria: ${withOrigin(vehicle.categoria.valor, "veiculo", "categoria")}`,
+    `Município/UF: ${
+      withOrigin(parser.documento.municipio.valor, "documento", "municipio")
+    }/${withOrigin(parser.documento.uf.valor, "documento", "uf")}`,
+    `Proprietário: ${
+      withOrigin(parser.proprietario.nome.valor, "proprietario", "nome")
+    }`,
+    `CPF/CNPJ: ${withOrigin(ownerDocument, "proprietario", "cpf_cnpj")}`,
+    ...(options.avisoMolicar ? [`⚠️ ${options.avisoMolicar}`] : []),
   ];
-  if (parser.observacoes.alienacao_fiduciaria.valor) {
-    lines.push(
-      `⚠️ Alienação fiduciária${
-        parser.observacoes.financeira.valor
-          ? `: ${parser.observacoes.financeira.valor}`
-          : ""
-      }`,
-    );
-  }
-  for (const restriction of parser.observacoes.restricoes.valor ?? []) {
-    lines.push(`⚠️ Restrição: ${restriction}`);
-  }
   return lines.join("\n");
 }
 

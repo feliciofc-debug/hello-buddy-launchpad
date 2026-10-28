@@ -27,7 +27,7 @@ async function ocrLocal(
       "X-OCR-Token": token,
     },
     body: new Uint8Array(bytes),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(45_000),
   });
   if (!response.ok) {
     throw new Error(`OCR local indisponível (${response.status})`);
@@ -42,11 +42,28 @@ async function ocrLocal(
   };
 }
 
+export async function extrairTextoOcrLocal(
+  bytes: Uint8Array,
+  mime: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (!bytes.byteLength || bytes.byteLength > MAX_BYTES) {
+    throw new Error("Documento deve ter até 15 MB");
+  }
+  const result = await ocrLocal(
+    bytes,
+    String(mime || "application/octet-stream").toLowerCase(),
+    fetchImpl,
+  );
+  return result.texto;
+}
+
 export type CrlvOcrMetricas = {
   motor: "paddleocr" | "tesseract";
   variante_vencedora: string;
   tempo_ms: number;
   n_campos_validos: number;
+  reason?: "paddle_full_indisponivel";
 };
 
 const OCR_VARIANTS = new Set([
@@ -67,7 +84,7 @@ function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
     ? raw.motor
     : null;
   const variante = String(raw.variante_vencedora ?? "");
-  const tempo = Math.max(0, Math.min(25_000, Math.round(Number(raw.tempo_ms))));
+  const tempo = Math.max(0, Math.min(40_000, Math.round(Number(raw.tempo_ms))));
   const fields = Math.max(
     0,
     Math.min(3, Math.round(Number(raw.n_campos_validos))),
@@ -81,6 +98,9 @@ function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
     variante_vencedora: variante,
     tempo_ms: tempo,
     n_campos_validos: fields,
+    ...(raw.reason === "paddle_full_indisponivel"
+      ? { reason: raw.reason }
+      : {}),
   };
 }
 

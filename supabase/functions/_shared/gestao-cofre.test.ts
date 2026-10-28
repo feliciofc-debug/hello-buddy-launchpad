@@ -56,7 +56,7 @@ Deno.test("SEG-DOC — SHA-256 é estável para detectar duplicado", async () =>
   assertEquals(a.length, 64);
 });
 
-Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () => {
+Deno.test("VEIC-WPP-2 — repetido relê falha e reaproveita somente sucesso", async () => {
   const upload = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
@@ -64,7 +64,9 @@ Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () 
     new URL("../gestao-cofre/index.ts", import.meta.url),
   );
   const duplicateFlow = upload.slice(upload.indexOf("if (duplicate)"));
-  assertStringIncludes(duplicateFlow, "await readCrlv(input)");
+  assertStringIncludes(duplicateFlow, "previousSuccessfulReading(");
+  assertStringIncludes(duplicateFlow, ": await readCrlv(input)");
+  assertStringIncludes(duplicateFlow, "reusedSuccessfulRead");
   assertStringIncludes(duplicateFlow, "veiculo_id");
   assertStringIncludes(duplicateFlow, "troca_id");
   assertStringIncludes(duplicateFlow, "reaproveitado: true");
@@ -72,15 +74,17 @@ Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () 
   assertStringIncludes(endpoint, "reaproveitado: result.duplicate");
 });
 
-Deno.test("DOC-1.2d — OCR indisponível produz leitura fraca para conferência", async () => {
+Deno.test("ESTAB-1/VEIC-WPP-1 — OCR indisponível mantém o CRLV guardado sem leitura fictícia", async () => {
   const upload = await Deno.readTextFile(
     new URL("./gestao-cofre-upload.ts", import.meta.url),
   );
-  assertStringIncludes(upload, 'parseCrlvText("", "ocr")');
+  assertEquals(upload.includes('parseCrlvText("", "ocr")'), false);
   assertStringIncludes(
     upload,
-    "Não consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar",
+    "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
   );
+  assertStringIncludes(upload, 'leituraReason: crlvFailureReason(error)');
+  assertStringIncludes(upload, '"ocr_timeout"');
 });
 
 Deno.test("SEG-DOC — migração garante duplicado, RLS e auditoria append-only", async () => {

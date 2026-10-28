@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   classificarDocumentoIdentidade,
+  classificarTextoDocumentoProtegido,
   documentoDetectorInternals,
 } from "./documento-detector.ts";
 
@@ -77,4 +78,33 @@ Deno.test("DOC-0.1 — CPF e CNPJ só são padrões quando o DV é válido", () 
     ),
     { documento: false, tipo: null },
   );
+});
+
+Deno.test("DOC-SEG-2 — OCR protege palavras fortes e identificadores mesmo degradados", () => {
+  for (
+    const [text, tipo] of [
+      ["CPF 529.982.247-25", "outro"],
+      ["RG 12.345.678-9", "rg"],
+      ["CNH 01234567890", "cnh"],
+    ] as const
+  ) {
+    assertEquals(classificarTextoDocumentoProtegido(text), {
+      documento: true,
+      tipo,
+    });
+  }
+  for (const text of [
+    "DETRAM",
+    "RENAVAN",
+    "CHASS1",
+    "PROPRIETAR1O",
+    "ORCAMENTO CNPJ 04.252.011/0001-10 TOTAL R$ 3.800,00",
+    "9BWZZZ377VT004251",
+  ]) {
+    assertEquals(
+      classificarTextoDocumentoProtegido(text).documento,
+      true,
+      text,
+    );
+  }
 });

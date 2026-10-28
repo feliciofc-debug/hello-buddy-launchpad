@@ -96,7 +96,7 @@ export default function RecadosResponsavel() {
             <div>
               <h1 className="text-2xl font-bold">Recados enviados ao {ownerName || "Responsável"}</h1>
               <p className="text-sm text-muted-foreground">
-                Todos os recados que o Silvester encaminhou pelo WhatsApp{" "}
+                Todos os recados que o Jarvis encaminhou pelo WhatsApp{" "}
                 {ownerPhone && <span className="font-mono">({ownerPhone})</span>}
               </p>
             </div>
@@ -111,7 +111,7 @@ export default function RecadosResponsavel() {
             <AlertCircle className="h-8 w-8 mx-auto mb-2 text-amber-500" />
             <p className="font-medium">Nenhum responsável configurado</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure o telefone do responsável em Configurações do Agente WhatsApp para que o Silvester encaminhe recados automaticamente.
+              Configure o telefone do responsável em Configurações do Agente WhatsApp para que o Jarvis encaminhe recados automaticamente.
             </p>
             <Button className="mt-4" onClick={() => navigate("/config-agente-whatsapp")}>
               Configurar agora

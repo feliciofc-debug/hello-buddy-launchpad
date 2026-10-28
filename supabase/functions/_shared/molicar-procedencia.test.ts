@@ -180,3 +180,34 @@ Deno.test("MOLICAR-2 registra API key do webhook no formato oficial", async () =
   assert(source.includes('HeaderName: "X-Molicar-Webhook-Key"'));
   assert(source.includes("HeaderValue: apiKey"));
 });
+
+Deno.test("VEIC-WPP-1 — polling e webhook notificam o dono após resultado terminal", async () => {
+  const poll = await Deno.readTextFile(
+    new URL("../molicar-procedencia-poll/index.ts", import.meta.url),
+  );
+  const webhook = await Deno.readTextFile(
+    new URL("../molicar-procedencia-webhook/index.ts", import.meta.url),
+  );
+  for (const source of [poll, webhook]) {
+    assert(source.includes("maybeNotifyMolicarProcedenciaOwner"));
+    assert(source.includes("whatsapp_notify_failed"));
+  }
+  const endpoint = await Deno.readTextFile(
+    new URL("../molicar-procedencia/index.ts", import.meta.url),
+  );
+  assert(endpoint.includes("runMolicarProcedenciaQuery"));
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../migrations/20261032310000_molicar_whatsapp_notifications.sql",
+      import.meta.url,
+    ),
+  );
+  for (
+    const field of [
+      "solicitacao_id",
+      "canal",
+      "notificar_whatsapp",
+      "whatsapp_notificado_em",
+    ]
+  ) assert(migration.includes(field));
+});
