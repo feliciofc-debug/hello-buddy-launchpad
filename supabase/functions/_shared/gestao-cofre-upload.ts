@@ -377,7 +377,7 @@ export async function gestaoCofreUpload(
       input.sb,
       String(duplicate.id),
       input.userId,
-      previous ? "reaproveitar_leitura" : reread.leitura ? "ler" : "ler_falha",
+      reread.leitura ? "ler" : "ler_falha",
       {
         ...(reread.metricasOcr ?? {}),
         ...(reread.leituraReason ? { reason: reread.leituraReason } : {}),
