@@ -944,7 +944,22 @@ async function chamarGatewayImagem(
 
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+type ProcessorSupabaseClient = ReturnType<typeof createClient>;
+
+let sb = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+/** AUDIT-BOTOES: troca isolada da dependência para executar processOne real. */
+export function setProcessOneSupabaseForTest(
+  client: ProcessorSupabaseClient,
+): () => void {
+  const previous = sb;
+  sb = client;
+  return () => {
+    sb = previous;
+  };
+}
 
 type QueueRow = {
   id: string;
@@ -24917,7 +24932,7 @@ async function tryProcessVehicleStockShowcase(input: {
   return { handled: result.handled, preview: result.replyPreview };
 }
 
-async function processOne(queueId: string) {
+export async function processOne(queueId: string) {
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
     .update({
@@ -30398,7 +30413,7 @@ async function processOne(queueId: string) {
   }
 }
 
-Deno.serve(async (req) => {
+if (import.meta.main) Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
