@@ -23,6 +23,7 @@ RUN TMPDIR=/tmp pip install --no-cache-dir --retries 5 --timeout 120 -r requirem
 COPY app.py detector.py ocr_engine.py test_detector.py test_ocr_engine.py ./
 RUN TMPDIR=/tmp mkdir -p "$HOME" \
     && python -c "from ocr_engine import preload_paddle; preload_paddle()" \
+    && python -c "import socket; socket.socket.connect = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('network disabled during model check')); from ocr_engine import preload_paddle; preload_paddle()" \
     && chmod -R a+rX "$HOME"
 
 ENV TMPDIR=/dev/shm

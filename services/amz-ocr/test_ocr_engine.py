@@ -17,6 +17,7 @@ try:
         _paddle_reader,
         _run_variants,
         _osd_oriented,
+        preload_paddle,
         preprocessing_variants,
         recognize_crlv_image,
         valid_crlv_fields,
@@ -90,6 +91,75 @@ def synthetic_old_crlv(
     "dependências OCR são instaladas na imagem Docker",
 )
 class OcrEngineTest(unittest.TestCase):
+    def test_preload_loads_normal_and_full_document_engines(self) -> None:
+        with unittest.mock.patch(
+            "ocr_engine._paddle_engine",
+        ) as engine:
+            preload_paddle()
+        self.assertEqual(
+            engine.call_args_list,
+            [
+                unittest.mock.call(full_document=False),
+                unittest.mock.call(full_document=True),
+            ],
+        )
+
+    def test_full_document_failure_uses_normal_paddle_before_tesseract(
+        self,
+    ) -> None:
+        normal_calls = 0
+        tesseract_calls = 0
+
+        def full_reader(_image: np.ndarray) -> tuple[str, float]:
+            raise RuntimeError("full engine unavailable")
+
+        def normal_reader(_image: np.ndarray) -> tuple[str, float]:
+            nonlocal normal_calls
+            normal_calls += 1
+            return (
+                "PLACA\nABC1234\nCHASS1\n9BWZZZ377VT004251",
+                0.8,
+            )
+
+        def tesseract_reader(_image: np.ndarray) -> tuple[str, float]:
+            nonlocal tesseract_calls
+            tesseract_calls += 1
+            return ("", 0.0)
+
+        result = recognize_crlv_image(
+            synthetic_old_crlv(),
+            paddle_reader=full_reader,
+            normal_paddle_reader=normal_reader,
+            tesseract_reader=tesseract_reader,
+            timeout_seconds=5,
+            full_document=True,
+        )
+        self.assertGreater(normal_calls, 0)
+        self.assertEqual(tesseract_calls, 0)
+        self.assertEqual(result.metrics.motor, "paddleocr")
+        self.assertEqual(
+            result.metrics.reason,
+            "paddle_full_indisponivel",
+        )
+        self.assertEqual(
+            valid_crlv_fields(result.text),
+            {"placa", "chassi"},
+        )
+
+    def test_old_layout_fields_accept_long_label_ocr_typos(self) -> None:
+        text = """
+        VIA COD. RENAVAN RNTRC EXERCICIO
+        1 12345678900 ******** 2016
+        CPF/CNPJ PLACA
+        123.456.789-09 ABC1234
+        PLACA ANT/UF CHASS1
+        *******/** 9BWZZZ377VT004251
+        """
+        self.assertEqual(
+            valid_crlv_fields(text),
+            {"placa", "renavam", "chassi"},
+        )
+
     def test_osd_fallback_rotates_portrait_document(self) -> None:
         portrait = np.zeros((1400, 500, 3), dtype=np.uint8)
         with unittest.mock.patch(

@@ -27,7 +27,7 @@ async function ocrLocal(
       "X-OCR-Token": token,
     },
     body: new Uint8Array(bytes),
-    signal: AbortSignal.timeout(40_000),
+    signal: AbortSignal.timeout(45_000),
   });
   if (!response.ok) {
     throw new Error(`OCR local indisponível (${response.status})`);
@@ -63,6 +63,7 @@ export type CrlvOcrMetricas = {
   variante_vencedora: string;
   tempo_ms: number;
   n_campos_validos: number;
+  reason?: "paddle_full_indisponivel";
 };
 
 const OCR_VARIANTS = new Set([
@@ -97,6 +98,9 @@ function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
     variante_vencedora: variante,
     tempo_ms: tempo,
     n_campos_validos: fields,
+    ...(raw.reason === "paddle_full_indisponivel"
+      ? { reason: raw.reason }
+      : {}),
   };
 }
 

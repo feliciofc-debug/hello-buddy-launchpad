@@ -63,6 +63,92 @@ function normalize(raw: string): string {
     .trim();
 }
 
+function legacyRow(text: string, header: RegExp): string | null {
+  const match = text.match(
+    new RegExp(`(?:^|\\n)${header.source}\\s*\\n([^\\n]+)`, "i"),
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function augmentLegacyLayout(text: string): string {
+  const extracted: string[] = [];
+  const identity = legacyRow(
+    text,
+    /(?:VIA\s+)?COD\.?\s+RENAVA(?:M|N)\s+RNTRC\s+EXERCICIO/,
+  );
+  const renavam = identity?.match(/\b\d{11}\b/)?.[0];
+  const exercicio = identity?.match(/\b(?:19|20)\d{2}\b/)?.[0];
+  if (renavam) extracted.push(`RENAVAM: ${renavam}`);
+  if (exercicio) extracted.push(`EXERCICIO: ${exercicio}`);
+
+  const ownerPlate = legacyRow(text, /CPF\/CNPJ\s+PLACA/);
+  const cpfCnpj = ownerPlate?.match(
+    /\b(?:\d{3}[.\s-]?){3}\d{2}\b|\b\d{2}[.\s-]?\d{3}[.\s-]?\d{3}[\/\s-]?\d{4}-?\d{2}\b/,
+  )?.[0];
+  const plate = ownerPlate?.match(/\b[A-Z]{3}-?\d{4}\b/)?.[0];
+  if (cpfCnpj) extracted.push(`CPF/CNPJ: ${cpfCnpj}`);
+  if (plate) extracted.push(`PLACA: ${plate}`);
+
+  const plateChassis = legacyRow(
+    text,
+    /PLACA\s+ANT(?:ERIOR)?\/UF\s+CHASS(?:I|1)/,
+  );
+  const chassis = plateChassis?.match(/\b[A-HJ-NPR-Z0-9]{17}\b/)?.[0];
+  if (chassis) extracted.push(`CHASSI: ${chassis}`);
+
+  const speciesFuel = legacyRow(text, /ESPECIE\s+TIPO\s+COMBUSTIVEL/);
+  const fuel = speciesFuel?.match(
+    /(?:ALCO(?:OL)?|ETANOL)(?:\s*\/\s*GASOL(?:INA)?)?|GASOL(?:INA)?|DIESEL|FLEX|GNV|ELETRIC[OA]?|HIBRID[OA]?$/i,
+  )?.[0];
+  if (speciesFuel && fuel) {
+    const species = speciesFuel.slice(0, speciesFuel.lastIndexOf(fuel)).trim();
+    if (species) extracted.push(`ESPECIE/TIPO: ${species}`);
+    extracted.push(`COMBUSTIVEL: ${fuel}`);
+  }
+
+  const modelYears = legacyRow(
+    text,
+    /MARCA\/MODELO\s+ANO\s+FAB\s+ANO\s+MOD/,
+  );
+  const years = modelYears?.match(/\b(?:19|20)\d{2}\b/g) ?? [];
+  if (modelYears && years.length >= 2) {
+    const model = modelYears.slice(0, modelYears.indexOf(years[0])).trim();
+    if (model) extracted.push(`MARCA/MODELO: ${model}`);
+    extracted.push(`ANO FAB/ANO MOD: ${years[0]} ${years[1]}`);
+  }
+
+  const capacity = legacyRow(
+    text,
+    /CAP\/POT\/CIL\s+CATEGORIA\s+COR\s+PREDOMINANTE/,
+  );
+  const capacityMatch = capacity?.match(
+    /^(\d+)\s*PAS\s*\/\s*(\d+)\s*\/\s*(\d+)\s+(\S+)\s+(.+)$/i,
+  );
+  if (capacityMatch) {
+    extracted.push(
+      `CAPACIDADE/LOTACAO: ${capacityMatch[1]} / ${capacityMatch[1]}`,
+      `POTENCIA/CILINDRADA: ${capacityMatch[2]} / ${capacityMatch[3]}`,
+      `CATEGORIA: ${capacityMatch[4]}`,
+      `COR PREDOMINANTE: ${capacityMatch[5]}`,
+    );
+  }
+
+  const localDate = legacyRow(text, /LOCAL\s+DATA/);
+  const date = localDate?.match(/\b\d{2}\/\d{2}\/\d{4}\b/)?.[0];
+  const state = text.match(/(?:^|\n)DETRAN\s*-\s*([A-Z]{2})\b/)?.[1];
+  if (localDate && date) {
+    const municipality = localDate.slice(0, localDate.indexOf(date)).trim();
+    if (municipality) {
+      extracted.push(
+        `MUNICIPIO/UF: ${municipality}${state ? ` / ${state}` : ""}`,
+      );
+    }
+    extracted.push(`DATA DE EMISSAO: ${date}`);
+  }
+
+  return extracted.length ? `${extracted.join("\n")}\n${text}` : text;
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -148,7 +234,12 @@ function renavamField(
   text: string,
   source: CrlvFonte,
 ): CrlvCampo<string> {
-  const raw = afterLabel(text, ["RENAVAM", "CODIGO RENAVAM"]);
+  const raw = afterLabel(text, [
+    "RENAVAM",
+    "RENAVAN",
+    "CODIGO RENAVAM",
+    "CODIGO RENAVAN",
+  ]);
   if (!raw) return vazio();
   const original = raw.replace(/[^A-Z0-9]/g, "").slice(0, 11);
   const corrected = original.replace(/[OQD]/g, "0").replace(/[IL]/g, "1")
@@ -175,7 +266,7 @@ function plateField(text: string, source: CrlvFonte): CrlvCampo<string> {
 }
 
 function chassisField(text: string, source: CrlvFonte): CrlvCampo<string> {
-  const raw = cleanCode(afterLabel(text, ["CHASSI"]));
+  const raw = cleanCode(afterLabel(text, ["CHASSI", "CHASS1"]));
   if (!raw) return vazio();
   const corrected = raw.replace(/I/g, "1").replace(/[OQ]/g, "0");
   if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(corrected)) return vazio();
@@ -347,7 +438,7 @@ export function parseCrlvText(
   rawText: string,
   fonte: CrlvFonte = "pdf_texto",
 ): CrlvParserResultado {
-  const text = normalize(rawText);
+  const text = augmentLegacyLayout(normalize(rawText));
   const municipio = municipalityFields(text, fonte);
   const potenciaCilindrada = afterLabel(text, [
     "POTENCIA/CILINDRADA",
@@ -463,6 +554,11 @@ export function parseCrlvText(
     fonte,
     leitura_fraca: false,
   };
+  if (result.proprietario.nome.valor) {
+    result.proprietario.nome.valor = result.proprietario.nome.valor
+      .split(/\s*\/\s*\*{2,}|\s+\*{2,}/)[0]
+      .trim();
+  }
   const core = [
     result.veiculo.placa,
     result.veiculo.renavam,

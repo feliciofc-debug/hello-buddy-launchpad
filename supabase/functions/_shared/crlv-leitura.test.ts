@@ -36,18 +36,22 @@ Deno.test({
         "image/jpeg",
       );
       return Promise.resolve(
-        new Response(JSON.stringify({
-          text: OCR_SINTETICO,
-          metrics: {
-            motor: "paddleocr",
-            variante_vencedora: "perspectiva_sem_fundo",
-            tempo_ms: 4321,
-            n_campos_validos: 3,
+        new Response(
+          JSON.stringify({
+            text: OCR_SINTETICO,
+            metrics: {
+              motor: "paddleocr",
+              variante_vencedora: "perspectiva_sem_fundo",
+              tempo_ms: 4321,
+              n_campos_validos: 3,
+              reason: "paddle_full_indisponivel",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+        ),
       );
     }) as typeof fetch;
     try {
@@ -65,6 +69,7 @@ Deno.test({
         variante_vencedora: "perspectiva_sem_fundo",
         tempo_ms: 4321,
         n_campos_validos: 3,
+        reason: "paddle_full_indisponivel",
       });
     } finally {
       if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");
@@ -189,6 +194,13 @@ Deno.test("DOC-1 — PDF tenta texto interno antes do OCR", async () => {
     flow.indexOf("extractDocumentText(") < flow.indexOf("ocrLocal("),
     true,
   );
+});
+
+Deno.test("OCR-FIX-2 — cliente dá margem sobre o timeout do serviço", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./crlv-leitura.ts", import.meta.url),
+  );
+  assertEquals(source.includes("AbortSignal.timeout(45_000)"), true);
 });
 
 Deno.test({

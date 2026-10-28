@@ -204,6 +204,7 @@ def _ocr(
         variante_vencedora=winner.variante_vencedora,
         tempo_ms=round((time.monotonic() - started) * 1000),
         n_campos_validos=winner.n_campos_validos,
+        reason=winner.reason,
     )
 
 
