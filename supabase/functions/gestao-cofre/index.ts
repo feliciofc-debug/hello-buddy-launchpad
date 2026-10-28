@@ -18,6 +18,12 @@ import {
   sanitizeCrlvVehicleValues,
 } from "../_shared/crlv-cofre.ts";
 import { gestaoCofreUpload } from "../_shared/gestao-cofre-upload.ts";
+import {
+  assertGestaoDocumentoCamposUpdateOk,
+  CAMPOS_VEICULO_PII_KEYS,
+  camposVeiculoContainsPiiKey,
+  camposVeiculoSemPii,
+} from "../_shared/gestao-cofre-campos.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -38,24 +44,7 @@ const ALLOWED_TIPO = new Set([
   "comprovante_endereco",
   "outro",
 ]);
-const PII_KEYS = new Set([
-  "proprietario",
-  "proprietario_nome",
-  "nome",
-  "cpf",
-  "cnpj",
-  "cpf_cnpj",
-  "documento_proprietario",
-]);
-
-function containsPiiKey(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsPiiKey);
-  if (!value || typeof value !== "object") return false;
-  return Object.entries(value as Record<string, unknown>).some(
-    ([key, nested]) =>
-      PII_KEYS.has(key.toLowerCase()) || containsPiiKey(nested),
-  );
-}
+const PII_KEYS = new Set<string>(CAMPOS_VEICULO_PII_KEYS);
 
 type Admin = ReturnType<typeof createClient>;
 type OwnedDocument = {
@@ -147,7 +136,7 @@ async function upload(
   const campos = body.campos_veiculo && typeof body.campos_veiculo === "object"
     ? body.campos_veiculo as Record<string, unknown>
     : {};
-  if (containsPiiKey(campos)) {
+  if (camposVeiculoContainsPiiKey(campos)) {
     return jsonResponse({
       error: "Dados pessoais devem ser enviados no campo protegido",
     }, 400);
@@ -331,7 +320,7 @@ async function confirmCrlv(
   const values = body.valores && typeof body.valores === "object"
     ? body.valores as Record<string, unknown>
     : {};
-  if (containsPiiKey(values)) {
+  if (camposVeiculoContainsPiiKey(values)) {
     return jsonResponse({
       error: "Dados pessoais não podem ser confirmados em campo aberto",
     }, 400);
@@ -377,17 +366,17 @@ async function confirmCrlv(
       if (error) throw new Error("Falha ao atualizar troca");
     }
   }
-  const confirmedFields = {
+  const confirmedFields = camposVeiculoSemPii({
     ...(doc.campos_veiculo ?? {}),
     confirmados: sanitized,
-  };
+  });
   const { error } = await sb.from("gestao_documento").update({
     veiculo_id: vehicleId,
     troca_id: trocaId,
     status: "confirmado",
     campos_veiculo: confirmedFields,
   }).eq("id", documentoId).eq("user_id", userId);
-  if (error) throw new Error("Falha ao confirmar documento");
+  assertGestaoDocumentoCamposUpdateOk(error);
   await audit(sb, documentoId, userId, "confirmar", {
     campos_atualizados: updatedFields,
     vinculado: Boolean(vehicleId || trocaId),
