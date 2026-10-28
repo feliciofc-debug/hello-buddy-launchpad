@@ -293,7 +293,9 @@ function yearField(
 function mapFuel(raw: string | null): string | null {
   if (!raw) return null;
   const value = normalize(raw);
-  if (/ALCOOL|ETANOL/.test(value) && /GASOLINA/.test(value)) return "flex";
+  if (/ALCOOL|ALCO|ETANOL/.test(value) && /GASOLINA|GASOL/.test(value)) {
+    return "flex";
+  }
   if (/FLEX/.test(value)) return "flex";
   if (/GASOLINA/.test(value)) return "gasolina";
   if (/ALCOOL|ETANOL/.test(value)) return "etanol";
