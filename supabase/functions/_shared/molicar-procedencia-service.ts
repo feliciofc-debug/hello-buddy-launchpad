@@ -6,6 +6,7 @@ import {
   ensureMolicarWebhookSubscriptions,
   MOLICAR_PROCEDENCIA_SERVICES,
   molicarJobId,
+  molicarProcedenciaErrorCode,
   type MolicarProcedenciaService,
   molicarProviderStatus,
   sanitizeMolicarProcedencia,
@@ -195,9 +196,18 @@ export async function runMolicarProcedenciaQuery(
           terminal,
           providerStatus,
           sanitizeMolicarProcedencia(response.body),
-          terminal === "concluida" ? null : "Consulta rejeitada pela Molicar.",
+          terminal === "concluida"
+            ? null
+            : molicarProcedenciaErrorCode(response.body),
         );
-        output.push({ ...row, protocolo: jobId, status: terminal });
+        output.push({
+          ...row,
+          protocolo: jobId,
+          status: terminal,
+          erro: terminal === "concluida"
+            ? null
+            : molicarProcedenciaErrorCode(response.body),
+        });
       }
     } catch (error) {
       await finish(

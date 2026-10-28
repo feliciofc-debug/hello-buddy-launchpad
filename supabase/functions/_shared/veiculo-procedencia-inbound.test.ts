@@ -198,3 +198,103 @@ Deno.test("VEIC-WPP-1 — procedência mostra custo, confirma e usa Molicar", as
   assertEquals(notified, 1);
   assertStringIncludes(confirmed.reply ?? "", "Avisarei o dono");
 });
+
+function retrySb(source: Record<string, unknown>) {
+  return {
+    from(table: string) {
+      if (table !== "molicar_procedencia") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: table === "profiles"
+                    ? { tipo: "revenda_veiculos" }
+                    : {
+                      segmento: "automotivo",
+                      sobre_negocio: "revenda de veículos",
+                      vitrine_veiculos_demo: false,
+                    },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      const filters: Record<string, unknown> = {};
+      const query = {
+        select: () => query,
+        eq: (key: string, value: unknown) => {
+          filters[key] = value;
+          return query;
+        },
+        contains: () => query,
+        order: () => query,
+        limit: () => query,
+        maybeSingle: () => {
+          const matches = Object.entries(filters).every(([key, value]) =>
+            source[key] === value
+          );
+          return Promise.resolve({
+            data: matches ? source : null,
+            error: null,
+          });
+        },
+      };
+      return query;
+    },
+  };
+}
+
+Deno.test("PROC-2 — retry recusa outro tenant e confirma somente debts", async () => {
+  const source = {
+    id: "debt-1",
+    user_id: "u1",
+    placa: "LMC5764",
+    veiculo_id: "vehicle-1",
+    troca_id: null,
+    servicos: ["debts"],
+    status: "erro",
+    erro: "fonte_indisponivel",
+  };
+  const denied = await tryProcessVeiculoProcedenciaInbound(baseInput({
+    sb: retrySb({ ...source, user_id: "outro-user" }),
+    userText: "Tentar débitos",
+    interactiveId: "proc_debitos_retry:debt-1",
+  }) as never);
+  assertStringIncludes(denied.reply ?? "", "desta loja");
+
+  const agentState: Record<string, unknown> = {};
+  const offered = await tryProcessVeiculoProcedenciaInbound(baseInput({
+    sb: retrySb(source),
+    agentState,
+    userText: "Tentar débitos",
+    interactiveId: "proc_debitos_retry:debt-1",
+  }) as never);
+  assertStringIncludes(offered.reply ?? "", "usa 1 consulta");
+  assertEquals(
+    offered.interactiveButtons?.buttons.map((button) => button.title),
+    ["Confirmar", "Cancelar"],
+  );
+
+  let body: Record<string, unknown> | null = null;
+  const confirmed = await tryProcessVeiculoProcedenciaInbound(baseInput({
+    sb: retrySb(source),
+    agentState,
+    userText: "Confirmar",
+    interactiveId: "molicar_wa:procedencia_confirmar",
+    dependencies: {
+      runProcedencia: async (_sb: unknown, _userId: string, input: unknown) => {
+        body = input as Record<string, unknown>;
+        return [{
+          status: "pendente",
+          solicitacao_id: "retry-request",
+          servicos: ["debts"],
+        }];
+      },
+    },
+  }) as never);
+  assertEquals(body?.services, ["debts"]);
+  assertEquals(body?.veiculo_id, "vehicle-1");
+  assertStringIncludes(confirmed.reply ?? "", "Nova consulta de débitos");
+});

@@ -1087,6 +1087,77 @@ Deno.test("VEIC-WPP-2 J8 — Consultar segurança → confirmar pelo processOne"
   }
 });
 
+Deno.test("PROC-2 — retry de débitos passa pelo processOne e cria só debts", async () => {
+  const key = btoa(
+    String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))),
+  );
+  Deno.env.set("GESTAO_INTEGRACOES_KEY", key);
+  Deno.env.delete("MOLICAR_PROCEDENCIA_WEBHOOK_URL");
+  Deno.env.delete("MOLICAR_PROCEDENCIA_WEBHOOK_SECRET");
+
+  const processor = await loadProcessor();
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  const debtId = "00000000-0000-4000-8000-000000000099";
+  const tables = baseProcessOneTables({
+    interactiveId: `proc_debitos_retry:${debtId}`,
+    title: "Tentar débitos",
+    kind: "interactive.button_reply",
+  });
+  tables.profiles[0].tipo = "revenda_veiculos";
+  tables.empresa_config[0].gestao_estoque_enabled = true;
+  tables.molicar_procedencia = [{
+    id: debtId,
+    user_id: tenantId,
+    placa: "LMC5764",
+    veiculo_id: null,
+    troca_id: null,
+    servicos: ["debts"],
+    status: "erro",
+    erro: "fonte_indisponivel",
+    solicitado_em: new Date().toISOString(),
+  }];
+  tables.gestao_molicar_conta = [{
+    user_id: tenantId,
+    client_id: "client-test",
+    client_secret_enc: await encryptGestaoIntegracaoSecret(
+      "client-secret-test",
+    ),
+    status: "active",
+    limite_mensal: 100,
+  }];
+  const db = new ProcessOneMemorySupabase(tables);
+  const fetchRecorder = installProcessOneFetchRecorder();
+  const restoreSupabase = processor.setProcessOneSupabaseForTest(db as never);
+  try {
+    const offered = await processor.processOne("queue-1");
+    assertEquals(offered.gestao_lucro, true, JSON.stringify(offered));
+    assertEquals(
+      db.tables.whatsapp_cloud_conversations[0].agent_state
+        ?.pending_procedencia_confirm?.services,
+      ["debts"],
+    );
+
+    enqueueInteractive(
+      db.tables,
+      2,
+      "molicar_wa:procedencia_confirmar",
+      "Confirmar",
+    );
+    const confirmed = await processor.processOne("queue-2");
+    assertEquals(confirmed.gestao_lucro, true, JSON.stringify(confirmed));
+    const retries = db.tables.molicar_procedencia.filter((row) =>
+      row.id !== debtId
+    );
+    assertEquals(retries.length, 1);
+    assertEquals(retries[0].servicos, ["debts"]);
+    assertEquals(retries[0].canal, "whatsapp");
+    assertEquals(retries[0].notificar_whatsapp, true);
+  } finally {
+    restoreSupabase();
+    fetchRecorder.restore();
+  }
+});
+
 Deno.test("FIX-BOTOES-1 J12 — vídeo → legenda → agendar pelo processOne", async () => {
   const processor = await loadProcessor();
   const tenantId = "11111111-1111-4111-8111-111111111111";

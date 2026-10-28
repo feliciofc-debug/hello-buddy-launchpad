@@ -182,6 +182,38 @@ export function classifyMolicarProcedencia(
   return "error";
 }
 
+export function molicarProcedenciaErrorCode(payload: unknown): string {
+  const root = record(payload);
+  const code = String(
+    findCaseInsensitive(root, ["Code", "code"]) ??
+      molicarProviderStatus(payload) ??
+      "",
+  ).toUpperCase();
+  const messageIn = (source: unknown): unknown => {
+    const current = record(source);
+    const direct = findCaseInsensitive(current, [
+      "Message",
+      "message",
+      "mensagem",
+    ]);
+    if (direct != null) return direct;
+    for (const key of ["data", "result", "response"]) {
+      const nested = messageIn(findCaseInsensitive(current, [key]));
+      if (nested != null) return nested;
+    }
+    return null;
+  };
+  const message = String(messageIn(root) ?? "");
+  if (
+    code === "UNPROCESSABLE_ENTITY" &&
+    /try (?:your )?request again|unable to retrieve|tente novamente|indispon/i
+      .test(message)
+  ) {
+    return "fonte_indisponivel";
+  }
+  return "erro_terminal_molicar";
+}
+
 export function sanitizeMolicarProcedencia(payload: unknown): unknown {
   const walk = (value: unknown, sensitiveContext = false): unknown => {
     if (Array.isArray(value)) {

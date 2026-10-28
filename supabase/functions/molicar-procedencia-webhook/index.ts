@@ -3,6 +3,7 @@ import {
   classifyMolicarProcedencia,
   constantTimeSecretEqual,
   molicarJobId,
+  molicarProcedenciaErrorCode,
   molicarProviderStatus,
   sanitizeMolicarProcedencia,
 } from "../_shared/molicar-procedencia.ts";
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
         p_resultado: sanitizeMolicarProcedencia(body),
         p_erro: state === "completed"
           ? null
-          : "A Molicar informou erro terminal no processamento.",
+          : molicarProcedenciaErrorCode(body),
       },
     );
     if (error) throw error;

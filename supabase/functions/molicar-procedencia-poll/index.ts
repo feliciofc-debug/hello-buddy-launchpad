@@ -6,6 +6,7 @@ import {
 import {
   classifyMolicarProcedencia,
   type MolicarProcedenciaService,
+  molicarProcedenciaErrorCode,
   molicarProviderStatus,
   pollMolicarProcedencia,
   sanitizeMolicarProcedencia,
@@ -84,7 +85,7 @@ Deno.serve(async (req) => {
               p_resultado: sanitizeMolicarProcedencia(response.body),
               p_erro: state === "completed"
                 ? null
-                : "A Molicar informou erro terminal no polling.",
+                : molicarProcedenciaErrorCode(response.body),
             },
           );
           if (error) throw error;

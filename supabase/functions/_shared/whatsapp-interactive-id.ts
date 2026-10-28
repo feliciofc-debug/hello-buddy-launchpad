@@ -31,5 +31,7 @@ export function stripWhatsAppInteractiveMarkers(text: unknown): string {
 }
 
 export function isGestaoInteractiveId(id: unknown): boolean {
-  return /^(?:gestao_|molicar_wa:)/i.test(String(id ?? "").trim());
+  return /^(?:gestao_|molicar_wa:|proc_debitos_retry:)/i.test(
+    String(id ?? "").trim(),
+  );
 }
