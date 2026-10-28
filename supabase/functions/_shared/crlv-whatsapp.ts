@@ -2,6 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0
 import {
   type CrlvCampo,
   type CrlvParserResultado,
+  parseCrlvText,
   validarRenavam,
 } from "./crlv-parser.ts";
 import { auditGestaoDocumento } from "./gestao-cofre-upload.ts";
@@ -19,7 +20,7 @@ export type CrlvStockLink = {
   label: string;
 };
 
-export type CrlvFieldOrigin = "documento" | "Molicar";
+export type CrlvFieldOrigin = "documento" | "digitado" | "Molicar";
 export type CrlvFieldOrigins = Record<
   "veiculo" | "documento" | "proprietario",
   Record<string, CrlvFieldOrigin>
@@ -32,14 +33,45 @@ export type CrlvMolicarCompletion = {
   aviso: string | null;
 };
 
-function fieldOrigins(parser: CrlvParserResultado): CrlvFieldOrigins {
+export const CRLV_PLATE_PENDING_TTL_MS = 30 * 60 * 1000;
+
+export function resolvePendingCrlvPlate(
+  pending: unknown,
+  text: string,
+  nowMs = Date.now(),
+):
+  | { status: "none" | "expired" | "invalid"; documentoId?: string }
+  | { status: "valid"; documentoId: string; plate: string } {
+  if (!pending || typeof pending !== "object" || Array.isArray(pending)) {
+    return { status: "none" };
+  }
+  const data = pending as Record<string, unknown>;
+  const documentoId = String(data.documento_id ?? "").trim();
+  const createdAt = Date.parse(String(data.created_at ?? ""));
+  if (!documentoId) return { status: "none" };
+  if (
+    !Number.isFinite(createdAt) ||
+    nowMs - createdAt > CRLV_PLATE_PENDING_TTL_MS
+  ) {
+    return { status: "expired", documentoId };
+  }
+  const plate = normalizeBrazilianPlate(text);
+  return plate
+    ? { status: "valid", documentoId, plate }
+    : { status: "invalid", documentoId };
+}
+
+function fieldOrigins(
+  parser: CrlvParserResultado,
+  plateOrigin: CrlvFieldOrigin = "documento",
+): CrlvFieldOrigins {
   const section = (fields: Record<string, CrlvCampo<unknown>>) =>
     Object.fromEntries(
       Object.entries(fields)
         .filter(([, field]) => field?.valor != null)
         .map(([key]) => [key, "documento" as const]),
     );
-  return {
+  const origins: CrlvFieldOrigins = {
     veiculo: section(
       parser.veiculo as unknown as Record<string, CrlvCampo<unknown>>,
     ),
@@ -50,6 +82,8 @@ function fieldOrigins(parser: CrlvParserResultado): CrlvFieldOrigins {
       parser.proprietario as unknown as Record<string, CrlvCampo<unknown>>,
     ),
   };
+  if (parser.veiculo.placa.valor) origins.veiculo.placa = plateOrigin;
+  return origins;
 }
 
 function molicarWarning(error: unknown): string {
@@ -96,10 +130,11 @@ export async function completeCrlvWithMolicar(input: {
   userId: string;
   documentoId: string;
   leitura: CrlvParserResultado;
+  plateOrigin?: "documento" | "digitado";
   runConsulta?: typeof runMolicarConsulta;
 }): Promise<CrlvMolicarCompletion> {
   const leitura = structuredClone(input.leitura);
-  const origens = fieldOrigins(leitura);
+  const origens = fieldOrigins(leitura, input.plateOrigin);
   const plate = normalizeBrazilianPlate(leitura.veiculo.placa.valor);
   if (!plate) {
     return { leitura, origens, completado: false, aviso: null };
@@ -187,7 +222,8 @@ export async function completeCrlvWithMolicar(input: {
     leitura.veiculo.marca_modelo_versao,
     leitura.veiculo.ano_modelo,
   ];
-  leitura.leitura_fraca = core.filter((field) => field.valor != null).length < 3;
+  leitura.leitura_fraca =
+    core.filter((field) => field.valor != null).length < 3;
   const { error } = await input.sb.from("gestao_documento").update({
     campos_veiculo: {
       veiculo: leitura.veiculo,
@@ -214,6 +250,34 @@ export async function completeCrlvWithMolicar(input: {
     completado: filled.length > 0,
     aviso,
   };
+}
+
+export function crlvFromTypedPlate(
+  plate: string,
+  storedFields?: unknown,
+): CrlvParserResultado {
+  const parser = parseCrlvText(`PLACA: ${plate}`, "ocr");
+  if (
+    !storedFields || typeof storedFields !== "object" ||
+    Array.isArray(storedFields)
+  ) {
+    return parser;
+  }
+  const stored = storedFields as Record<string, unknown>;
+  for (const sectionName of ["veiculo", "documento", "observacoes"] as const) {
+    const section = stored[sectionName];
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      continue;
+    }
+    const target = parser[sectionName] as unknown as Record<string, unknown>;
+    for (const [key, value] of Object.entries(section)) {
+      if (key in target && value && typeof value === "object") {
+        target[key] = structuredClone(value);
+      }
+    }
+  }
+  parser.veiculo.placa = { valor: plate, confianca: "alta" };
+  return parser;
 }
 
 export async function autoLinkCrlvToStock(

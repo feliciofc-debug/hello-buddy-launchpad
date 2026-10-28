@@ -113,9 +113,14 @@ export function respostaCrlvWhatsApp(
     parser.proprietario.cpf_cnpj.valor,
   ) ?? "não lido";
   const plate = read(vehicle.placa.valor);
+  const typedPlate = options.origens?.veiculo?.placa === "digitado";
   const header = options.leituraParcial
     ? options.completadoMolicar
-      ? `✅ Li a placa ${plate} no documento e completei pela Molicar:`
+      ? typedPlate
+        ? `✅ Usei a placa ${plate} digitada e completei pela Molicar:`
+        : `✅ Li a placa ${plate} no documento e completei pela Molicar:`
+      : typedPlate
+      ? `✅ Usei a placa ${plate} digitada.`
       : `✅ Li a placa ${plate} no documento.`
     : "✅ CRLV lido";
   const lines = [
@@ -137,14 +142,10 @@ export function respostaCrlvWhatsApp(
     `Combustível: ${
       withOrigin(vehicle.combustivel.valor, "veiculo", "combustivel")
     }`,
-    `Categoria: ${
-      withOrigin(vehicle.categoria.valor, "veiculo", "categoria")
-    }`,
+    `Categoria: ${withOrigin(vehicle.categoria.valor, "veiculo", "categoria")}`,
     `Município/UF: ${
       withOrigin(parser.documento.municipio.valor, "documento", "municipio")
-    }/${
-      withOrigin(parser.documento.uf.valor, "documento", "uf")
-    }`,
+    }/${withOrigin(parser.documento.uf.valor, "documento", "uf")}`,
     `Proprietário: ${
       withOrigin(parser.proprietario.nome.valor, "proprietario", "nome")
     }`,

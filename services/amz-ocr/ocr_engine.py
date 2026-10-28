@@ -14,7 +14,6 @@ Reader = Callable[[np.ndarray], tuple[str, float]]
 Progress = Callable[[str, str, int], None]
 
 _PADDLE = None
-_PADDLE_FULL = None
 _PADDLE_LOCK = threading.Lock()
 
 
@@ -222,7 +221,6 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
     rgb = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
     rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
     rgb = _resize_max(rgb, 1600)
-    rgb = _osd_oriented(rgb)
     cropped, perspective = crop_document(rgb)
     # O Paddle recebe no máximo 1600 px. O OSD/corte pode alterar as dimensões,
     # então a trava é aplicada novamente imediatamente antes das variantes.
@@ -248,38 +246,42 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
 
 
 def _paddle_engine(full_document: bool = False):
-    global _PADDLE, _PADDLE_FULL
-    cached = _PADDLE_FULL if full_document else _PADDLE
-    if cached is not None:
-        return cached
+    del full_document
+    global _PADDLE
+    if _PADDLE is not None:
+        return _PADDLE
     with _PADDLE_LOCK:
-        cached = _PADDLE_FULL if full_document else _PADDLE
-        if cached is None:
+        if _PADDLE is None:
             from paddleocr import PaddleOCR
 
-            engine = PaddleOCR(
+            _PADDLE = PaddleOCR(
                 device="cpu",
-                # O PP-OCRv6 small usa o reconhecedor multilíngue que cobre
-                # português e demais idiomas latinos.
                 text_detection_model_name="PP-OCRv6_small_det",
-                text_recognition_model_name="PP-OCRv6_small_rec",
-                use_doc_orientation_classify=full_document,
-                use_doc_unwarping=full_document,
-                use_textline_orientation=full_document,
+                text_recognition_model_name="latin_PP-OCRv5_mobile_rec",
+                # EXIF já é aplicado na entrada. No CRLV antigo, os modelos de
+                # orientação chegaram a inverter a página e não melhoraram a
+                # leitura, enquanto consumiam muito mais memória.
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
                 # Paddle 3.3.1 falha em alguns CPUs com atributos PIR/oneDNN.
                 enable_mkldnn=False,
                 cpu_threads=max(1, int(os.environ.get("AMZ_OCR_CPU_THREADS", "4"))),
             )
-            if full_document:
-                _PADDLE_FULL = engine
-            else:
-                _PADDLE = engine
-    return _PADDLE_FULL if full_document else _PADDLE
+    return _PADDLE
 
 
 def preload_paddle() -> None:
     _paddle_engine(full_document=False)
-    _paddle_engine(full_document=True)
+
+
+def _strip_cjk(value: str) -> str:
+    return re.sub(
+        r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
+        r"\uf900-\ufaff\uac00-\ud7af]",
+        "",
+        value,
+    )
 
 
 def _paddle_input(image: np.ndarray) -> np.ndarray:
@@ -303,12 +305,11 @@ def _paddle_reader(
     for result in _paddle_engine(full_document).predict(image):
         recognized = list(result["rec_texts"])
         confidences = [float(value) for value in result["rec_scores"]]
-        texts.extend(
-            str(text).strip()
-            for text, score in zip(recognized, confidences)
-            if str(text).strip() and score >= 0.35
-        )
-        scores.extend(score for score in confidences if score >= 0.35)
+        for text, score in zip(recognized, confidences):
+            clean = _strip_cjk(str(text)).strip()
+            if clean and score >= 0.35:
+                texts.append(clean)
+                scores.append(score)
     confidence = sum(scores) / len(scores) if scores else 0.0
     return "\n".join(texts), confidence
 

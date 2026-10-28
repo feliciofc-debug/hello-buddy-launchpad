@@ -229,17 +229,6 @@ async function readCrlv(
       input.filename,
       fetchImpl,
     );
-    if (
-      result.parser.leitura_fraca &&
-      !result.parser.veiculo.placa.valor
-    ) {
-      return {
-        leitura: null,
-        leituraErro: CRLV_NAO_LIDO_MENSAGEM,
-        leituraReason: "ocr_unreadable",
-        metricasOcr: result.metricas_ocr,
-      };
-    }
     return {
       leitura: result.parser,
       leituraErro: null,

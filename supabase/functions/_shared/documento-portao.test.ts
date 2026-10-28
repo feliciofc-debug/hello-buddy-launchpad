@@ -265,9 +265,15 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   assertEquals(source.includes("image_to_osd"), true);
   assertEquals(source.includes("oriented.rotate(90"), true);
   assertEquals(source.includes("ImageOps.autocontrast"), true);
-  assertEquals(fullOcr.includes("use_doc_orientation_classify=full_document"), true);
-  assertEquals(fullOcr.includes("use_doc_unwarping=full_document"), true);
-  assertEquals(fullOcr.includes("use_textline_orientation=full_document"), true);
+  assertEquals(
+    fullOcr.includes(
+      'text_recognition_model_name="latin_PP-OCRv5_mobile_rec"',
+    ),
+    true,
+  );
+  assertEquals(fullOcr.includes("use_doc_orientation_classify=False"), true);
+  assertEquals(fullOcr.includes("use_doc_unwarping=False"), true);
+  assertEquals(fullOcr.includes("use_textline_orientation=False"), true);
   assertEquals(
     source.includes("_pil_images(raw, content_type, first_page_only=True)"),
     true,
@@ -312,7 +318,7 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
     true,
   );
   const possibleStart = source.indexOf(
-    "const possibleAction = String(interactiveId ?? \"\").match(",
+    'const possibleAction = String(interactiveId ?? "").match(',
   );
   const documentActions = source.indexOf(
     "// DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.",
@@ -328,7 +334,7 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
   assertEquals(possibleFlow.includes("callGemini("), false);
   assertEquals(
     source.includes(
-      '/^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i',
+      "/^cofre_doc_(?:salvar|vistoria|cadastrar|vincular|guardar|link|troca|desvincular):/i",
     ),
     true,
   );

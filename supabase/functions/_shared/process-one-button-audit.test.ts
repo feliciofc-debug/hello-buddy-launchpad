@@ -158,6 +158,10 @@ Deno.test("AUDIT-BOTOES J13 — processOne real: saudação limpa fluxo e abre m
     title: "unused",
     agentState: {
       pending_anuncio_cliente: { created_at: new Date().toISOString() },
+      pending_crlv_placa: {
+        documento_id: "00000000-0000-4000-8000-000000000099",
+        created_at: new Date().toISOString(),
+      },
       general: {
         pending_single_photo: { created_at: new Date().toISOString() },
       },
@@ -180,6 +184,7 @@ Deno.test("AUDIT-BOTOES J13 — processOne real: saudação limpa fluxo e abre m
   assertEquals(result.jarvis_menu, true);
   const state = db.tables.whatsapp_cloud_conversations[0].agent_state;
   assertEquals("pending_anuncio_cliente" in state, false);
+  assertEquals("pending_crlv_placa" in state, false);
   assertEquals("pending_single_photo" in state.general, false);
   assertEquals("pending_vehicle_identification" in state.vehicle, false);
 });
@@ -275,6 +280,80 @@ Deno.test("AUDIT-BOTOES J6 — processOne real trata ações posteriores do CRLV
       false,
       auditCase.id,
     );
+  }
+});
+
+Deno.test("CRLV-FIM — Guardar e ler → placa digitada → ações", async () => {
+  const processor = await loadProcessor();
+  const documentId = "00000000-0000-4000-8000-000000000091";
+  const key = btoa(String.fromCharCode(...new Uint8Array(32).fill(9)));
+  const oldOcrUrl = Deno.env.get("AMZ_OCR_URL");
+  const oldOcrToken = Deno.env.get("AMZ_OCR_TOKEN");
+  const oldCofreKey = Deno.env.get("DOC_COFRE_KEY");
+  Deno.env.set("AMZ_OCR_URL", "https://ocr.test/ocr");
+  Deno.env.set("AMZ_OCR_TOKEN", "ocr-token");
+  Deno.env.set("DOC_COFRE_KEY", key);
+
+  const tables = baseProcessOneTables({
+    interactiveId: `cofre_possivel_guardar:${documentId}`,
+    title: "Guardar e ler",
+  });
+  tables.gestao_documento = [{
+    id: documentId,
+    user_id: "11111111-1111-4111-8111-111111111111",
+    storage_path: `tenant/${documentId}.enc`,
+    mime: "image/jpeg",
+    status: "recebido",
+    deleted_at: null,
+  }];
+  tables.gestao_documento_acesso = [];
+  tables.molicar_consulta = [];
+  tables.gestao_molicar_conta = [];
+
+  const db = new ProcessOneMemorySupabase(tables);
+  db.storageObjects.set(
+    `gestao-cofre/tenant/${documentId}.enc`,
+    await cifrarCofreBytes(new Uint8Array([1, 2, 3]), key),
+  );
+  const fetchRecorder = installProcessOneFetchRecorder();
+  const restoreSupabase = processor.setProcessOneSupabaseForTest(db as never);
+  try {
+    const stored = await processor.processOne("queue-1");
+    assertEquals(stored.ok, true, JSON.stringify(stored));
+    assertEquals(
+      db.tables.whatsapp_cloud_conversations[0].agent_state
+        .pending_crlv_placa.documento_id,
+      documentId,
+    );
+    assertStringIncludes(
+      String(db.tables.whatsapp_cloud_messages.at(-1)?.content),
+      "Digite a placa do veículo",
+    );
+
+    enqueueText(db.tables, 2, "ABC1D23");
+    const completed = await processor.processOne("queue-2");
+    assertEquals(completed.crlv_typed_plate, true, JSON.stringify(completed));
+    assertEquals(
+      db.tables.whatsapp_cloud_conversations[0].agent_state
+        .pending_crlv_placa,
+      null,
+    );
+    const reply = String(db.tables.whatsapp_cloud_messages.at(-1)?.content);
+    assertStringIncludes(reply, "ABC1D23 (origem: digitado)");
+    assertStringIncludes(reply, "Placa:");
+    const sentPayloads = JSON.stringify(fetchRecorder.calls);
+    assertStringIncludes(sentPayloads, `cofre_doc_salvar:${documentId}`);
+    assertStringIncludes(sentPayloads, `cofre_doc_vistoria:${documentId}`);
+    assertStringIncludes(sentPayloads, "molicar_wa:procedencia:ABC1D23");
+  } finally {
+    restoreSupabase();
+    fetchRecorder.restore();
+    if (oldOcrUrl == null) Deno.env.delete("AMZ_OCR_URL");
+    else Deno.env.set("AMZ_OCR_URL", oldOcrUrl);
+    if (oldOcrToken == null) Deno.env.delete("AMZ_OCR_TOKEN");
+    else Deno.env.set("AMZ_OCR_TOKEN", oldOcrToken);
+    if (oldCofreKey == null) Deno.env.delete("DOC_COFRE_KEY");
+    else Deno.env.set("DOC_COFRE_KEY", oldCofreKey);
   }
 });
 

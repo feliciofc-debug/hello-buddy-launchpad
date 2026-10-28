@@ -269,12 +269,24 @@ function plateField(text: string, source: CrlvFonte): CrlvCampo<string> {
 
 function chassisField(text: string, source: CrlvFonte): CrlvCampo<string> {
   const raw = cleanCode(afterLabel(text, ["CHASSI", "CHASS1"]));
-  if (!raw) return vazio();
-  const corrected = raw.replace(/I/g, "1").replace(/[OQ]/g, "0");
-  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(corrected)) return vazio();
+  const corrected = raw?.replace(/I/g, "1").replace(/[OQ]/g, "0") ?? "";
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(corrected)) {
+    return {
+      valor: corrected,
+      confianca: confidence(source, corrected !== raw),
+    };
+  }
+  const candidates = [
+    ...new Set(
+      text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/g)?.filter((candidate) =>
+        /[A-HJ-NPR-Z]/.test(candidate) && /\d/.test(candidate)
+      ) ?? [],
+    ),
+  ];
+  if (candidates.length !== 1) return vazio();
   return {
-    valor: corrected,
-    confianca: confidence(source, corrected !== raw),
+    valor: candidates[0],
+    confianca: "baixa",
   };
 }
 

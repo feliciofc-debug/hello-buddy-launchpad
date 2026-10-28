@@ -207,7 +207,9 @@ import { decifrarCofreBytes } from "../_shared/gestao-cofre-crypto.ts";
 import {
   autoLinkCrlvToStock,
   completeCrlvWithMolicar,
+  crlvFromTypedPlate,
   crlvWhatsappActionButtons,
+  resolvePendingCrlvPlate,
 } from "../_shared/crlv-whatsapp.ts";
 import {
   getTenantLogoDataUrl,
@@ -3359,6 +3361,10 @@ type PendingFipeState =
 type AgentConvState = {
   vehicle?: Record<string, unknown>;
   general?: Record<string, unknown>;
+  pending_crlv_placa?: {
+    documento_id: string;
+    created_at: string;
+  } | null;
   vertical_router?: {
     pending_choice?: {
       media_id?: string;
@@ -3499,6 +3505,9 @@ type AgentConvState = {
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
+
+const CRLV_PLACA_DIGITADA_PROMPT =
+  "📄 Guardei o documento no cofre. Não consegui ler a placa pela foto. Digite a placa do veículo (ex.: ABC1234 ou ABC1D23) que eu completo com os dados da Molicar.";
 
 type PendingVideoSetupStage =
   | "awaiting_tema"
@@ -25128,7 +25137,21 @@ export async function processOne(queueId: string) {
               });
               let reply = CRLV_NAO_LIDO_MENSAGEM;
               let buttons: WhatsAppInteractiveButtons | undefined;
-              if (reread.leitura) {
+              if (
+                reread.leitura &&
+                !reread.leitura.veiculo.placa.valor
+              ) {
+                const currentState = migrateVerticalState(
+                  await loadAgentState(sb, convStateIdentity),
+                ).state as AgentConvState;
+                await saveAgentState(sb, convStateIdentity, {
+                  pending_crlv_placa: {
+                    documento_id: documentoId,
+                    created_at: new Date().toISOString(),
+                  },
+                }, currentState);
+                reply = CRLV_PLACA_DIGITADA_PROMPT;
+              } else if (reread.leitura) {
                 const leituraParcial = reread.leitura.leitura_fraca;
                 const completion = leituraParcial
                   ? await completeCrlvWithMolicar({
@@ -25218,6 +25241,98 @@ export async function processOne(queueId: string) {
           });
           await doneQueue(row.id);
           return { ok: true, possible_document_saved: true, crlv_read: false };
+        }
+      }
+    }
+
+    if (row.message_type === "text" && userText.trim()) {
+      const currentState = migrateVerticalState(
+        await loadAgentState(sb, convStateIdentity),
+      ).state as AgentConvState;
+      const pending = currentState.pending_crlv_placa;
+      if (pending?.documento_id) {
+        const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+        if (
+          fromIsOwner ||
+          isGestaoAuthorizedPhone(row.from_number, gestaoAuth)
+        ) {
+          const decision = resolvePendingCrlvPlate(
+            pending,
+            stripWhatsAppInteractiveMarkers(userText),
+          );
+          await saveAgentState(sb, convStateIdentity, {
+            pending_crlv_placa: null,
+          }, currentState);
+          if (decision.status === "valid") {
+            const plate = decision.plate;
+            const { data: document } = await sb.from("gestao_documento")
+              .select("id,campos_veiculo")
+              .eq("id", decision.documentoId)
+              .eq("user_id", userId)
+              .is("deleted_at", null)
+              .maybeSingle();
+            if (document) {
+              const completion = await completeCrlvWithMolicar({
+                sb,
+                userId,
+                documentoId: decision.documentoId,
+                leitura: crlvFromTypedPlate(plate, document.campos_veiculo),
+                plateOrigin: "digitado",
+              });
+              let linked: Awaited<
+                ReturnType<typeof autoLinkCrlvToStock>
+              > = null;
+              try {
+                linked = await autoLinkCrlvToStock(
+                  sb,
+                  userId,
+                  decision.documentoId,
+                  completion.leitura,
+                );
+              } catch {
+                console.warn("[crlv-leitura] skip", {
+                  reason: "stock_auto_link_failed",
+                });
+              }
+              let reply = respostaCrlvWhatsApp(completion.leitura, {
+                origens: completion.origens,
+                leituraParcial: true,
+                completadoMolicar: completion.completado,
+                avisoMolicar: completion.aviso,
+              });
+              if (linked) {
+                reply += `\nVinculei ao ${linked.label} do estoque.`;
+              }
+              const buttons = crlvWhatsappActionButtons(
+                decision.documentoId,
+                linked?.id,
+                plate,
+              );
+              const sentId = await sendWhatsApp(
+                userId,
+                row.from_number,
+                reply,
+                undefined,
+                undefined,
+                buttons,
+              );
+              await sb.from("whatsapp_cloud_messages").insert({
+                conversation_id: conv.id,
+                user_id: userId,
+                direction: "outbound",
+                sender: "agent",
+                content: reply,
+                message_type: "interactive",
+                wamid: sentId,
+              });
+              await doneQueue(row.id);
+              return {
+                ok: true,
+                crlv_typed_plate: true,
+                crlv_read: true,
+              };
+            }
+          }
         }
       }
     }
@@ -26401,7 +26516,21 @@ export async function processOne(queueId: string) {
             (tipo === "crlv" || tipo === "crlv_e"),
         });
         if (senderIsGestao) {
-          if (stored.leitura) {
+          if (
+            stored.leitura &&
+            !stored.leitura.veiculo.placa.valor
+          ) {
+            const currentState = migrateVerticalState(
+              await loadAgentState(sb, convStateIdentity),
+            ).state as AgentConvState;
+            await saveAgentState(sb, convStateIdentity, {
+              pending_crlv_placa: {
+                documento_id: stored.documentoId,
+                created_at: new Date().toISOString(),
+              },
+            }, currentState);
+            reply = CRLV_PLACA_DIGITADA_PROMPT;
+          } else if (stored.leitura) {
             const leituraParcial = stored.leitura.leitura_fraca;
             const completion = leituraParcial
               ? await completeCrlvWithMolicar({

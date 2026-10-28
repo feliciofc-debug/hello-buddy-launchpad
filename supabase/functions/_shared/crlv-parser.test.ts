@@ -198,6 +198,25 @@ RIO DE JANEIRO 23/03/2016
   assertEquals(response.includes("123.456.789-09"), false);
 });
 
+Deno.test("CRLV-FIM — aceita chassi único de 17 caracteres sem rótulo", () => {
+  const result = parseCrlvText(
+    "CERTIFICADO DE REGISTRO\n9BWZZZ377VT004251\nCOR PRATA",
+    "ocr",
+  );
+  assertEquals(result.veiculo.chassi, {
+    valor: "9BWZZZ377VT004251",
+    confianca: "baixa",
+  });
+});
+
+Deno.test("CRLV-FIM — não escolhe entre dois chassis sem rótulo", () => {
+  const result = parseCrlvText(
+    "9BWZZZ377VT004251\n8APZZZ1234T567890",
+    "ocr",
+  );
+  assertEquals(result.veiculo.chassi.valor, null);
+});
+
 Deno.test("DOC-1 — leitura e parser não importam IA externa", async () => {
   const parser = await Deno.readTextFile(
     new URL("./crlv-parser.ts", import.meta.url),

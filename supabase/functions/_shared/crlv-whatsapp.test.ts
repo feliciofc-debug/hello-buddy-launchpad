@@ -3,14 +3,13 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { parseCrlvText } from "./crlv-parser.ts";
-import {
-  cifrarDadosPessoais,
-  sha256Hex,
-} from "./gestao-cofre-crypto.ts";
+import { cifrarDadosPessoais, sha256Hex } from "./gestao-cofre-crypto.ts";
 import {
   autoLinkCrlvToStock,
   completeCrlvWithMolicar,
+  crlvFromTypedPlate,
   crlvWhatsappActionButtons,
+  resolvePendingCrlvPlate,
 } from "./crlv-whatsapp.ts";
 import { respostaCrlvWhatsApp } from "./documento-portao.ts";
 import {
@@ -219,21 +218,24 @@ Deno.test({
 });
 
 Deno.test({
-  name: "VEIC-WPP-2 — sem placa pede uma nova foto",
+  name: "CRLV-FIM — leitura sem placa preserva os campos para placa digitada",
   permissions: { env: true },
   fn: async () => {
     const oldUrl = Deno.env.get("AMZ_OCR_URL");
     const oldToken = Deno.env.get("AMZ_OCR_TOKEN");
     Deno.env.set("AMZ_OCR_URL", "http://127.0.0.1:3011/ocr");
     Deno.env.set("AMZ_OCR_TOKEN", "token-local");
-    const sb = {
-      from() {
-        return { insert: () => Promise.resolve({ error: null }) };
-      },
-    };
+    const db = new ProcessOneMemorySupabase({
+      gestao_documento: [{
+        id: "d1",
+        user_id: "u1",
+        deleted_at: null,
+      }],
+      gestao_documento_acesso: [],
+    });
     try {
       const result = await relerCrlvDocumentoCofre({
-        sb: sb as never,
+        sb: db as never,
         userId: "u1",
         documentoId: "d1",
         bytes: new Uint8Array([1]),
@@ -245,8 +247,9 @@ Deno.test({
             })),
           )) as typeof fetch,
       });
-      assertEquals(result.leitura, null);
-      assertEquals(result.leituraErro, CRLV_NAO_LIDO_MENSAGEM);
+      assertEquals(result.leitura?.veiculo.placa.valor, null);
+      assertEquals(result.leitura?.leitura_fraca, true);
+      assertEquals(result.leituraErro, null);
     } finally {
       if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");
       else Deno.env.set("AMZ_OCR_URL", oldUrl);
@@ -317,7 +320,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "VEIC-WPP-2 — arquivo repetido reaproveita somente leitura bem-sucedida",
+  name:
+    "VEIC-WPP-2 — arquivo repetido reaproveita somente leitura bem-sucedida",
   permissions: { env: true },
   fn: async () => {
     const bytes = new Uint8Array([8, 8, 8]);
@@ -423,20 +427,22 @@ Deno.test("VEIC-WPP-1 — placa antiga vincula estoque Mercosul e oferece desfaz
 
 Deno.test("DOC-SEG-2 — resposta lista todos os campos e mascara CPF", () => {
   const reply = respostaCrlvWhatsApp(parseCrlvText(OCR_TEXT, "ocr"));
-  for (const label of [
-    "✅ CRLV lido",
-    "Placa:",
-    "Renavam:",
-    "Chassi:",
-    "Marca/modelo/versão:",
-    "Ano fabricação/modelo:",
-    "Cor:",
-    "Combustível:",
-    "Categoria:",
-    "Município/UF:",
-    "Proprietário:",
-    "CPF/CNPJ:",
-  ]) {
+  for (
+    const label of [
+      "✅ CRLV lido",
+      "Placa:",
+      "Renavam:",
+      "Chassi:",
+      "Marca/modelo/versão:",
+      "Ano fabricação/modelo:",
+      "Cor:",
+      "Combustível:",
+      "Categoria:",
+      "Município/UF:",
+      "Proprietário:",
+      "CPF/CNPJ:",
+    ]
+  ) {
     assertStringIncludes(reply, label);
   }
   assertEquals(reply.includes("52998224725"), false);
@@ -473,20 +479,21 @@ Deno.test("VEIC-WPP-2 — placa parcial é completada pela Molicar e mantém ori
     userId: "u1",
     documentoId: "d1",
     leitura: partial,
-    runConsulta: async () => ({
-      not_found: false,
-      vin: "9BWZZZ377VT004251",
-      renavam: "12345678900",
-      dados: {
-        marca: "TOYOTA",
-        modelo: "COROLLA",
-        versao: "ALTISFLEX",
-        ano_fabricacao: 2014,
-        ano_modelo: 2015,
-        combustivel: "FLEX",
-        cor: "PRATA",
-      },
-    }) as never,
+    runConsulta: async () =>
+      ({
+        not_found: false,
+        vin: "9BWZZZ377VT004251",
+        renavam: "12345678900",
+        dados: {
+          marca: "TOYOTA",
+          modelo: "COROLLA",
+          versao: "ALTISFLEX",
+          ano_fabricacao: 2014,
+          ano_modelo: 2015,
+          combustivel: "FLEX",
+          cor: "PRATA",
+        },
+      }) as never,
   });
   assertEquals(completed.completado, true);
   assertEquals(completed.leitura.veiculo.placa.valor, "ABC1234");
@@ -546,4 +553,70 @@ Deno.test("VEIC-WPP-2 — Molicar indisponível preserva leitura parcial", async
   });
   assertStringIncludes(reply, "✅ Li a placa ABC1234 no documento.");
   assertStringIncludes(reply, "⚠️ A Molicar não está conectada");
+});
+
+Deno.test("CRLV-FIM — pending aceita placa válida e descarta inválida ou expirada", () => {
+  const now = Date.parse("2026-10-28T12:00:00.000Z");
+  const pending = {
+    documento_id: "d1",
+    created_at: "2026-10-28T11:45:00.000Z",
+  };
+  assertEquals(resolvePendingCrlvPlate(pending, "ABC-1234", now), {
+    status: "valid",
+    documentoId: "d1",
+    plate: "ABC1234",
+  });
+  assertEquals(resolvePendingCrlvPlate(pending, "quero outra coisa", now), {
+    status: "invalid",
+    documentoId: "d1",
+  });
+  assertEquals(
+    resolvePendingCrlvPlate(
+      { ...pending, created_at: "2026-10-28T11:29:59.000Z" },
+      "ABC1234",
+      now,
+    ),
+    { status: "expired", documentoId: "d1" },
+  );
+});
+
+Deno.test("CRLV-FIM — placa digitada preserva OCR e grava origens", async () => {
+  const sb = {
+    from(table: string) {
+      if (table === "gestao_documento") {
+        return { update: () => updateChain() };
+      }
+      return { insert: () => Promise.resolve({ error: null }) };
+    },
+  };
+  const leitura = crlvFromTypedPlate("ABC1D23", {
+    veiculo: {
+      cor: { valor: "PRATA", confianca: "baixa" },
+    },
+  });
+  const completed = await completeCrlvWithMolicar({
+    sb: sb as never,
+    userId: "u1",
+    documentoId: "d1",
+    leitura,
+    plateOrigin: "digitado",
+    runConsulta: async () =>
+      ({
+        dados: { marca: "MARCA", modelo: "MODELO", ano_modelo: 2020 },
+      }) as never,
+  });
+  assertEquals(completed.leitura.veiculo.cor.valor, "PRATA");
+  assertEquals(completed.origens.veiculo.placa, "digitado");
+  assertEquals(completed.origens.veiculo.cor, "documento");
+  assertEquals(completed.origens.veiculo.marca_modelo_versao, "Molicar");
+  const reply = respostaCrlvWhatsApp(completed.leitura, {
+    origens: completed.origens,
+    leituraParcial: true,
+    completadoMolicar: true,
+  });
+  assertStringIncludes(
+    reply,
+    "✅ Usei a placa ABC1D23 digitada e completei pela Molicar:",
+  );
+  assertStringIncludes(reply, "ABC1D23 (origem: digitado)");
 });

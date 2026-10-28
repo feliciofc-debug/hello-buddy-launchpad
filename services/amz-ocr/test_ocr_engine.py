@@ -16,7 +16,7 @@ try:
         _paddle_input,
         _paddle_reader,
         _run_variants,
-        _osd_oriented,
+        _strip_cjk,
         preload_paddle,
         preprocessing_variants,
         recognize_crlv_image,
@@ -91,7 +91,7 @@ def synthetic_old_crlv(
     "dependências OCR são instaladas na imagem Docker",
 )
 class OcrEngineTest(unittest.TestCase):
-    def test_preload_loads_normal_and_full_document_engines(self) -> None:
+    def test_preload_loads_single_latin_engine(self) -> None:
         with unittest.mock.patch(
             "ocr_engine._paddle_engine",
         ) as engine:
@@ -100,7 +100,6 @@ class OcrEngineTest(unittest.TestCase):
             engine.call_args_list,
             [
                 unittest.mock.call(full_document=False),
-                unittest.mock.call(full_document=True),
             ],
         )
 
@@ -160,14 +159,11 @@ class OcrEngineTest(unittest.TestCase):
             {"placa", "renavam", "chassi"},
         )
 
-    def test_osd_fallback_rotates_portrait_document(self) -> None:
-        portrait = np.zeros((1400, 500, 3), dtype=np.uint8)
-        with unittest.mock.patch(
-            "ocr_engine.pytesseract.image_to_osd",
-            side_effect=RuntimeError("sem confiança"),
-        ):
-            oriented = _osd_oriented(portrait)
-        self.assertEqual(oriented.shape[:2], (500, 1400))
+    def test_removes_residual_cjk_without_losing_latin_text(self) -> None:
+        self.assertEqual(
+            _strip_cjk("車両 PLACA ABC1234 漢字 COR PRATA"),
+            " PLACA ABC1234  COR PRATA",
+        )
 
     def test_parser_selects_valid_fields_instead_of_longest_text(self) -> None:
         image = synthetic_old_crlv()
@@ -276,13 +272,12 @@ class OcrEngineTest(unittest.TestCase):
         importlib.util.find_spec("paddleocr") is not None,
         "PaddleOCR não instalado",
     )
-    def test_real_paddle_reads_rotated_noisy_green_crlv(self) -> None:
+    def test_real_latin_paddle_reads_noisy_green_crlv_without_rotation(self) -> None:
         os.environ["AMZ_OCR_CPU_THREADS"] = "2"
-        landscape = synthetic_old_crlv(rotation=0, jpeg_quality=58).resize(
+        image = synthetic_old_crlv(rotation=0, jpeg_quality=58).resize(
             (1400, 500),
             Image.Resampling.LANCZOS,
         )
-        image = landscape.transpose(Image.Transpose.ROTATE_270)
         started = time.monotonic()
         result = recognize_crlv_image(image, timeout_seconds=18)
         elapsed = time.monotonic() - started
@@ -293,7 +288,7 @@ class OcrEngineTest(unittest.TestCase):
         self.assertLess(elapsed, 12)
         print(
             "OCR_SYNTHETIC_METRICS "
-            "threads=2 size=500x1400 rotation=90 "
+            "threads=2 size=1400x500 rotation=0 "
             f"motor={result.metrics.motor} "
             f"variant={result.metrics.variante_vencedora} "
             f"elapsed_ms={round(elapsed * 1000)}"
