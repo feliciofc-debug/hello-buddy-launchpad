@@ -26,6 +26,9 @@ export type VeiculoProcedenciaInteractiveButtons = {
 export type PendingProcedenciaConfirm = {
   placa: string;
   veiculo_id?: string | null;
+  troca_id?: string | null;
+  services?: ("debts" | "gravame" | "renajud")[];
+  retry_debt_id?: string;
   expires_at: string;
 };
 
@@ -61,6 +64,19 @@ function parseMolicarInteractiveId(text: string): string | null {
   if (marker) return marker.trim();
   const raw = String(text || "").match(/^molicar_wa:(.+)$/i)?.[1];
   return raw?.trim() || null;
+}
+
+function parseDebtRetryId(text: string): string | null {
+  const marker = String(text || "").match(
+    /<<INTERACTIVE_ID:proc_debitos_retry:([^>]+)>>/i,
+  )?.[1];
+  if (marker) return marker.trim();
+  return String(text || "").match(/^proc_debitos_retry:(.+)$/i)?.[1]?.trim() ||
+    null;
+}
+
+function isDebtRetryText(text: string): boolean {
+  return normalize(text).replace(/[.!?]+$/g, "").trim() === "tentar debitos";
 }
 
 export function parseMolicarPlateLookupText(text: string): string | null {
@@ -223,6 +239,7 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
   const interactivePlate = normalizeBrazilianPlate(
     interactive?.split(":")[1],
   );
+  const retryDebtId = parseDebtRetryId(input.interactiveId || text);
 
   const sb = input.sb as SupabaseClient;
   if (
@@ -274,10 +291,15 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
       try {
         const run = input.dependencies?.runProcedencia ??
           runMolicarProcedenciaQuery;
+        const services = active.services?.length
+          ? active.services
+          : ["debts", "gravame", "renajud"] as const;
         const rows = await run(sb, input.userId, {
           placa: active.placa,
-          services: ["debts", "gravame", "renajud"],
+          services,
           canal: "whatsapp",
+          veiculo_id: active.veiculo_id ?? null,
+          troca_id: active.troca_id ?? null,
         }) as Record<string, unknown>[];
         if (!rows.length) {
           logProcedenciaSkip("reserva_vazia", { phase: "confirm" });
@@ -307,8 +329,9 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
         }
         return {
           handled: true,
-          reply:
-            "Consulta de procedência iniciada. Avisarei o dono quando Débitos, Gravame e Renajud terminarem.",
+          reply: services.length === 1 && services[0] === "debts"
+            ? "Nova consulta de débitos iniciada. Avisarei o dono quando terminar."
+            : "Consulta de procedência iniciada. Avisarei o dono quando Débitos, Gravame e Renajud terminarem.",
         };
       } catch (error) {
         const failure = classifyProcedenciaStartFailure(error);
@@ -322,6 +345,63 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
     return {
       handled: true,
       reply: "Toque em *Confirmar* ou *Cancelar*.",
+    };
+  }
+
+  if (retryDebtId || isDebtRetryText(text)) {
+    let query = sb.from("molicar_procedencia")
+      .select("id,user_id,placa,veiculo_id,troca_id,servicos,status,erro")
+      .eq("user_id", input.userId)
+      .eq("erro", "fonte_indisponivel");
+    if (retryDebtId) {
+      query = query.eq("id", retryDebtId);
+    } else {
+      query = query.contains("servicos", ["debts"])
+        .order("solicitado_em", { ascending: false })
+        .limit(1);
+    }
+    const { data: source, error } = await query.maybeSingle();
+    const valid = !error && source &&
+      Array.isArray(source.servicos) &&
+      source.servicos.length === 1 &&
+      source.servicos[0] === "debts" &&
+      normalizeBrazilianPlate(source.placa);
+    if (!valid) {
+      logProcedenciaSkip("identidade_invalida", { phase: "debts_retry" });
+      return {
+        handled: true,
+        reply: "Não encontrei uma consulta de débitos válida desta loja para repetir.",
+      };
+    }
+    const pendingRetry: PendingProcedenciaConfirm = {
+      placa: normalizeBrazilianPlate(source.placa)!,
+      veiculo_id: source.veiculo_id ?? null,
+      troca_id: source.troca_id ?? null,
+      services: ["debts"],
+      retry_debt_id: String(source.id),
+      expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
+    };
+    await input.saveAgentStatePatch(
+      { pending_procedencia_confirm: pendingRetry },
+      input.agentState,
+    );
+    const reply = "Isso usa 1 consulta da cota da loja. Confirma?";
+    return {
+      handled: true,
+      reply,
+      interactiveButtons: {
+        body: reply,
+        buttons: [
+          {
+            id: `${MOLICAR_WA_PREFIX}procedencia_confirmar`,
+            title: "Confirmar",
+          },
+          {
+            id: `${MOLICAR_WA_PREFIX}procedencia_cancelar`,
+            title: "Cancelar",
+          },
+        ],
+      },
     };
   }
 

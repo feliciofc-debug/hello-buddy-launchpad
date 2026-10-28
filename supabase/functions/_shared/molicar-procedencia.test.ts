@@ -7,6 +7,7 @@ import {
   classifyMolicarProcedencia,
   constantTimeSecretEqual,
   molicarJobId,
+  molicarProcedenciaErrorCode,
   molicarProcedenciaPath,
   sanitizeMolicarProcedencia,
 } from "./molicar-procedencia.ts";
@@ -65,6 +66,14 @@ Deno.test("MOLICAR-2 classifica status documentados e extrai JobId", () => {
     "expired",
   );
   assertEquals(molicarJobId({ Data: { JobId: "job-123" } }), "job-123");
+  assertEquals(
+    molicarProcedenciaErrorCode({
+      Code: "UNPROCESSABLE_ENTITY",
+      Message:
+        "Unable to retrieve complete information at this time. Please try your request again.",
+    }),
+    "fonte_indisponivel",
+  );
 });
 
 Deno.test("MOLICAR-2 sanitiza PII recursiva e preserva agente operacional", () => {

@@ -40,6 +40,7 @@ Deno.test("ESTAB-1 — texto livre nunca contém marcador nem ID", () => {
 Deno.test("ESTAB-1 — somente IDs da Gestão podem chegar a intenção mutável", () => {
   assertEquals(isGestaoInteractiveId("gestao_troca_wa:pick:1"), true);
   assertEquals(isGestaoInteractiveId("molicar_wa:confirmar:1"), true);
+  assertEquals(isGestaoInteractiveId("proc_debitos_retry:debt-1"), true);
   assertEquals(
     isGestaoInteractiveId(
       "cofre_possivel_liberar:8222abcd-1111-2222-3333-444455556666",
