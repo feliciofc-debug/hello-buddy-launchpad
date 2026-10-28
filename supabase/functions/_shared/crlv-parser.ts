@@ -111,10 +111,12 @@ function augmentLegacyLayout(text: string): string {
     /MARCA\/MODELO\s+ANO\s+FAB\s+ANO\s+MOD/,
   );
   const years = modelYears?.match(/\b(?:19|20)\d{2}\b/g) ?? [];
-  if (modelYears && years.length >= 2) {
-    const model = modelYears.slice(0, modelYears.indexOf(years[0])).trim();
+  const firstYear = years[0];
+  const secondYear = years[1];
+  if (modelYears && firstYear && secondYear) {
+    const model = modelYears.slice(0, modelYears.indexOf(firstYear)).trim();
     if (model) extracted.push(`MARCA/MODELO: ${model}`);
-    extracted.push(`ANO FAB/ANO MOD: ${years[0]} ${years[1]}`);
+    extracted.push(`ANO FAB/ANO MOD: ${firstYear} ${secondYear}`);
   }
 
   const capacity = legacyRow(
