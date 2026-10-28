@@ -8,6 +8,12 @@ import {
 import { lerCrlvLocal } from "./crlv-leitura.ts";
 import type { CrlvOcrMetricas } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
+import {
+  assertGestaoDocumentoCamposUpdateOk,
+  CAMPOS_VEICULO_PII_KEYS,
+  camposVeiculoContainsPiiKey,
+  camposVeiculoSemPii,
+} from "./gestao-cofre-campos.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -38,15 +44,7 @@ const ALLOWED_TIPO = new Set([
   "comprovante_endereco",
   "outro",
 ]);
-const PII_KEYS = new Set([
-  "proprietario",
-  "proprietario_nome",
-  "nome",
-  "cpf",
-  "cnpj",
-  "cpf_cnpj",
-  "documento_proprietario",
-]);
+const PII_KEYS = new Set<string>(CAMPOS_VEICULO_PII_KEYS);
 
 export const CRLV_NAO_LIDO_MENSAGEM =
   "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.";
@@ -59,15 +57,6 @@ export type CrlvLeituraReason =
   | "ocr_failed";
 
 type CofreClient = SupabaseClient<any, "public", any>;
-
-function containsPiiKey(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsPiiKey);
-  if (!value || typeof value !== "object") return false;
-  return Object.entries(value as Record<string, unknown>).some(
-    ([key, nested]) =>
-      PII_KEYS.has(key.toLowerCase()) || containsPiiKey(nested),
-  );
-}
 
 function addYears(date: string, years: number): string {
   const value = new Date(`${date.slice(0, 10)}T12:00:00Z`);
@@ -286,17 +275,17 @@ export async function relerCrlvDocumentoCofre(input: {
   const { error } = await input.sb.from("gestao_documento").update({
     tipo: input.mime.toLowerCase() === "application/pdf" ? "crlv_e" : "crlv",
     status: "lido",
-    campos_veiculo: {
+    campos_veiculo: camposVeiculoSemPii({
       veiculo: result.leitura.veiculo,
       documento: result.leitura.documento,
       observacoes: result.leitura.observacoes,
-    },
+    }),
     dados_pessoais_cifrados: await cifrarDadosPessoais({
       nome: result.leitura.proprietario.nome.valor,
       cpf_cnpj: result.leitura.proprietario.cpf_cnpj.valor,
     }),
   }).eq("id", input.documentoId).eq("user_id", input.userId);
-  if (error) throw new Error("Falha ao registrar leitura do CRLV");
+  assertGestaoDocumentoCamposUpdateOk(error);
   await auditGestaoDocumento(
     input.sb,
     input.documentoId,
@@ -349,11 +338,11 @@ export async function gestaoCofreUpload(
     if (input.trocaId) patch.troca_id = input.trocaId;
     if (input.vendaId) patch.venda_id = input.vendaId;
     if (reread.leitura) {
-      patch.campos_veiculo = {
+      patch.campos_veiculo = camposVeiculoSemPii({
         veiculo: reread.leitura.veiculo,
         documento: reread.leitura.documento,
         observacoes: reread.leitura.observacoes,
-      };
+      });
       patch.dados_pessoais_cifrados = await cifrarDadosPessoais({
         nome: reread.leitura.proprietario.nome.valor,
         cpf_cnpj: reread.leitura.proprietario.cpf_cnpj.valor,
@@ -361,7 +350,7 @@ export async function gestaoCofreUpload(
     }
     const { error } = await input.sb.from("gestao_documento").update(patch)
       .eq("id", duplicate.id).eq("user_id", input.userId);
-    if (error) throw new Error("Falha ao reaproveitar documento");
+    assertGestaoDocumentoCamposUpdateOk(error);
     await auditGestaoDocumento(
       input.sb,
       String(duplicate.id),
@@ -384,7 +373,7 @@ export async function gestaoCofreUpload(
   }
 
   const campos = input.camposVeiculo ?? {};
-  if (containsPiiKey(campos)) {
+  if (camposVeiculoContainsPiiKey(campos)) {
     throw new Error("Dados pessoais devem ser enviados no campo protegido");
   }
 
@@ -392,13 +381,15 @@ export async function gestaoCofreUpload(
     input,
   );
 
-  const camposLidos = leitura
-    ? {
-      veiculo: leitura.veiculo,
-      documento: leitura.documento,
-      observacoes: leitura.observacoes,
-    }
-    : campos;
+  const camposLidos = camposVeiculoSemPii(
+    leitura
+      ? {
+        veiculo: leitura.veiculo,
+        documento: leitura.documento,
+        observacoes: leitura.observacoes,
+      }
+      : campos,
+  );
   const pessoaisLidos = leitura
     ? {
       nome: leitura.proprietario.nome.valor,
@@ -439,6 +430,9 @@ export async function gestaoCofreUpload(
   });
   if (inserted.error) {
     await input.sb.storage.from(BUCKET).remove([path]);
+    if (inserted.error.code === "23514") {
+      assertGestaoDocumentoCamposUpdateOk(inserted.error);
+    }
     if (inserted.error.code === "23505") {
       const { data } = await input.sb.from("gestao_documento").select("id")
         .eq("user_id", input.userId).eq("sha256", sha256)
@@ -456,7 +450,7 @@ export async function gestaoCofreUpload(
         };
       }
     }
-    throw new Error("Falha ao registrar documento");
+    assertGestaoDocumentoCamposUpdateOk(inserted.error);
   }
   await auditGestaoDocumento(
     input.sb,

@@ -7,6 +7,10 @@ import {
 } from "./crlv-parser.ts";
 import { auditGestaoDocumento } from "./gestao-cofre-upload.ts";
 import {
+  assertGestaoDocumentoCamposUpdateOk,
+  camposVeiculoSemPii,
+} from "./gestao-cofre-campos.ts";
+import {
   MolicarDailyLimitError,
   runMolicarConsulta,
 } from "./molicar-service.ts";
@@ -225,14 +229,14 @@ export async function completeCrlvWithMolicar(input: {
   leitura.leitura_fraca =
     core.filter((field) => field.valor != null).length < 3;
   const { error } = await input.sb.from("gestao_documento").update({
-    campos_veiculo: {
+    campos_veiculo: camposVeiculoSemPii({
       veiculo: leitura.veiculo,
       documento: leitura.documento,
       observacoes: leitura.observacoes,
       origens,
-    },
+    }),
   }).eq("id", input.documentoId).eq("user_id", input.userId);
-  if (error) throw error;
+  assertGestaoDocumentoCamposUpdateOk(error);
   await auditGestaoDocumento(
     input.sb,
     input.documentoId,

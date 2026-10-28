@@ -211,6 +211,7 @@ import {
   crlvWhatsappActionButtons,
   resolvePendingCrlvPlate,
 } from "../_shared/crlv-whatsapp.ts";
+import { GestaoDocumentoCamposSaveError } from "../_shared/gestao-cofre-campos.ts";
 import {
   getTenantLogoDataUrl,
   getTenantLogoStorageLocation,
@@ -25128,13 +25129,42 @@ export async function processOne(queueId: string) {
                 status: "descartado",
               }).eq("id", documentoId).eq("user_id", userId);
             } else {
-              const reread = await relerCrlvDocumentoCofre({
-                sb,
-                userId,
-                documentoId,
-                bytes,
-                mime: String(pendingDoc.mime || "image/jpeg"),
-              });
+              let reread: Awaited<ReturnType<typeof relerCrlvDocumentoCofre>>;
+              try {
+                reread = await relerCrlvDocumentoCofre({
+                  sb,
+                  userId,
+                  documentoId,
+                  bytes,
+                  mime: String(pendingDoc.mime || "image/jpeg"),
+                });
+              } catch (error) {
+                if (error instanceof GestaoDocumentoCamposSaveError) {
+                  const reply = error.message;
+                  const sentId = await sendWhatsApp(
+                    userId,
+                    row.from_number,
+                    reply,
+                  );
+                  await sb.from("whatsapp_cloud_messages").insert({
+                    conversation_id: conv.id,
+                    user_id: userId,
+                    direction: "outbound",
+                    sender: "agent",
+                    content: reply,
+                    message_type: "text",
+                    wamid: sentId,
+                  });
+                  await doneQueue(row.id);
+                  return {
+                    ok: true,
+                    possible_document_saved: true,
+                    crlv_campos_save_failed: true,
+                    reason: error.reasonCode,
+                  };
+                }
+                throw error;
+              }
               let reply = CRLV_NAO_LIDO_MENSAGEM;
               let buttons: WhatsAppInteractiveButtons | undefined;
               if (!reread.leitura?.veiculo.placa.valor) {
@@ -25154,44 +25184,52 @@ export async function processOne(queueId: string) {
                   });
                 }
               } else if (reread.leitura) {
-                const leituraParcial = reread.leitura.leitura_fraca;
-                const completion = leituraParcial
-                  ? await completeCrlvWithMolicar({
-                    sb,
-                    userId,
-                    documentoId,
-                    leitura: reread.leitura,
-                  })
-                  : null;
-                const leitura = completion?.leitura ?? reread.leitura;
-                let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> =
-                  null;
                 try {
-                  linked = await autoLinkCrlvToStock(
-                    sb,
-                    userId,
-                    documentoId,
-                    leitura,
-                  );
-                } catch {
-                  console.warn("[crlv-leitura] skip", {
-                    reason: "stock_auto_link_failed",
+                  const leituraParcial = reread.leitura.leitura_fraca;
+                  const completion = leituraParcial
+                    ? await completeCrlvWithMolicar({
+                      sb,
+                      userId,
+                      documentoId,
+                      leitura: reread.leitura,
+                    })
+                    : null;
+                  const leitura = completion?.leitura ?? reread.leitura;
+                  let linked: Awaited<ReturnType<typeof autoLinkCrlvToStock>> =
+                    null;
+                  try {
+                    linked = await autoLinkCrlvToStock(
+                      sb,
+                      userId,
+                      documentoId,
+                      leitura,
+                    );
+                  } catch {
+                    console.warn("[crlv-leitura] skip", {
+                      reason: "stock_auto_link_failed",
+                    });
+                  }
+                  reply = respostaCrlvWhatsApp(leitura, {
+                    origens: completion?.origens,
+                    leituraParcial,
+                    completadoMolicar: completion?.completado,
+                    avisoMolicar: completion?.aviso,
                   });
+                  if (linked) {
+                    reply += `\nVinculei ao ${linked.label} do estoque.`;
+                  }
+                  buttons = crlvWhatsappActionButtons(
+                    documentoId,
+                    linked?.id,
+                    leitura.veiculo.placa.valor,
+                  );
+                } catch (error) {
+                  if (error instanceof GestaoDocumentoCamposSaveError) {
+                    reply = error.message;
+                  } else {
+                    throw error;
+                  }
                 }
-                reply = respostaCrlvWhatsApp(leitura, {
-                  origens: completion?.origens,
-                  leituraParcial,
-                  completadoMolicar: completion?.completado,
-                  avisoMolicar: completion?.aviso,
-                });
-                if (linked) {
-                  reply += `\nVinculei ao ${linked.label} do estoque.`;
-                }
-                buttons = crlvWhatsappActionButtons(
-                  documentoId,
-                  linked?.id,
-                  leitura.veiculo.placa.valor,
-                );
               }
               const sentId = await sendWhatsApp(
                 userId,
@@ -25270,65 +25308,93 @@ export async function processOne(queueId: string) {
               .is("deleted_at", null)
               .maybeSingle();
             if (document) {
-              const completion = await completeCrlvWithMolicar({
-                sb,
-                userId,
-                documentoId: decision.documentoId,
-                leitura: crlvFromTypedPlate(plate, document.campos_veiculo),
-                plateOrigin: "digitado",
-              });
-              let linked: Awaited<
-                ReturnType<typeof autoLinkCrlvToStock>
-              > = null;
               try {
-                linked = await autoLinkCrlvToStock(
+                const completion = await completeCrlvWithMolicar({
                   sb,
                   userId,
-                  decision.documentoId,
-                  completion.leitura,
-                );
-              } catch {
-                console.warn("[crlv-leitura] skip", {
-                  reason: "stock_auto_link_failed",
+                  documentoId: decision.documentoId,
+                  leitura: crlvFromTypedPlate(plate, document.campos_veiculo),
+                  plateOrigin: "digitado",
                 });
+                let linked: Awaited<
+                  ReturnType<typeof autoLinkCrlvToStock>
+                > = null;
+                try {
+                  linked = await autoLinkCrlvToStock(
+                    sb,
+                    userId,
+                    decision.documentoId,
+                    completion.leitura,
+                  );
+                } catch {
+                  console.warn("[crlv-leitura] skip", {
+                    reason: "stock_auto_link_failed",
+                  });
+                }
+                let reply = respostaCrlvWhatsApp(completion.leitura, {
+                  origens: completion.origens,
+                  leituraParcial: true,
+                  completadoMolicar: completion.completado,
+                  avisoMolicar: completion.aviso,
+                });
+                if (linked) {
+                  reply += `\nVinculei ao ${linked.label} do estoque.`;
+                }
+                const buttons = crlvWhatsappActionButtons(
+                  decision.documentoId,
+                  linked?.id,
+                  plate,
+                );
+                const sentId = await sendWhatsApp(
+                  userId,
+                  row.from_number,
+                  reply,
+                  undefined,
+                  undefined,
+                  buttons,
+                );
+                await sb.from("whatsapp_cloud_messages").insert({
+                  conversation_id: conv.id,
+                  user_id: userId,
+                  direction: "outbound",
+                  sender: "agent",
+                  content: reply,
+                  message_type: "interactive",
+                  wamid: sentId,
+                });
+                await doneQueue(row.id);
+                return {
+                  ok: true,
+                  crlv_typed_plate: true,
+                  crlv_read: true,
+                };
+              } catch (error) {
+                if (error instanceof GestaoDocumentoCamposSaveError) {
+                  const reply = error.message;
+                  const sentId = await sendWhatsApp(
+                    userId,
+                    row.from_number,
+                    reply,
+                  );
+                  await sb.from("whatsapp_cloud_messages").insert({
+                    conversation_id: conv.id,
+                    user_id: userId,
+                    direction: "outbound",
+                    sender: "agent",
+                    content: reply,
+                    message_type: "text",
+                    wamid: sentId,
+                  });
+                  await doneQueue(row.id);
+                  return {
+                    ok: true,
+                    crlv_typed_plate: true,
+                    crlv_campos_save_failed: true,
+                    reason: error.reasonCode,
+                  };
+                }
+                throw error;
               }
-              let reply = respostaCrlvWhatsApp(completion.leitura, {
-                origens: completion.origens,
-                leituraParcial: true,
-                completadoMolicar: completion.completado,
-                avisoMolicar: completion.aviso,
-              });
-              if (linked) {
-                reply += `\nVinculei ao ${linked.label} do estoque.`;
-              }
-              const buttons = crlvWhatsappActionButtons(
-                decision.documentoId,
-                linked?.id,
-                plate,
-              );
-              const sentId = await sendWhatsApp(
-                userId,
-                row.from_number,
-                reply,
-                undefined,
-                undefined,
-                buttons,
-              );
-              await sb.from("whatsapp_cloud_messages").insert({
-                conversation_id: conv.id,
-                user_id: userId,
-                direction: "outbound",
-                sender: "agent",
-                content: reply,
-                message_type: "interactive",
-                wamid: sentId,
-              });
-              await doneQueue(row.id);
-              return {
-                ok: true,
-                crlv_typed_plate: true,
-                crlv_read: true,
-              };
             }
           }
         }
@@ -26625,9 +26691,10 @@ export async function processOne(queueId: string) {
           tipo,
           owner_or_manager: senderIsGestao,
         };
-      } catch {
-        const failure =
-          "Recebi o documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+      } catch (error) {
+        const failure = error instanceof GestaoDocumentoCamposSaveError
+          ? error.message
+          : "Recebi o documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
         const sentId = await sendWhatsApp(userId, row.from_number, failure);
         await sb.from("whatsapp_cloud_messages").insert({
           conversation_id: conv.id,
@@ -26639,7 +26706,12 @@ export async function processOne(queueId: string) {
           wamid: sentId,
         });
         await doneQueue(row.id);
-        return { ok: true, reason: "document_secure_store_failed" };
+        return {
+          ok: true,
+          reason: error instanceof GestaoDocumentoCamposSaveError
+            ? error.reasonCode
+            : "document_secure_store_failed",
+        };
       }
     }
 

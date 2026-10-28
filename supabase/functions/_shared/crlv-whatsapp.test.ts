@@ -512,10 +512,11 @@ Deno.test("VEIC-WPP-2 — placa parcial é completada pela Molicar e mantém ori
   assertEquals(completed.leitura.veiculo.renavam.valor, "12345678900");
   assertEquals(completed.origens.veiculo.placa, "documento");
   assertEquals(completed.origens.veiculo.chassi, "Molicar");
-  assertEquals(
-    (updates[0].campos_veiculo as Record<string, unknown>).origens,
-    completed.origens,
-  );
+  const storedCampos = updates[0].campos_veiculo as Record<string, unknown>;
+  const storedOrigens = storedCampos.origens as Record<string, unknown>;
+  assertEquals(storedOrigens.proprietario, undefined);
+  assertEquals(storedOrigens.veiculo, completed.origens.veiculo);
+  assertEquals(completed.origens.proprietario !== undefined, true);
   assertEquals(JSON.stringify(audits).includes("9BWZZZ377VT004251"), false);
 
   const reply = respostaCrlvWhatsApp(completed.leitura, {
