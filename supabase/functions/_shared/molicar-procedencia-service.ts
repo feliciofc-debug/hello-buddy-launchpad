@@ -14,6 +14,10 @@ import {
   molicarTokenProvider,
   resolveMolicarConta,
 } from "./molicar-service.ts";
+import {
+  logProcedenciaSkip,
+  type ProcedenciaStartReason,
+} from "./molicar-procedencia-errors.ts";
 
 type Db = SupabaseClient<any, "public", any>;
 
@@ -104,9 +108,6 @@ export async function runMolicarProcedenciaQuery(
     if (error) throw error;
     if (existing?.length) return existing;
   }
-  const getToken = await molicarTokenProvider(db, userId, conta, credentials);
-  await ensureMolicarWebhookSubscriptions({ getToken });
-
   const { data: reserved, error: reserveError } = await db.rpc(
     "molicar_procedencia_reservar",
     {
@@ -119,6 +120,23 @@ export async function runMolicarProcedenciaQuery(
     },
   );
   if (reserveError) throw reserveError;
+  const reservedRows = (reserved ?? []) as Record<string, unknown>[];
+  if (!reservedRows.length) {
+    throw new Error("reserva_vazia: nenhuma linha reservada para procedência.");
+  }
+
+  const getToken = await molicarTokenProvider(db, userId, conta, credentials);
+  try {
+    await ensureMolicarWebhookSubscriptions({ getToken });
+  } catch (error) {
+    const reason: ProcedenciaStartReason =
+      String((error as Error).message ?? "").includes(
+          "MOLICAR_PROCEDENCIA_WEBHOOK",
+        )
+        ? "webhook_env_ausente"
+        : "webhook_registro_falhou";
+    logProcedenciaSkip(reason, { phase: "webhook_ensure" });
+  }
   const requestId = crypto.randomUUID();
   const canal = body.canal === "whatsapp"
     ? "whatsapp"
@@ -126,7 +144,6 @@ export async function runMolicarProcedenciaQuery(
     ? "automatico"
     : "painel";
   const notifyWhatsapp = canal === "whatsapp";
-  const reservedRows = (reserved ?? []) as Record<string, unknown>[];
   if (reservedRows.length) {
     const { error } = await db.from("molicar_procedencia").update({
       solicitacao_id: requestId,

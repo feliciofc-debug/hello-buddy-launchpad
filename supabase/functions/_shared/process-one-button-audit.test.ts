@@ -10,6 +10,7 @@ import {
   ProcessOneMemorySupabase,
 } from "./process-one-test-harness.ts";
 import { cifrarCofreBytes } from "./gestao-cofre-crypto.ts";
+import { encryptGestaoIntegracaoSecret } from "./gestao-integracoes-crypto.ts";
 
 type ProcessorModule =
   typeof import("../whatsapp-cloud-inbound-processor/index.ts");
@@ -1019,7 +1020,13 @@ Deno.test("FIX-BOTOES-1 J8 — processOne repassa IDs Molicar", async () => {
 });
 
 Deno.test("VEIC-WPP-2 J8 — Consultar segurança → confirmar pelo processOne", async () => {
+  const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+  Deno.env.set("GESTAO_INTEGRACOES_KEY", key);
+  Deno.env.delete("MOLICAR_PROCEDENCIA_WEBHOOK_URL");
+  Deno.env.delete("MOLICAR_PROCEDENCIA_WEBHOOK_SECRET");
+
   const processor = await loadProcessor();
+  const tenantId = "11111111-1111-4111-8111-111111111111";
   const tables = baseProcessOneTables({
     interactiveId: "molicar_wa:procedencia:ABC1D23",
     title: "Consultar segurança",
@@ -1027,6 +1034,14 @@ Deno.test("VEIC-WPP-2 J8 — Consultar segurança → confirmar pelo processOne"
   });
   tables.profiles[0].tipo = "revenda_veiculos";
   tables.empresa_config[0].gestao_estoque_enabled = true;
+  tables.molicar_procedencia = [];
+  tables.gestao_molicar_conta = [{
+    user_id: tenantId,
+    client_id: "client-test",
+    client_secret_enc: await encryptGestaoIntegracaoSecret("client-secret-test"),
+    status: "active",
+    limite_mensal: 100,
+  }];
   const db = new ProcessOneMemorySupabase(tables);
   const fetchRecorder = installProcessOneFetchRecorder();
   const restoreSupabase = processor.setProcessOneSupabaseForTest(db as never);
@@ -1049,6 +1064,22 @@ Deno.test("VEIC-WPP-2 J8 — Consultar segurança → confirmar pelo processOne"
       db.tables.whatsapp_cloud_conversations[0].agent_state
         ?.pending_procedencia_confirm,
       null,
+    );
+    assertEquals(db.tables.molicar_procedencia.length, 3);
+    const services = db.tables.molicar_procedencia.map((row) =>
+      Array.isArray(row.servicos) ? row.servicos[0] : null
+    ).sort();
+    assertEquals(services, ["debts", "gravame", "renajud"]);
+    for (const row of db.tables.molicar_procedencia) {
+      assertEquals(row.canal, "whatsapp");
+      assertEquals(row.notificar_whatsapp, true);
+    }
+    const outbound = db.tables.whatsapp_cloud_messages.filter((message) =>
+      message.direction === "outbound"
+    );
+    assertStringIncludes(
+      String(outbound.at(-1)?.content),
+      "Consulta de procedência iniciada",
     );
   } finally {
     restoreSupabase();

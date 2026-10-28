@@ -226,7 +226,52 @@ export class ProcessOneMemorySupabase {
     return new MemoryQuery(this, table);
   }
 
-  rpc(name: string, _params?: unknown) {
+  rpc(name: string, params?: unknown) {
+    if (name === "molicar_procedencia_reservar" && params) {
+      const p = params as Record<string, unknown>;
+      const services = Array.isArray(p.p_servicos)
+        ? p.p_servicos.map(String)
+        : [];
+      const table = this.tables.molicar_procedencia ??= [];
+      const rows = services.map((service) => {
+        const row: Row = {
+          id: crypto.randomUUID(),
+          user_id: p.p_user_id,
+          servicos: [service],
+          identidade_tipo: p.p_identidade_tipo,
+          identidade: p.p_identidade,
+          placa: p.p_identidade_tipo === "plate" ? p.p_identidade : null,
+          vin: p.p_identidade_tipo === "vin" ? p.p_identidade : null,
+          veiculo_id: p.p_veiculo_id ?? null,
+          troca_id: p.p_troca_id ?? null,
+          status: "pendente",
+          canal: "painel",
+          notificar_whatsapp: false,
+        };
+        table.push(row);
+        return structuredClone(row);
+      });
+      return Promise.resolve({ data: rows, error: null });
+    }
+    if (name === "molicar_procedencia_finalizar" && params) {
+      const p = params as Record<string, unknown>;
+      const table = this.tables.molicar_procedencia ?? [];
+      for (const row of table) {
+        if (row.id === p.p_id) {
+          row.status = p.p_status;
+          row.provider_status = p.p_provider_status;
+          row.resultado = p.p_resultado;
+          row.erro = p.p_erro;
+        }
+      }
+      return Promise.resolve({ data: null, error: null });
+    }
+    if (name === "molicar_consumir_quota") {
+      return Promise.resolve({
+        data: [{ permitido: true, usado: 1, limite: 1000 }],
+        error: null,
+      });
+    }
     return Promise.resolve({
       data: this.rpcResults.get(name) ?? null,
       error: null,
@@ -428,6 +473,29 @@ export function installProcessOneFetchRecorder() {
         success: true,
         image_url: `https://storage.test/generated-${calls.length}.png`,
       });
+    }
+    if (url.includes("auth-decoder.molicar.com.br")) {
+      return Response.json({
+        access_token: "molicar-test-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+    }
+    if (url.includes("decoder.molicar.com.br")) {
+      if (url.includes("webhook-subscriptions")) {
+        return Response.json({ Data: [] });
+      }
+      if (
+        /\/(debts|gravame|renajud)(\/|$)/.test(url)
+      ) {
+        return new Response(
+          JSON.stringify({
+            Status: "PROCESSING",
+            Data: { JobId: `job-${calls.length}` },
+          }),
+          { status: 202, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
     if (url.includes("ai.gateway.lovable.dev")) {
       const wantsImage = Array.isArray(body?.modalities) &&
