@@ -20,11 +20,11 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN TMPDIR=/tmp pip install --no-cache-dir --retries 5 --timeout 120 -r requirements.txt
-COPY app.py detector.py ocr_engine.py vehicle_detector.py test_detector.py test_ocr_engine.py ./
+COPY app.py detector.py ocr_engine.py vehicle_detector.py download_vehicle_model.py test_detector.py test_ocr_engine.py ./
 # Detector veículo: PicoDet-S 320 COCO (PaddleDetection, Apache-2.0)
-RUN mkdir -p /app/models \
-    && curl -fsSL -o /app/models/picodet_s_320_lcnet_postprocessed.onnx \
-      https://paddledet.bj.bcebos.com/deploy/third_engine/picodet_s_320_lcnet_postprocessed.onnx \
+# Arquivo: picodet_s_320_lcnet_postprocessed.onnx
+# SHA-256 esperado: 09fc88131be8ad224f13739a5cf8fc838600d76a77539af7f0400fa90506c5f3
+RUN python download_vehicle_model.py \
     && python -c "from vehicle_detector import detect_vehicle; from PIL import Image; detect_vehicle(Image.new('RGB', (640, 480), 'white'))" \
     && TMPDIR=/tmp mkdir -p "$HOME" \
     && python -c "from ocr_engine import preload_paddle; preload_paddle()" \

@@ -290,13 +290,18 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
     new URL("../../../services/amz-ocr/Dockerfile", import.meta.url),
   );
   assertEquals(
-    dockerfile.includes("COPY app.py detector.py ocr_engine.py vehicle_detector.py"),
+    dockerfile.includes(
+      "COPY app.py detector.py ocr_engine.py vehicle_detector.py download_vehicle_model.py",
+    ),
     true,
   );
   assertEquals(
     dockerfile.includes("picodet_s_320_lcnet_postprocessed.onnx"),
     true,
   );
+  assertEquals(dockerfile.includes("download_vehicle_model.py"), true);
+  assertEquals(dockerfile.includes("09fc88131be8ad224f13739a5cf8fc838600d76a77539af7f0400fa90506c5f3"), true);
+  assertEquals(dockerfile.includes("curl -fsSL"), false);
 });
 
 Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativo", async () => {
