@@ -133,9 +133,17 @@ import {
   stripToolCallsToSystemContext,
 } from "../_shared/jarvis-gemini-message-safety.ts";
 import {
+  extractJarvisMenuId,
   isJarvisPureGreeting,
   tryProcessJarvisServiceMenu,
 } from "../_shared/jarvis-service-menu.ts";
+import {
+  jarvisMenuSetsVehiclePhotoExpectation,
+  ownerExpectsMarketingVehiclePhoto,
+  ownerPhotoRoutingCaption,
+  ownerSkipsDocumentPhotoGate,
+  respostaMidiaSalvaSemCodigos,
+} from "../_shared/owner-vehicle-photo-routing.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
 import {
@@ -24647,6 +24655,23 @@ async function tryProcessJarvisServiceMenuShortcut(input: {
     appBaseUrl: Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("SITE_URL"),
   });
   if (!menu.handled) return { handled: false };
+  const menuNavigationId = extractJarvisMenuId(input.userText) ?? input.userText;
+  if (
+    input.fromIsOwner &&
+    jarvisMenuSetsVehiclePhotoExpectation(menuNavigationId)
+  ) {
+    const convIdentity: ConversationStateIdentity = {
+      id: input.convId,
+      userId: input.userId,
+      contactNumber: input.row.from_number,
+    };
+    await saveAgentState(sb, convIdentity, {
+      pending_marketing_vehicle_photo: {
+        created_at: new Date().toISOString(),
+        source: menuNavigationId.slice(0, 160),
+      },
+    }, input.agentState);
+  }
   if (menu.clearedAgentState) {
     const { error } = await sb.from("whatsapp_cloud_conversations").update({
       agent_state: menu.clearedAgentState,
@@ -25128,6 +25153,7 @@ export async function processOne(queueId: string) {
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
     let releasedPossibleDocument: MediaExtract | null = null;
+    let liberatedVehiclePhoto = false;
 
     // DOC-0.3 — limpa foto presa antes de qualquer atalho ou re-pergunta.
     if (fromIsOwner) {
@@ -25180,6 +25206,7 @@ export async function processOne(queueId: string) {
                 mime: String(pendingDoc.mime || "image/jpeg"),
                 base64: base64Encode(Uint8Array.from(bytes).buffer),
               };
+              liberatedVehiclePhoto = true;
               userText = "Não é documento";
               await sb.storage.from("gestao-cofre").remove([
                 pendingDoc.storage_path,
@@ -26441,12 +26468,24 @@ export async function processOne(queueId: string) {
     let possibleDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
       | null = null;
+    let ownerDocumentGateState: AgentConvState | null = null;
+    if (fromIsOwner && gateCandidates.length > 0) {
+      ownerDocumentGateState = migrateVerticalState(
+        await loadAgentState(sb, convStateIdentity),
+      ).state as AgentConvState;
+    }
     for (const candidate of gateCandidates) {
       if (detectedDocument || possibleDocument) break;
       // O callback do parceiro só roda quando há cotação ativa. Se a mídia não
       // foi reconhecida, inclusive quando ficou apenas "possível", ela pertence
       // ao fluxo de orçamento e não passa novamente pela trava geral.
       if (partnerChecked?.media === candidate) continue;
+      if (
+        fromIsOwner &&
+        ownerSkipsDocumentPhotoGate(ownerDocumentGateState)
+      ) {
+        continue;
+      }
       try {
         const checked = await verificarDocumentoNoPortao(candidate);
         if (checked.documento) {
@@ -26950,13 +26989,21 @@ export async function processOne(queueId: string) {
       (m.kind === "image" || m.kind === "video")
     );
     if (freshLibraryMedia.length > 0) {
-      const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
+      const captionBruta = (userText ||
+        freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") ||
+        "").trim();
       const stateConversation = {
         id: conv.id,
         userId,
         contactNumber: row.from_number,
       };
       const rawFreshAgentState = await loadAgentState(sb, stateConversation);
+      const expectsVehiclePhoto = fromIsOwner &&
+        ownerExpectsMarketingVehiclePhoto(rawFreshAgentState);
+      const contexto = ownerPhotoRoutingCaption(captionBruta, {
+        liberatedFromDocumentGate: liberatedVehiclePhoto,
+        expectsVehiclePhoto,
+      });
       if (
         fromIsOwner &&
         userId === ADMIN_AMZ_USER_ID &&
@@ -28004,6 +28051,22 @@ export async function processOne(queueId: string) {
           const refreshedBlocker = blockingVehiclePhotoFlow(refreshedState);
           if (!refreshedBlocker) {
             vehicleFlowCtx.agentState = refreshedState;
+            if (
+              expectsVehiclePhoto ||
+              liberatedVehiclePhoto ||
+              ownerExpectsMarketingVehiclePhoto(refreshedState)
+            ) {
+              const clearedMarketing = await saveAgentState(
+                sb,
+                stateConversation,
+                { pending_marketing_vehicle_photo: null },
+                refreshedState,
+              );
+              if (clearedMarketing) {
+                refreshedState.pending_marketing_vehicle_photo = null;
+                vehicleFlowCtx.agentState = refreshedState;
+              }
+            }
             const plannedBatch = planVehiclePhotoBatch({
               previous: null,
               recentPhotos: queueBatch.photos,
@@ -28699,6 +28762,8 @@ export async function processOne(queueId: string) {
             protocol: protoOwner,
           })
         }`
+        : (liberatedVehiclePhoto && fromIsOwner)
+        ? respostaMidiaSalvaSemCodigos(salvos, descricaoVisual)
         : respostaMidiaSalva(salvos, descricaoVisual, fromIsOwner);
       const finalizedReply = finalizeAmzInboundReply({
         text: rawReply,

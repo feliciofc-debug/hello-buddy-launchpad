@@ -108,6 +108,8 @@ export type DocumentoDetectado = {
   documento: boolean;
   possivel_documento: boolean;
   tipo: "crlv" | "cnh" | "rg" | "outro" | null;
+  vehicle_detected?: boolean;
+  vehicle_area_ratio?: number;
 };
 
 export async function detectarDocumentoLocal(
@@ -139,14 +141,34 @@ export async function detectarDocumentoLocal(
     documento?: unknown;
     possivel_documento?: unknown;
     tipo?: unknown;
+    vehicle_detected?: unknown;
+    vehicle_area_ratio?: unknown;
   };
   const tipo = ["crlv", "cnh", "rg", "outro"].includes(String(payload.tipo))
     ? payload.tipo as DocumentoDetectado["tipo"]
     : null;
+  const vehicleArea = Number(payload.vehicle_area_ratio);
+  const vehicleDetected = payload.vehicle_detected === true &&
+    Number.isFinite(vehicleArea);
+  if (vehicleDetected && vehicleArea >= 0.15) {
+    return {
+      documento: false,
+      possivel_documento: false,
+      tipo: null,
+      vehicle_detected: true,
+      vehicle_area_ratio: vehicleArea,
+    };
+  }
   return {
     documento: payload.documento === true,
     possivel_documento: payload.possivel_documento === true,
     tipo,
+    ...(vehicleDetected
+      ? {
+        vehicle_detected: true,
+        vehicle_area_ratio: vehicleArea,
+      }
+      : {}),
   };
 }
 

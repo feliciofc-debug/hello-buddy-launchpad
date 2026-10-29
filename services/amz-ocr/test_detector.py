@@ -9,6 +9,7 @@ try:
     from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
     import app as detector_app
+    from vehicle_detector import VehicleDetection
 
     DETECTOR_RUNTIME_AVAILABLE = True
 except ModuleNotFoundError:
@@ -183,7 +184,7 @@ class PossibleDocumentTest(unittest.TestCase):
         self,
         image: Image.Image,
         text: str,
-    ) -> tuple[bool, str | None, bool]:
+    ) -> tuple[bool, str | None, bool, object]:
         with (
             unittest.mock.patch.object(
                 detector_app,
@@ -194,6 +195,11 @@ class PossibleDocumentTest(unittest.TestCase):
                 detector_app.pytesseract,
                 "image_to_string",
                 return_value=text,
+            ),
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(False, 0.0),
             ),
         ):
             return detector_app._detect_image(image)
@@ -211,10 +217,8 @@ class PossibleDocumentTest(unittest.TestCase):
         draw.ellipse((280, 470, 380, 570), fill="#242424")
         draw.ellipse((550, 470, 650, 570), fill="#242424")
         self.assertTrue(detector_app._possible_document_background(image))
-        self.assertEqual(
-            self.detect_with_text(image, ""),
-            (False, None, False),
-        )
+        documento, tipo, possivel, _vehicle = self.detect_with_text(image, "")
+        self.assertEqual((documento, tipo, possivel), (False, None, False))
 
     def test_first_pass_timeout_fails_closed(self) -> None:
         image = Image.new("RGB", (900, 600), "white")
@@ -229,10 +233,15 @@ class PossibleDocumentTest(unittest.TestCase):
                 "image_to_string",
                 side_effect=RuntimeError("Tesseract process timeout"),
             ),
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(False, 0.0),
+            ),
         ):
             self.assertEqual(
                 detector_app._detect_image(image),
-                (False, None, True),
+                (False, None, True, VehicleDetection(False, 0.0)),
             )
 
     def test_cars_under_blue_sky_and_in_dealership_yard_are_not_documents(
@@ -253,10 +262,11 @@ class PossibleDocumentTest(unittest.TestCase):
                         radius=28,
                         fill="#f4f4f4",
                     )
-                self.assertEqual(
-                    self.detect_with_text(image, ""),
-                    (False, None, False),
+                documento, tipo, possivel, _vehicle = self.detect_with_text(
+                    image,
+                    "",
                 )
+                self.assertEqual((documento, tipo, possivel), (False, None, False))
 
     def test_green_ad_with_three_lines_is_not_possible_document(self) -> None:
         image = Image.new("RGB", (900, 600), "#acd29f")
@@ -266,10 +276,11 @@ class PossibleDocumentTest(unittest.TestCase):
             draw.text((80, 100 + index * 130), line, fill="#17351b")
 
         self.assertTrue(detector_app._possible_document_background(image))
-        self.assertEqual(
-            self.detect_with_text(image, "\n".join(lines)),
-            (False, None, False),
+        documento, tipo, possivel, _vehicle = self.detect_with_text(
+            image,
+            "\n".join(lines),
         )
+        self.assertEqual((documento, tipo, possivel), (False, None, False))
 
     def test_green_background_with_thirty_tiny_lines_is_possible_document(
         self,
@@ -281,10 +292,11 @@ class PossibleDocumentTest(unittest.TestCase):
             draw.text((35, 10 + index * 25), line, fill="#18371c")
 
         self.assertTrue(detector_app._possible_document_background(image))
-        self.assertEqual(
-            self.detect_with_text(image, "\n".join(lines)),
-            (False, None, True),
+        documento, tipo, possivel, _vehicle = self.detect_with_text(
+            image,
+            "\n".join(lines),
         )
+        self.assertEqual((documento, tipo, possivel), (False, None, True))
 
     def test_old_green_crlv_without_full_header_is_possible_document(
         self,
@@ -302,10 +314,11 @@ class PossibleDocumentTest(unittest.TestCase):
                 "PROPRIETARIO NOME",
             ]
         )
-        self.assertEqual(
-            self.detect_with_text(image, text),
-            (False, None, True),
+        documento, tipo, possivel, _vehicle = self.detect_with_text(
+            image,
+            text,
         )
+        self.assertEqual((documento, tipo, possivel), (False, None, True))
 
     def test_synthetic_documents_rotated_blurred_dark_on_wood_are_detected(
         self,
@@ -348,11 +361,23 @@ class PossibleDocumentTest(unittest.TestCase):
 
         for image, ocr_text in fixtures:
             with self.subTest(size=image.size):
-                documento, _tipo, possivel = self.detect_with_text(
+                documento, _tipo, possivel, _vehicle = self.detect_with_text(
                     image,
                     ocr_text,
                 )
                 self.assertTrue(documento or possivel)
+
+    def test_vehicle_detected_skips_document_gate(self) -> None:
+        image = Image.new("RGB", (900, 600), "#cccccc")
+        with unittest.mock.patch.object(
+            detector_app,
+            "detect_vehicle",
+            return_value=VehicleDetection(True, 0.42),
+        ):
+            documento, tipo, possivel, vehicle = detector_app._detect_image(image)
+        self.assertEqual((documento, tipo, possivel), (False, None, False))
+        self.assertTrue(vehicle.vehicle_detected)
+        self.assertGreaterEqual(vehicle.vehicle_area_ratio, 0.15)
 
 
 if __name__ == "__main__":

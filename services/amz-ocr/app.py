@@ -14,6 +14,7 @@ from pillow_heif import register_heif_opener
 
 from detector import classify_document, possible_document_text
 from ocr_engine import OcrMetrics, OcrResult, preload_paddle, recognize_crlv_image
+from vehicle_detector import VehicleDetection, detect_vehicle
 
 MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 40
@@ -144,13 +145,18 @@ def _detect_text(
     return documento, tipo, possivel
 
 
-def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
+def _detect_image(
+    image: Image.Image,
+) -> tuple[bool, str | None, bool, VehicleDetection]:
     deadline = time.monotonic() + DETECT_TIMEOUT_SECONDS
     image = _resize(image, 1400)
+    vehicle = detect_vehicle(image)
+    if vehicle.vehicle_detected:
+        return False, None, False, vehicle
     oriented = _osd_rotate(image) or image
     result = _detect_text(oriented, deadline)
     if result[0] or result[2]:
-        return result
+        return (*result, vehicle)
 
     # O portão privilegia sensibilidade: se a primeira passada não encontra
     # sinal, tenta as orientações de celular e uma variante de alto contraste.
@@ -163,10 +169,10 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
     ):
         result = _detect_text(candidate, deadline)
         if result[0] or result[2]:
-            return result
+            return (*result, vehicle)
         if time.monotonic() >= deadline:
-            return False, None, True
-    return False, None, False
+            return False, None, True, vehicle
+    return False, None, False, vehicle
 
 
 def _ocr(
@@ -208,7 +214,10 @@ def _ocr(
     )
 
 
-def _detect(raw: bytes, content_type: str) -> tuple[bool, str | None, bool]:
+def _detect(
+    raw: bytes,
+    content_type: str,
+) -> tuple[bool, str | None, bool, VehicleDetection]:
     images = _pil_images(raw, content_type, first_page_only=True)
     # A primeira página basta para o portão e mantém o endpoint previsível.
     return _detect_image(images[0])
@@ -267,10 +276,11 @@ async def ocr(
 async def detectar(
     request: Request,
     x_ocr_token: Annotated[str | None, Header()] = None,
-) -> dict[str, bool | str | None]:
+) -> dict[str, bool | str | None | float]:
     raw, content_type = await _read_request(request, x_ocr_token)
+    started = time.monotonic()
     try:
-        documento, tipo, possivel = await asyncio.wait_for(
+        documento, tipo, possivel, vehicle = await asyncio.wait_for(
             asyncio.to_thread(_detect, raw, content_type),
             timeout=DETECT_TIMEOUT_SECONDS,
         )
@@ -278,8 +288,12 @@ async def detectar(
         raise HTTPException(status_code=504, detail="detecção excedeu 8 segundos") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail="não foi possível verificar o arquivo") from exc
+    elapsed_ms = round((time.monotonic() - started) * 1000)
     return {
         "documento": documento,
         "tipo": tipo,
         "possivel_documento": possivel,
+        "vehicle_detected": vehicle.vehicle_detected,
+        "vehicle_area_ratio": vehicle.vehicle_area_ratio,
+        "detect_elapsed_ms": elapsed_ms,
     }

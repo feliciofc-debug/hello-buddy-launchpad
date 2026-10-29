@@ -283,12 +283,14 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
     endpoint.includes('"possivel_documento": possivel'),
     true,
   );
+  assertEquals(endpoint.includes('"vehicle_detected":'), true);
+  assertEquals(endpoint.includes('"vehicle_area_ratio":'), true);
   assertEquals(endpoint.includes('return {"text":'), false);
   const dockerfile = await Deno.readTextFile(
     new URL("../../../services/amz-ocr/Dockerfile", import.meta.url),
   );
   assertEquals(
-    dockerfile.includes("COPY app.py detector.py ocr_engine.py"),
+    dockerfile.includes("COPY app.py detector.py ocr_engine.py vehicle_detector.py"),
     true,
   );
 });
