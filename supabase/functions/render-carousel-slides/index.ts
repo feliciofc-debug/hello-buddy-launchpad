@@ -324,8 +324,11 @@ Deno.serve(async (req) => {
         },
       );
     }
-    const selectedTemplate = normalizeCarouselTemplate(template);
-    if (!selectedTemplate) {
+    const amzAutoLayoutEarly = body?.amz_auto_layout === true;
+    let selectedTemplate = normalizeCarouselTemplate(template);
+    if (amzAutoLayoutEarly) {
+      selectedTemplate = "dark-premium";
+    } else if (!selectedTemplate) {
       return new Response(
         JSON.stringify({
           error: `Template "${template}" inválido.`,
@@ -339,7 +342,9 @@ Deno.serve(async (req) => {
 
     const primaryColor = normalizeHex(body?.primaryColor, "#6366F1");
     const secondaryColor = normalizeHex(body?.secondaryColor, "#8B5CF6");
-    const backgroundColor = normalizeOptionalHex(body?.backgroundColor);
+    const backgroundColor = amzAutoLayoutEarly
+      ? null
+      : normalizeOptionalHex(body?.backgroundColor);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -349,7 +354,7 @@ Deno.serve(async (req) => {
     // Logo do PRÓPRIO tenant/cliente, sempre isolada na pasta do tenant.
     let logoDataUrl: string | null = null;
     const skipTenantLogoFallback = body?.skip_tenant_logo_fallback === true;
-    const amzAutoLayout = body?.amz_auto_layout === true;
+    const amzAutoLayout = amzAutoLayoutEarly;
     if (incluir_logo) {
       try {
         const embedded = typeof body?.embedded_logo_data_url === "string"

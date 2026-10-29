@@ -1,16 +1,22 @@
 import { assert, assertEquals, assertFalse, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildCarouselPrompt } from "./business-context.ts";
 import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "./amz-auto-mark-embedded.ts";
+import { resolveCarouselStyleRequest } from "./carousel-styles.ts";
 import {
   AMZ_AUTO_BRAND_NAME,
+  AMZ_AUTO_CAROUSEL_COLOR,
   AMZ_AUTO_FICHA_ITEMS,
+  AMZ_AUTO_FORCED_TEMPLATE,
+  amzAutoCarouselStyleLocked,
   buildAmzAutoCarouselCopyPromptBlock,
   buildAmzAutoCarouselPrompt,
+  isAmzAutoCarouselFlow,
   mentionsAmzAutoInCarouselRequest,
   resolveAmzAutoCarouselRenderOptions,
   sanitizeAmzAutoCarouselCopy,
   sanitizeAmzAutoCarouselSlides,
   sanitizeAmzAutoCarouselVariants,
+  shouldPromptCarouselStyleOrColor,
   shouldUseAmzAutoCarouselBrand,
 } from "./amz-auto-brand.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
@@ -80,6 +86,42 @@ Deno.test("CARROSSEL-AMZAUTO.1 — filtro remove amzofertas de slides e legendas
     sanitizeAmzAutoCarouselCopy("Site amzOFERTAS.com.br"),
     "Site AMZ Auto",
   );
+});
+
+Deno.test("CARROSSEL-AMZAUTO.2 — AMZ Auto força dark-premium e não abre seletor", () => {
+  const tema = "carrossel da AMZ Auto estilo neon tech";
+  assert(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema,
+    demoProspect: false,
+  }));
+  const stylePlan = resolveCarouselStyleRequest({ request: tema });
+  assertEquals(stylePlan.template, "neon-tech");
+  const locked = amzAutoCarouselStyleLocked();
+  assertEquals(locked.template, AMZ_AUTO_FORCED_TEMPLATE);
+  assertEquals(locked.color.primaryColor, AMZ_AUTO_CAROUSEL_COLOR.primaryColor);
+  assertEquals(shouldPromptCarouselStyleOrColor(true), false);
+  assertEquals(shouldPromptCarouselStyleOrColor(false), true);
+});
+
+Deno.test("CARROSSEL-AMZAUTO.2 — AMZ Ofertas continua pedindo estilo quando necessário", () => {
+  const tema = "vantagens da AMZ Ofertas";
+  assertFalse(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema,
+    demoProspect: false,
+  }));
+  const stylePlan = resolveCarouselStyleRequest({ request: tema });
+  assertEquals(stylePlan.template, null);
+  assertEquals(shouldPromptCarouselStyleOrColor(false), true);
+});
+
+Deno.test("CARROSSEL-AMZAUTO.2 — pending antigo AMZ Auto retoma fluxo fixo", () => {
+  assert(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema: "continuar",
+    pending: { tema: "carrossel amz auto", stage: "awaiting_style" } as { tema: string; amz_auto?: boolean },
+  }));
 });
 
 Deno.test("CARROSSEL-AMZAUTO — detecção aceita variantes de amz auto", () => {

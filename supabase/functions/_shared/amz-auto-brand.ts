@@ -1,7 +1,10 @@
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 import type { CarouselColor } from "./carousel-colors.ts";
+import type { CarouselTemplate } from "./carousel-styles.ts";
 import type { TenantBusinessContext } from "./business-context.ts";
 import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "./amz-auto-mark-embedded.ts";
+
+export const AMZ_AUTO_FORCED_TEMPLATE: CarouselTemplate = "dark-premium";
 
 export const AMZ_AUTO_BRAND_NAME = "AMZ Auto";
 export const AMZ_AUTO_MARK_LABEL = "AMZ AUTO";
@@ -102,6 +105,44 @@ export function shouldUseAmzAutoCarouselBrand(
 ): boolean {
   return userId === AMZ_TENANT_ID &&
     mentionsAmzAutoInCarouselRequest(requestText);
+}
+
+export function isAmzAutoCarouselFlow(input: {
+  userId: string;
+  tema: string;
+  demoProspect?: boolean;
+  pending?: { amz_auto?: boolean; tema?: string } | null;
+}): boolean {
+  if (input.demoProspect) return false;
+  if (input.pending?.amz_auto === true) return true;
+  if (shouldUseAmzAutoCarouselBrand(input.userId, input.tema)) return true;
+  const pendingTema = String(input.pending?.tema || "").trim();
+  if (
+    pendingTema &&
+    shouldUseAmzAutoCarouselBrand(input.userId, pendingTema)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Identidade fixa AMZ Auto: template escuro + laranja, sem seletor de estilo/cor. */
+export function amzAutoCarouselStyleLocked(): {
+  template: CarouselTemplate;
+  backgroundColor: undefined;
+  color: CarouselColor;
+} {
+  return {
+    template: AMZ_AUTO_FORCED_TEMPLATE,
+    backgroundColor: undefined,
+    color: AMZ_AUTO_CAROUSEL_COLOR,
+  };
+}
+
+export function shouldPromptCarouselStyleOrColor(
+  amzAutoCarousel: boolean,
+): boolean {
+  return !amzAutoCarousel;
 }
 
 function fichaBlock(): string {
