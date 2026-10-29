@@ -104,21 +104,36 @@ function normalizeGreeting(value: string): string {
     .trim();
 }
 
-const GREETING_PHRASES = [
+const GREETING_PREFIXES = [
+  "bom dia",
   "boa tarde",
   "boa noite",
-  "bom dia",
   "e ai",
+  "eai",
+  "eae",
   "hello",
   "hey",
-  "eai",
+  "salve",
+  "fala",
   "ola",
   "opa",
   "oi",
-  "salve",
+] as const;
+
+const JARVIS_CALL_NAMES = [
+  "jarvis",
+  "jarvir",
+  "jarvs",
+  "javis",
+  "jarbis",
+  "jervis",
 ] as const;
 
 const COURTESY_PHRASES = [
+  "bora trabalhar",
+  "tudo certo",
+  "meu amigo",
+  "parceiro",
   "como vai",
   "td bem",
   "tudo bem",
@@ -126,7 +141,58 @@ const COURTESY_PHRASES = [
   "beleza",
   "blz",
   "firmeza",
+  "amigo",
+  "chefe",
 ] as const;
+
+const REQUEST_KEYWORDS = [
+  "anunciar",
+  "anuncio",
+  "postar",
+  "posta",
+  "publicar",
+  "agendar",
+  "foto",
+  "video",
+  "arte",
+  "logo",
+  "placa",
+  "estoque",
+  "vistoria",
+  "troca",
+  "laudo",
+  "soma",
+  "somar",
+  "conta",
+  "preco",
+  "valor",
+  "quanto",
+  "fipe",
+  "molicar",
+  "procedencia",
+  "documento",
+  "crlv",
+  "cotacao",
+  "oficina",
+  "servico",
+  "cliente",
+  "venda",
+  "relatorio",
+  "quero",
+  "preciso",
+  "pode",
+  "faz",
+  "manda",
+  "mostra",
+  "mostrar",
+  "corolla",
+  "civic",
+  "menu",
+  "ajuda",
+] as const;
+
+const PLATE_RE =
+  /\b([A-Z]{3}[-\s]?[0-9][A-Z0-9]?[-\s]?[0-9]{2})\b/i;
 
 function profileCallingPhrases(displayName?: string | null): string[] {
   const normalized = normalizeGreeting(displayName || "");
@@ -135,33 +201,144 @@ function profileCallingPhrases(displayName?: string | null): string[] {
   return [...new Set([normalized, first])].filter(Boolean);
 }
 
+function applyGreetingTypoFixes(value: string): string {
+  return value
+    .replace(/\bbom dai\b/g, "bom dia")
+    .replace(/\bboa tade\b/g, "boa tarde")
+    .replace(/\bboa noit\b/g, "boa noite")
+    .replace(/\boie\b/g, "oi")
+    .replace(/\b(jarvir|jarvs|javis|jarbis|jervis)\b/g, "jarvis");
+}
+
+function isOiVariant(token: string): boolean {
+  return /^o+i+e?$/i.test(token);
+}
+
+function stripLeadingPrefix(
+  value: string,
+  prefix: string,
+): string | null {
+  if (value === prefix) return "";
+  if (value.startsWith(`${prefix} `)) return value.slice(prefix.length + 1);
+  return null;
+}
+
+function consumeGreetingStart(value: string): {
+  rest: string;
+  foundGreeting: boolean;
+} | null {
+  let rest = value;
+  let foundGreeting = false;
+  for (;;) {
+    let matched = false;
+    for (const prefix of GREETING_PREFIXES) {
+      const next = stripLeadingPrefix(rest, prefix);
+      if (next != null) {
+        rest = next;
+        foundGreeting = true;
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+    const token = rest.split(" ")[0] ?? "";
+    if (isOiVariant(token)) {
+      rest = rest.slice(token.length).trimStart();
+      foundGreeting = true;
+      continue;
+    }
+    break;
+  }
+  return foundGreeting ? { rest, foundGreeting } : null;
+}
+
+function allowedTailPhrases(displayName?: string | null): string[] {
+  return [
+    ...COURTESY_PHRASES,
+    ...JARVIS_CALL_NAMES,
+    ...profileCallingPhrases(displayName),
+  ].sort((a, b) => b.length - a.length);
+}
+
+function hasSpecificRequest(raw: string, normalized: string): boolean {
+  if (PLATE_RE.test(raw)) return true;
+  if (/\d/.test(normalized)) return true;
+  for (const keyword of REQUEST_KEYWORDS) {
+    const re = new RegExp(`\\b${keyword}\\b`, "i");
+    if (re.test(normalized)) return true;
+  }
+  if (/\?/.test(normalized)) {
+    const courtesyOnly = /^(?:tudo certo|tudo bem|tudo bom|como vai|beleza|blz|td bem)(?:\s+\?)?$/
+      .test(normalized) ||
+      COURTESY_PHRASES.some((phrase) =>
+        normalized.includes(phrase) &&
+        !REQUEST_KEYWORDS.some((kw) => normalized.includes(kw))
+      );
+    if (!courtesyOnly && /\btem\b|\bquanto\b|\bqual\b|\bcomo\b|\bonde\b/.test(
+      normalized,
+    )) {
+      return true;
+    }
+  }
+  if (/\btem\b/.test(normalized) && normalized.length > 12) return true;
+  if (/^(menu|ajuda|o que voce faz|o que você faz)/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function isCourtesyOnly(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return COURTESY_PHRASES.some((phrase) =>
+    trimmed === phrase || trimmed.startsWith(`${phrase} `)
+  );
+}
+
+function isCallOnly(value: string, displayName?: string | null): boolean {
+  const allowed = new Set([
+    ...JARVIS_CALL_NAMES,
+    "chefe",
+    "amigo",
+    "parceiro",
+    ...profileCallingPhrases(displayName),
+  ]);
+  const tokens = value.split(" ").filter(Boolean);
+  return tokens.length > 0 && tokens.every((token) => allowed.has(token));
+}
+
 export function isJarvisPureGreeting(
   value: string,
   displayName?: string | null,
 ): boolean {
   if ([...String(value || "").trim()].length > 60) return false;
-  const normalized = normalizeGreeting(value);
+  const raw = String(value || "").trim();
+  if (!raw || raw === "👋") return false;
+  const normalized = applyGreetingTypoFixes(normalizeGreeting(raw));
   if (!normalized) return false;
-  const greetings = new Set<string>(GREETING_PHRASES);
-  const phrases = [
-    ...GREETING_PHRASES,
-    "jarvis",
-    "amigo",
-    "chefe",
-    ...profileCallingPhrases(displayName),
-    ...COURTESY_PHRASES,
-  ].sort((a, b) => b.length - a.length);
-  let remaining = normalized;
-  let foundGreeting = false;
+  if (hasSpecificRequest(raw, normalized)) return false;
+
+  if (isCallOnly(normalized, displayName)) return true;
+  if (isCourtesyOnly(normalized)) return true;
+
+  const start = consumeGreetingStart(normalized);
+  if (!start) return false;
+
+  let remaining = start.rest;
+  const tailPhrases = allowedTailPhrases(displayName);
   while (remaining) {
-    const phrase = phrases.find((candidate) =>
+    const again = consumeGreetingStart(remaining);
+    if (again) {
+      remaining = again.rest;
+      continue;
+    }
+    const phrase = tailPhrases.find((candidate) =>
       remaining === candidate || remaining.startsWith(`${candidate} `)
     );
     if (!phrase) return false;
-    if (greetings.has(phrase)) foundGreeting = true;
     remaining = remaining.slice(phrase.length).trimStart();
   }
-  return foundGreeting;
+  return true;
 }
 
 export function extractJarvisMenuId(value: string): string | null {

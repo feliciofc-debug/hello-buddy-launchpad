@@ -92,8 +92,6 @@ Deno.test("MENU-B3.2 — detector aceita somente a gramática de saudação pura
       "oi jarvis manda o fechamento",
       "o que você faz com documentos?",
       "e aí, tudo certo? vendi o Civic",
-      "e aí, tudo certo?",
-      "tudo bem?",
       "Oi, Costa",
       "👋",
       "",
@@ -116,6 +114,41 @@ Deno.test("MENU-B3.2 — detector aceita somente a gramática de saudação pura
     classifyGestaoIntent("o que você faz com documentos?").kind,
     "ajuda",
   );
+});
+
+Deno.test("MENU-SAUDACAO — saudação abre menu; pedido específico não", () => {
+  const name = "Felicio Costa";
+  for (
+    const value of [
+      "oi jarvir",
+      "Oi Jarvis!",
+      "oiii",
+      "eae",
+      "fala jarvis",
+      "bom dia meu amigo",
+      "boa tade",
+      "opa, tudo certo?",
+      "olá chefe, como vai?",
+      "bom dia jarbis bora trabalhar",
+      "e aí, tudo certo?",
+      "tudo bem?",
+    ]
+  ) {
+    assert(isJarvisPureGreeting(value, name), value);
+  }
+  for (
+    const value of [
+      "oi, tem Corolla no estoque?",
+      "bom dia, posta a foto",
+      "oi jarvis soma essa conta",
+      "opa placa ABC1D23",
+      "oi quero anunciar",
+      "boa tarde, quanto tá a fipe do civic?",
+      "oi tem cotação aberta?",
+    ]
+  ) {
+    assertEquals(isJarvisPureGreeting(value, name), false, value);
+  }
 });
 
 Deno.test("MENU-B3 — extrai somente IDs próprios do menu", () => {
