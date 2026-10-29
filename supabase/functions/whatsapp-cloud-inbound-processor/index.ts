@@ -730,6 +730,12 @@ import {
   type PendingAnuncioPost,
 } from "../_shared/anuncio-social-flow.ts";
 import {
+  cleanVehicleTitle,
+  composeVehicleAdVariant,
+  vehicleAnuncioAiBriefing,
+  vehicleAnuncioFactsForAi,
+} from "../_shared/anuncio-veiculo-captions.ts";
+import {
   type ContentNiche,
   resolveNichoDoConteudo,
 } from "../_shared/content-niche.ts";
@@ -7310,12 +7316,44 @@ async function generateAnuncioCaptions(
       ]),
     ) as PostVariantes;
   if (niche === "veiculo") {
-    const captions = finish(
+    const fallbackCaptions = finish(
       generateVehicleAdCaptions(last.data, variation, niche),
     );
-    return Object.fromEntries(
-      networks.map((network) => [network, { ...captions }]),
-    );
+    const aiData = vehicleAnuncioFactsForAi(last.data);
+    const product = {
+      nome: cleanVehicleTitle(last.data),
+      descricao: JSON.stringify(aiData),
+      source: "anuncio_veiculo",
+    };
+    const briefing = vehicleAnuncioAiBriefing(last.data);
+    const entries = await Promise.all(networks.map(async (network) => {
+      try {
+        const generated = await gerarTresOpcoesRedeSocial(
+          product,
+          "beneficio",
+          network === "tiktok" ? "instagram" : network,
+          variation
+            ? "Crie novas abordagens Direta, História e Interativa sem mudar os fatos."
+            : undefined,
+          undefined,
+          briefing,
+          niche,
+        );
+        const composed = finish({
+          A: composeVehicleAdVariant(generated.A, last.data, "A"),
+          B: composeVehicleAdVariant(generated.B, last.data, "B"),
+          C: composeVehicleAdVariant(generated.C, last.data, "C"),
+        });
+        return [network, composed] as const;
+      } catch (error) {
+        console.warn(
+          "[anuncio_post][vehicle_captions_fallback]",
+          (error as Error).message,
+        );
+        return [network, fallbackCaptions] as const;
+      }
+    }));
+    return Object.fromEntries(entries);
   }
 
   const fallback = finish(generateProductAdCaptions(last.data));

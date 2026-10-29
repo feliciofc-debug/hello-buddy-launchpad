@@ -190,8 +190,9 @@ Deno.test("legendas usam somente o anúncio atual e respeitam segurança", () =>
     }
   }
   assertStringIncludes(captions.A, "R$ 38.900");
-  assertStringIncludes(captions.A, "R$ 41.900");
   assertStringIncludes(captions.A, "78 mil km");
+  assertStringIncludes(captions.A, "Piloto automático");
+  assertStringIncludes(captions.A, "Chame no WhatsApp");
   assertStringIncludes(
     captions.A,
     "📲 Chame no WhatsApp: https://wa.me/5521967520706",

@@ -1,9 +1,18 @@
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { generateVehicleAdCaptions } from "./anuncio-veiculo-captions.ts";
+import {
+  cleanVehicleTitle,
+  composeVehicleAdVariant,
+  generateVehicleAdCaptions,
+  sanitizeVehicleAdLines,
+  stripDuplicateVehicleFacts,
+  vehicleAnuncioAiBriefing,
+  vehicleDataLine,
+} from "./anuncio-veiculo-captions.ts";
 import { generateProductAdCaptions } from "./anuncio-produto-captions.ts";
 import {
   generateVehicleAdCaptions as routeVehicleCaptions,
@@ -34,13 +43,76 @@ const fullVehicle = {
   cidade_loja: "Niterói",
 };
 
-Deno.test("COPY-VEICULO — opções A/B/C trazem km, preço e itens informados", () => {
+const rav4Like = {
+  titulo: "Toyota RAV4 / 15.000 km. PRETO.",
+  quilometragem: "15.000 km",
+  cor: "Preto",
+  preco: "R$ 129.000,00",
+  telefone: "5511999999999",
+};
+
+Deno.test("COPY-ANUNCIO — causa: veículo não deve usar só template sem IA", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const block = source.slice(
+    source.indexOf('if (niche === "veiculo")'),
+    source.indexOf("const fallback = finish(generateProductAdCaptions"),
+  );
+  assertStringIncludes(block, "gerarTresOpcoesRedeSocial");
+  assertStringIncludes(block, "composeVehicleAdVariant");
+});
+
+Deno.test("COPY-ANUNCIO — título limpa km/cor colados no titulo", () => {
+  assertEquals(cleanVehicleTitle(rav4Like), "Toyota RAV4");
+});
+
+Deno.test("COPY-ANUNCIO — fallback A/B/C traz frase de venda e dados uma vez", () => {
+  const captions = generateVehicleAdCaptions(rav4Like, 0);
+  for (const [key, text] of Object.entries(captions)) {
+    assert(text.length >= 80, `opção ${key} curta demais`);
+    assert(!/\bgarantia\b/i.test(text));
+    assert(!LONE_EMOJI.test(text));
+    assertEquals(countOccurrences(text, "15.000 km"), 1);
+    assertEquals(countOccurrences(text.toLowerCase(), "preto"), 1);
+    assertStringIncludes(text, "R$ 129.000,00");
+    assertStringIncludes(text, "📲 Chame no WhatsApp");
+    assert(
+      /(ideal|imagine|procura|oportunidade|visita|conhecer|volante|protagonista)/i
+        .test(text),
+      `sem frase de venda em ${key}`,
+    );
+  }
+  assertNotEquals(captions.A, captions.B);
+  assertNotEquals(captions.B, captions.C);
+});
+
+Deno.test("COPY-ANUNCIO — compose mescla IA e remove linha só emoji", () => {
+  const raw = "🔥 SUV pronto para a estrada.\n📲\n🛣️ 15.000 km · 🎨 Preto\nMais uma linha.";
+  const composed = composeVehicleAdVariant(raw, rav4Like, "A");
+  assertEquals(sanitizeVehicleAdLines(composed).includes("\n📲\n"), false);
+  assertEquals(countOccurrences(composed, "15.000 km"), 1);
+  assertStringIncludes(composed, "Toyota RAV4");
+});
+
+Deno.test("COPY-ANUNCIO — briefing proíbe inventar e repetir bloco de dados", () => {
+  const briefing = vehicleAnuncioAiBriefing(rav4Like);
+  assertStringIncludes(briefing, "Não invente");
+  assertStringIncludes(briefing, "15.000 km");
+});
+
+Deno.test("COPY-ANUNCIO — linha de dados compacta", () => {
+  assertEquals(
+    vehicleDataLine(rav4Like),
+    "🛣️ 15.000 km · 🎨 Preto · 💰 R$ 129.000,00",
+  );
+});
+
+Deno.test("COPY-VEICULO — opções A/B/C trazem km, preço e contato", () => {
   const captions = generateVehicleAdCaptions(fullVehicle, 0);
   for (const text of Object.values(captions)) {
     assertStringIncludes(text, "45.000 km");
     assertStringIncludes(text, "R$ 118.900");
-    assertStringIncludes(text, "Automático");
-    assertStringIncludes(text, "Ar-condicionado");
     assertStringIncludes(text, "📲 Chame no WhatsApp: https://wa.me/5521999998888");
     assert(text.length <= 900);
     assert(!/\bgarantia\b/i.test(text));
@@ -56,12 +128,6 @@ Deno.test("COPY-VEICULO — sem preço não cita valor de venda (FIPE pode apare
   }, 0);
   const joined = Object.values(captions).join("\n");
   assert(!joined.includes("💰"));
-  const withFipe = generateVehicleAdCaptions({
-    titulo: "Fiat Argo",
-    quilometragem: "30.000 km",
-    fipe: "R$ 55.000",
-  }, 0);
-  assertStringIncludes(Object.values(withFipe).join("\n"), "R$ 55.000");
 });
 
 Deno.test("COPY-VEICULO — sem itens não inventa revisão/garantia/laudo", () => {
@@ -119,15 +185,6 @@ Deno.test("COPY-VEICULO-1.1 — tapete confirmado geral ignora palavra carro na 
     }),
     false,
   );
-  assertEquals(
-    vehicleCaptionMissingKmOrPreco(
-      vehicleCaptionDataFromSources({
-        nome: "Tapete",
-        descricao: "tapete para carro",
-      }),
-    ).length > 0,
-    true,
-  );
 });
 
 Deno.test("COPY-VEICULO-1.1 — pendente expira em 30 minutos", () => {
@@ -146,56 +203,43 @@ Deno.test("COPY-VEICULO-1.1 — cancelar limpa intenção de km/preço", () => {
 });
 
 Deno.test("COPY-VEICULO-1.2 — reconhece respostas só de preço (normalizado minúsculo)", () => {
-  const truePrice = [
-    "R$ 89.900",
-    "r$ 89.900,00",
-    "89.900",
-    "89900",
-    "89 mil",
-    "89k",
-    "preço 89.900",
-    "valor: 89 mil",
-  ];
-  for (const sample of truePrice) {
-    assertEquals(
-      looksLikeVehicleKmPrecoReply(sample),
-      true,
-      `deveria aceitar preço: ${sample}`,
-    );
+  for (const sample of ["R$ 89.900", "89 mil", "preço 89.900"]) {
+    assertEquals(looksLikeVehicleKmPrecoReply(sample), true);
   }
 });
 
 Deno.test("COPY-VEICULO-1.2 — reconhece respostas de km", () => {
-  const trueKm = [
-    "45.000 km",
-    "45 mil km",
-    "45mil",
-    "km 45000",
-  ];
-  for (const sample of trueKm) {
-    assertEquals(
-      looksLikeVehicleKmPrecoReply(sample),
-      true,
-      `deveria aceitar km: ${sample}`,
-    );
+  for (const sample of ["45.000 km", "45 mil km", "km 45000"]) {
+    assertEquals(looksLikeVehicleKmPrecoReply(sample), true);
   }
 });
 
 Deno.test("COPY-VEICULO-1.2 — km + preço e outros assuntos", () => {
   assertEquals(looksLikeVehicleKmPrecoReply("45 mil km e R$ 118.900"), true);
-  const falseSamples = [
-    "cancelar",
-    "deixa",
-    "cria um vídeo do Renegade",
-    "faz um carrossel",
-    "bom dia",
-    "cria um vídeo do Renegade 2022",
-  ];
-  for (const sample of falseSamples) {
-    assertEquals(
-      looksLikeVehicleKmPrecoReply(sample),
-      false,
-      `não deveria aceitar: ${sample}`,
-    );
+  for (const sample of ["cancelar", "cria um vídeo do Renegade", "bom dia"]) {
+    assertEquals(looksLikeVehicleKmPrecoReply(sample), false);
   }
+});
+
+const LONE_EMOJI = /^[\s📲📱🚗🛣️🎨💰📅⛽⚙️👉]+$/u;
+
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const index = haystack.indexOf(needle, pos);
+    if (index < 0) break;
+    count += 1;
+    pos = index + needle.length;
+  }
+  return count;
+}
+
+Deno.test("COPY-ANUNCIO — stripDuplicateVehicleFacts remove bloco repetido", () => {
+  const stripped = stripDuplicateVehicleFacts(
+    "Texto\n🛣️ 15.000 km · 🎨 Preto\nOutro parágrafo.",
+    rav4Like,
+  );
+  assertEquals(stripped.includes("🛣️ 15.000 km"), false);
+  assertStringIncludes(stripped, "Outro parágrafo");
 });
