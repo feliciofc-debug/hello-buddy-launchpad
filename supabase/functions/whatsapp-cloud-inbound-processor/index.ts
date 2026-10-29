@@ -141,7 +141,7 @@ import {
   jarvisMenuSetsVehiclePhotoExpectation,
   ownerExpectsMarketingVehiclePhoto,
   ownerPhotoRoutingCaption,
-  ownerSkipsDocumentPhotoGate,
+  ownerTreatPossibleDocumentAsVehiclePhoto,
   respostaMidiaSalvaSemCodigos,
 } from "../_shared/owner-vehicle-photo-routing.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
@@ -26480,12 +26480,6 @@ export async function processOne(queueId: string) {
       // foi reconhecida, inclusive quando ficou apenas "possível", ela pertence
       // ao fluxo de orçamento e não passa novamente pela trava geral.
       if (partnerChecked?.media === candidate) continue;
-      if (
-        fromIsOwner &&
-        ownerSkipsDocumentPhotoGate(ownerDocumentGateState)
-      ) {
-        continue;
-      }
       try {
         const checked = await verificarDocumentoNoPortao(candidate);
         if (checked.documento) {
@@ -26493,6 +26487,12 @@ export async function processOne(queueId: string) {
           break;
         }
         if (checked.possivel_documento) {
+          if (
+            fromIsOwner &&
+            ownerTreatPossibleDocumentAsVehiclePhoto(ownerDocumentGateState)
+          ) {
+            continue;
+          }
           possibleDocument = checked;
           break;
         }

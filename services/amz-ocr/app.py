@@ -12,7 +12,11 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
-from detector import classify_document, possible_document_text
+from detector import (
+    classify_document,
+    possible_document_text,
+    strong_document_evidence,
+)
 from ocr_engine import OcrMetrics, OcrResult, preload_paddle, recognize_crlv_image
 from vehicle_detector import VehicleDetection, detect_vehicle
 
@@ -20,6 +24,7 @@ MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 40
 OCR_INTERNAL_DEADLINE_SECONDS = 38
 DETECT_TIMEOUT_SECONDS = 8
+STRONG_DOCUMENT_BUDGET_SECONDS = 3
 register_heif_opener()
 
 app = FastAPI(
@@ -118,6 +123,34 @@ def _possible_document_background(image: Image.Image) -> bool:
     return float(np.count_nonzero(green_or_blue)) / green_or_blue.size >= 0.35
 
 
+def _ocr_text_quick(
+    image: Image.Image,
+    deadline: float,
+) -> str:
+    if time.monotonic() >= deadline:
+        return ""
+    try:
+        return pytesseract.image_to_string(
+            _preprocess(image),
+            lang="por",
+            config="--oem 1 --psm 11",
+            timeout=max(0.1, deadline - time.monotonic()),
+        )
+    except RuntimeError:
+        return ""
+
+
+def _detect_strong_document(
+    image: Image.Image,
+    deadline: float,
+) -> tuple[bool, str | None]:
+    text = _ocr_text_quick(image, deadline)
+    if not text.strip() or not strong_document_evidence(text):
+        return False, None
+    documento, tipo = classify_document(text)
+    return True, tipo if documento else "outro"
+
+
 def _detect_text(
     image: Image.Image,
     deadline: float,
@@ -152,6 +185,22 @@ def _detect_image(
     image = _resize(image, 1400)
     vehicle = detect_vehicle(image)
     if vehicle.vehicle_detected:
+        strong_deadline = min(
+            time.monotonic() + STRONG_DOCUMENT_BUDGET_SECONDS,
+            deadline,
+        )
+        oriented = _osd_rotate(image) or image
+        for candidate in (
+            oriented,
+            oriented.rotate(90, expand=True),
+            oriented.rotate(180, expand=True),
+            oriented.rotate(270, expand=True),
+        ):
+            documento, tipo = _detect_strong_document(candidate, strong_deadline)
+            if documento:
+                return True, tipo, False, vehicle
+            if time.monotonic() >= strong_deadline:
+                break
         return False, None, False, vehicle
     oriented = _osd_rotate(image) or image
     result = _detect_text(oriented, deadline)

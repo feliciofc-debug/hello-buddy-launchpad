@@ -4,6 +4,17 @@ OCR privado para documentos. O serviço não persiste arquivos, não registra o
 texto extraído e só aceita chamadas autenticadas por `X-OCR-Token`.
 
 - `POST /detectar`: portão rápido; devolve somente se é documento e o tipo.
+  Inclui `vehicle_detected` e `vehicle_area_ratio` (detector PicoDet-S, ver abaixo).
+
+## Detector de veículo (CPU)
+
+| Campo | Valor |
+| --- | --- |
+| Modelo | **PicoDet-S 320×320 COCO** (`picodet_s_320_lcnet_postprocessed.onnx`) |
+| Origem | [PaddleDetection](https://github.com/PaddlePaddle/PaddleDetection) — release oficial BOS |
+| Licença | **Apache-2.0** (mesma família Paddle/PaddleOCR já usada no OCR) |
+| Runtime | `onnxruntime` CPU; modelo baixado no **build** da imagem (sem rede em runtime) |
+| Regra | Veículo COCO (car/bus/truck/motorcycle) ≥ **15%** da imagem → não pergunta “possível documento”, salvo evidência **forte** de texto de documento na passada rápida (≤ 3 s) |
 - `POST /ocr`: leitura completa; devolve o texto e métricas sem conteúdo para
   o parser local do CRLV.
 

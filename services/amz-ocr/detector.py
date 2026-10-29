@@ -52,6 +52,14 @@ def _one_edit_or_less(left: str, right: str) -> bool:
     return True
 
 
+def strong_document_evidence(text: str) -> bool:
+    """Evidência forte de documento (portão com veículo na foto)."""
+    if _has_strong_term(text) or _has_valid_pattern(text):
+        return True
+    documento, _tipo = classify_document(text)
+    return documento
+
+
 def _has_strong_term(text: str) -> bool:
     tokens = re.findall(r"[A-Z0-9]+", _normalize(text))
     for phrase in _STRONG_TERMS:

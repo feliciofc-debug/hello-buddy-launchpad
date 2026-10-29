@@ -150,25 +150,33 @@ export async function detectarDocumentoLocal(
   const vehicleArea = Number(payload.vehicle_area_ratio);
   const vehicleDetected = payload.vehicle_detected === true &&
     Number.isFinite(vehicleArea);
+  const vehicleMeta = vehicleDetected
+    ? {
+      vehicle_detected: true,
+      vehicle_area_ratio: vehicleArea,
+    }
+    : {};
+  if (payload.documento === true) {
+    return {
+      documento: true,
+      possivel_documento: false,
+      tipo,
+      ...vehicleMeta,
+    };
+  }
   if (vehicleDetected && vehicleArea >= 0.15) {
     return {
       documento: false,
       possivel_documento: false,
       tipo: null,
-      vehicle_detected: true,
-      vehicle_area_ratio: vehicleArea,
+      ...vehicleMeta,
     };
   }
   return {
-    documento: payload.documento === true,
+    documento: false,
     possivel_documento: payload.possivel_documento === true,
     tipo,
-    ...(vehicleDetected
-      ? {
-        vehicle_detected: true,
-        vehicle_area_ratio: vehicleArea,
-      }
-      : {}),
+    ...vehicleMeta,
   };
 }
 

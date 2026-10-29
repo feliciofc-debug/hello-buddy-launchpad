@@ -293,6 +293,10 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
     dockerfile.includes("COPY app.py detector.py ocr_engine.py vehicle_detector.py"),
     true,
   );
+  assertEquals(
+    dockerfile.includes("picodet_s_320_lcnet_postprocessed.onnx"),
+    true,
+  );
 });
 
 Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativo", async () => {

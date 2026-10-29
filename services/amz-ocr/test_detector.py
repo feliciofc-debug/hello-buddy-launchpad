@@ -3,7 +3,11 @@ from __future__ import annotations
 import unittest
 import unittest.mock
 
-from detector import classify_document, possible_document_text
+from detector import (
+    classify_document,
+    possible_document_text,
+    strong_document_evidence,
+)
 
 try:
     from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
@@ -173,6 +177,17 @@ class DetectorTest(unittest.TestCase):
         self.assertTrue(possible_document_text("CPF", False))
         self.assertFalse(possible_document_text("CPG", False))
         self.assertFalse(possible_document_text("CF", False))
+
+    def test_strong_document_evidence_ignores_old_layout_noise(self) -> None:
+        noise = "\n".join(
+            f"campo sintetico linha {index:02d}" for index in range(25)
+        )
+        self.assertTrue(possible_document_text(noise, False))
+        self.assertFalse(strong_document_evidence(noise))
+
+    def test_strong_document_evidence_accepts_crlv_header(self) -> None:
+        text = "CERTIFICADO DE REGISTRO E LICENCIAMENTO DE VEICULO"
+        self.assertTrue(strong_document_evidence(text))
 
 
 @unittest.skipUnless(
@@ -367,17 +382,41 @@ class PossibleDocumentTest(unittest.TestCase):
                 )
                 self.assertTrue(documento or possivel)
 
-    def test_vehicle_detected_skips_document_gate(self) -> None:
+    def test_vehicle_detected_skips_weak_possible_document(self) -> None:
         image = Image.new("RGB", (900, 600), "#cccccc")
-        with unittest.mock.patch.object(
-            detector_app,
-            "detect_vehicle",
-            return_value=VehicleDetection(True, 0.42),
+        with (
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(True, 0.42),
+            ),
+            unittest.mock.patch.object(
+                detector_app,
+                "_detect_strong_document",
+                return_value=(False, None),
+            ),
         ):
             documento, tipo, possivel, vehicle = detector_app._detect_image(image)
         self.assertEqual((documento, tipo, possivel), (False, None, False))
         self.assertTrue(vehicle.vehicle_detected)
-        self.assertGreaterEqual(vehicle.vehicle_area_ratio, 0.15)
+
+    def test_vehicle_with_strong_crlv_text_is_document(self) -> None:
+        image = Image.new("RGB", (900, 600), "#cccccc")
+        with (
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(True, 0.42),
+            ),
+            unittest.mock.patch.object(
+                detector_app,
+                "_detect_strong_document",
+                return_value=(True, "crlv"),
+            ),
+        ):
+            documento, tipo, possivel, vehicle = detector_app._detect_image(image)
+        self.assertEqual((documento, tipo, possivel), (True, "crlv", False))
+        self.assertTrue(vehicle.vehicle_detected)
 
 
 if __name__ == "__main__":

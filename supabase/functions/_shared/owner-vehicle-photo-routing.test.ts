@@ -4,7 +4,7 @@ import {
   jarvisMenuSetsVehiclePhotoExpectation,
   ownerExpectsMarketingVehiclePhoto,
   ownerPhotoRoutingCaption,
-  ownerSkipsDocumentPhotoGate,
+  ownerTreatPossibleDocumentAsVehiclePhoto,
   respostaMidiaSalvaSemCodigos,
 } from "./owner-vehicle-photo-routing.ts";
 
@@ -19,10 +19,10 @@ Deno.test("FOTO-CARRO — Não é documento zera legenda de roteamento", () => {
   assertEquals(ownerPhotoRoutingCaption("Não é documento"), "");
 });
 
-Deno.test("FOTO-CARRO — marketing recente pula portão de documento", () => {
+Deno.test("FOTO-CARRO.1 — marketing trata possível como carro, não pula detector", () => {
   const now = Date.now();
   assertEquals(
-    ownerSkipsDocumentPhotoGate({
+    ownerTreatPossibleDocumentAsVehiclePhoto({
       pending_marketing_vehicle_photo: {
         created_at: new Date(now - 60_000).toISOString(),
         source: "jarvis_menu:grupo:marketing",
@@ -38,6 +38,25 @@ Deno.test("FOTO-CARRO — marketing recente pula portão de documento", () => {
       },
     }, now),
     false,
+  );
+});
+
+Deno.test("FOTO-CARRO.1 — processor sempre chama verificarDocumentoNoPortao", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  assertEquals(source.includes("ownerSkipsDocumentPhotoGate"), false);
+  assertEquals(
+    source.includes("ownerTreatPossibleDocumentAsVehiclePhoto"),
+    true,
+  );
+  const gateLoop = source.indexOf("for (const candidate of gateCandidates)");
+  assertEquals(gateLoop >= 0, true);
+  const gateSection = source.slice(gateLoop, gateLoop + 2500);
+  assertEquals(gateSection.includes("verificarDocumentoNoPortao"), true);
+  assertEquals(
+    gateSection.includes("ownerTreatPossibleDocumentAsVehiclePhoto"),
+    true,
   );
 });
 

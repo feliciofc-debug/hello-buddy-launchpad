@@ -232,6 +232,33 @@ Deno.test({
         ),
         { documento: true, possivel_documento: false, tipo: "crlv" },
       );
+      assertEquals(
+        await detectarDocumentoLocal(
+          new Uint8Array([1]),
+          "image/jpeg",
+          ((input: string | URL | Request, init?: RequestInit) => {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  documento: true,
+                  tipo: "crlv",
+                  possivel_documento: false,
+                  vehicle_detected: true,
+                  vehicle_area_ratio: 0.4,
+                }),
+                { headers: { "Content-Type": "application/json" } },
+              ),
+            );
+          }) as typeof fetch,
+        ),
+        {
+          documento: true,
+          possivel_documento: false,
+          tipo: "crlv",
+          vehicle_detected: true,
+          vehicle_area_ratio: 0.4,
+        },
+      );
     } finally {
       if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");
       else Deno.env.set("AMZ_OCR_URL", oldUrl);

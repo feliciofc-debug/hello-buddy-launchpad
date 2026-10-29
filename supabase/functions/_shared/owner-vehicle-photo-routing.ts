@@ -68,7 +68,8 @@ export function ownerExpectsMarketingVehiclePhoto(
   );
 }
 
-export function ownerSkipsDocumentPhotoGate(
+/** Marketing/anúncio: só `possivel_documento` vira foto de carro; nunca pula /detectar. */
+export function ownerTreatPossibleDocumentAsVehiclePhoto(
   state: VehicleBatchFlowState | null | undefined,
   nowMs = Date.now(),
 ): boolean {
@@ -77,13 +78,8 @@ export function ownerSkipsDocumentPhotoGate(
     | { stage?: string; created_at?: string }
     | null
     | undefined;
-  if (
-    pendingPhoto?.stage === "awaiting_photo" &&
-    isRecentMediaContext(pendingPhoto, nowMs, MARKETING_VEHICLE_PHOTO_TTL_MS)
-  ) {
-    return true;
-  }
-  return false;
+  return pendingPhoto?.stage === "awaiting_photo" &&
+    isRecentMediaContext(pendingPhoto, nowMs, MARKETING_VEHICLE_PHOTO_TTL_MS);
 }
 
 /** Resposta genérica de mídia salva sem bloco "ID da mídia". */
