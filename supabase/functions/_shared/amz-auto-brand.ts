@@ -107,23 +107,37 @@ export function shouldUseAmzAutoCarouselBrand(
     mentionsAmzAutoInCarouselRequest(requestText);
 }
 
+export function isAmzAutoCarouselPendingContinuation(input: {
+  tema: string;
+  pending?: { tema?: string } | null;
+  ajuste?: string | null;
+  hasCurrentSlides?: boolean;
+}): boolean {
+  if (String(input.ajuste || "").trim()) return true;
+  if (input.hasCurrentSlides) return true;
+  const pendingTema = String(input.pending?.tema || "").trim();
+  if (!pendingTema) return false;
+  return normalizeCarouselRequestText(input.tema) ===
+    normalizeCarouselRequestText(pendingTema);
+}
+
 export function isAmzAutoCarouselFlow(input: {
   userId: string;
   tema: string;
   demoProspect?: boolean;
   pending?: { amz_auto?: boolean; tema?: string } | null;
+  ajuste?: string | null;
+  hasCurrentSlides?: boolean;
 }): boolean {
   if (input.demoProspect) return false;
-  if (input.pending?.amz_auto === true) return true;
   if (shouldUseAmzAutoCarouselBrand(input.userId, input.tema)) return true;
+
+  if (!isAmzAutoCarouselPendingContinuation(input)) return false;
+
+  if (input.pending?.amz_auto === true) return true;
   const pendingTema = String(input.pending?.tema || "").trim();
-  if (
-    pendingTema &&
-    shouldUseAmzAutoCarouselBrand(input.userId, pendingTema)
-  ) {
-    return true;
-  }
-  return false;
+  return pendingTema &&
+    shouldUseAmzAutoCarouselBrand(input.userId, pendingTema);
 }
 
 /** Identidade fixa AMZ Auto: template escuro + laranja, sem seletor de estilo/cor. */

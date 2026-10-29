@@ -116,11 +116,29 @@ Deno.test("CARROSSEL-AMZAUTO.2 — AMZ Ofertas continua pedindo estilo quando ne
   assertEquals(shouldPromptCarouselStyleOrColor(false), true);
 });
 
-Deno.test("CARROSSEL-AMZAUTO.2 — pending antigo AMZ Auto retoma fluxo fixo", () => {
+Deno.test("CARROSSEL-AMZAUTO.3 — pending AMZ Auto não vaza para carrossel novo", () => {
+  const pending = { tema: "carrossel da AMZ Auto", amz_auto: true };
+  assertFalse(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema: "faz um carrossel sobre automação de marketing",
+    pending,
+  }));
   assert(isAmzAutoCarouselFlow({
     userId: AMZ_TENANT_ID,
-    tema: "continuar",
-    pending: { tema: "carrossel amz auto", stage: "awaiting_style" } as { tema: string; amz_auto?: boolean },
+    tema: "carrossel da AMZ Auto",
+    pending,
+  }));
+  assert(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema: "outro assunto",
+    pending,
+    ajuste: "troca o card 2",
+  }));
+  assert(isAmzAutoCarouselFlow({
+    userId: AMZ_TENANT_ID,
+    tema: "carrossel da AMZ Auto",
+    pending,
+    hasCurrentSlides: true,
   }));
 });
 

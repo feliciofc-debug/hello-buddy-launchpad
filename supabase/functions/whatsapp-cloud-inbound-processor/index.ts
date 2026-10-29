@@ -15391,11 +15391,14 @@ async function toolCriarCarrossel(
 
     const tema = (args?.tema || "").trim();
     if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+    const hasCurrentSlides = Array.isArray(args?.slides) && args.slides.length >= 2;
     const amzAutoCarousel = isAmzAutoCarouselFlow({
       userId: ctx.userId,
       tema,
       demoProspect,
       pending: ctx.agentState?.pending_carousel,
+      ajuste: args?.ajuste,
+      hasCurrentSlides,
     });
     const numSlides = Array.isArray(args.slides) && args.slides.length >= 3
       ? Math.min(10, args.slides.length)
