@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getCopyStyle, userIdDoRequest } from '../_shared/copy-style.ts'
 import { buildMetodoAmzBlock } from '../_shared/metodo-amz.ts'
+import { buildAmzAutoCarouselCopyPromptBlock } from '../_shared/amz-auto-brand.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +14,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { prompt, tema, user_id: userIdBody, neutral_copy: neutralCopy = false } = await req.json()
+    const {
+      prompt,
+      tema,
+      user_id: userIdBody,
+      neutral_copy: neutralCopy = false,
+      amz_auto_carousel: amzAutoCarousel = false,
+    } = await req.json()
 
     const sbAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -21,6 +28,8 @@ Deno.serve(async (req) => {
     )
     const copyStyle = neutralCopy
       ? { promptBlock: buildMetodoAmzBlock({ tipo: 'carrossel' }) }
+      : amzAutoCarousel
+      ? { promptBlock: buildAmzAutoCarouselCopyPromptBlock() }
       : await getCopyStyle(
         sbAdmin,
         userIdBody || userIdDoRequest(req),

@@ -65,6 +65,7 @@ import {
   getTenantLogoDataUrl,
   getTenantLogoDataUrlForBackground,
 } from "../_shared/tenant-logo.ts";
+import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "../_shared/amz-auto-mark-embedded.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -323,8 +324,11 @@ Deno.serve(async (req) => {
         },
       );
     }
-    const selectedTemplate = normalizeCarouselTemplate(template);
-    if (!selectedTemplate) {
+    const amzAutoLayoutEarly = body?.amz_auto_layout === true;
+    let selectedTemplate = normalizeCarouselTemplate(template);
+    if (amzAutoLayoutEarly) {
+      selectedTemplate = "dark-premium";
+    } else if (!selectedTemplate) {
       return new Response(
         JSON.stringify({
           error: `Template "${template}" inválido.`,
@@ -338,7 +342,9 @@ Deno.serve(async (req) => {
 
     const primaryColor = normalizeHex(body?.primaryColor, "#6366F1");
     const secondaryColor = normalizeHex(body?.secondaryColor, "#8B5CF6");
-    const backgroundColor = normalizeOptionalHex(body?.backgroundColor);
+    const backgroundColor = amzAutoLayoutEarly
+      ? null
+      : normalizeOptionalHex(body?.backgroundColor);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -347,26 +353,41 @@ Deno.serve(async (req) => {
 
     // Logo do PRÓPRIO tenant/cliente, sempre isolada na pasta do tenant.
     let logoDataUrl: string | null = null;
+    const skipTenantLogoFallback = body?.skip_tenant_logo_fallback === true;
+    const amzAutoLayout = amzAutoLayoutEarly;
     if (incluir_logo) {
       try {
-        logoDataUrl = vehicle_mode
-          ? await logoPathDataUrl(supabase, user_id, body?.logo_path) ??
-            await getTenantLogoDataUrlForBackground(
+        const embedded = typeof body?.embedded_logo_data_url === "string"
+          ? body.embedded_logo_data_url.trim()
+          : "";
+        if (embedded.startsWith("data:image/")) {
+          logoDataUrl = embedded;
+        } else if (amzAutoLayout) {
+          logoDataUrl = AMZ_AUTO_MARK_LOGO_DATA_URL;
+        } else if (body?.logo_path) {
+          logoDataUrl = await logoPathDataUrl(supabase, user_id, body.logo_path);
+        } else if (!skipTenantLogoFallback) {
+          logoDataUrl = vehicle_mode
+            ? await getTenantLogoDataUrlForBackground(
               supabase,
               user_id,
               "dark",
               true,
             )
-          : await getTenantLogoDataUrlForBackground(
-            supabase,
-            user_id,
-            logoBackgroundFor(selectedTemplate, backgroundColor),
-            true,
-          ) ?? await getTenantLogoDataUrl(supabase, user_id);
+            : await getTenantLogoDataUrlForBackground(
+              supabase,
+              user_id,
+              logoBackgroundFor(selectedTemplate, backgroundColor),
+              true,
+            ) ?? await getTenantLogoDataUrl(supabase, user_id);
+        }
       } catch (err) {
         console.warn("[render-carousel-slides] logo indisponível:", err);
       }
     }
+    const brandMarkText = !logoDataUrl && !amzAutoLayout && body?.brand_mark_text
+      ? String(body.brand_mark_text).trim() || null
+      : null;
 
     if (vehicle_mode) {
       const format: VehicleCarouselFormat = body?.format === "square"
@@ -464,7 +485,9 @@ Deno.serve(async (req) => {
       secondaryColor,
       totalSlides: list.length,
       logoDataUrl,
-      businessName: businessName ?? null,
+      brandMarkText,
+      amzAutoLayout,
+      businessName: amzAutoLayout ? null : (businessName ?? null),
       profileHandle: profileHandle ?? null,
       ctaLabel: ctaLabel ?? null,
       backgroundColor,

@@ -31,6 +31,16 @@ import {
   getTenantBusinessContext,
 } from "../_shared/business-context.ts";
 import {
+  amzAutoCarouselStyleLocked,
+  buildAmzAutoCarouselBrandContextForCaptions,
+  buildAmzAutoCarouselPrompt,
+  isAmzAutoCarouselFlow,
+  resolveAmzAutoCarouselRenderOptions,
+  sanitizeAmzAutoCarouselCopy,
+  sanitizeAmzAutoCarouselSlides,
+  sanitizeAmzAutoCarouselVariants,
+} from "../_shared/amz-auto-brand.ts";
+import {
   requestedCarouselSlideCount,
   sanitizeCarouselSlides,
   sanitizeProspectDemoCaption,
@@ -256,6 +266,7 @@ import {
   DEFAULT_CAROUSEL_COLOR,
   resolveCarouselColor,
   resolveCarouselColorPlan,
+  type CarouselColor,
 } from "../_shared/carousel-colors.ts";
 import {
   carouselStyleFallbackButtons,
@@ -3290,6 +3301,7 @@ type PendingCarouselState = {
   image_urls?: string[];
   token?: string;
   facebook_requested?: boolean;
+  amz_auto?: boolean;
   created_at: string;
 };
 
@@ -8658,7 +8670,9 @@ function formatSocialPostToolResult(raw: string): string {
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
     if (data?.carrossel) {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
-      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Enviei todos em ordem e ainda não publiquei.`;
+      const resumo = data?.amz_auto_carousel
+        ? `Carrossel ${data.cards} cards da AMZ Auto pronto. Enviei todos em ordem e ainda não publiquei.`
+        : `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Enviei todos em ordem e ainda não publiquei.`;
       const pergunta = "Antes de publicar ou agendar, escolha o texto: *A*, *B* ou *C*.";
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
@@ -15264,15 +15278,19 @@ async function prepararPreviewCarrosselExistente(
     midia_tipo: "carrossel" as const,
   };
   const tom = options.tom || "beneficio";
-  const variantesBase = await gerarTresOpcoesRedeSocial(
+  const amzAutoCarousel = state?.amz_auto === true;
+  let variantesBase = await gerarTresOpcoesRedeSocial(
     produto,
     tom,
     "instagram",
     options.legenda ? `Use esta orientação do dono na legenda: ${options.legenda}` : undefined,
-    undefined,
+    amzAutoCarousel ? buildAmzAutoCarouselBrandContextForCaptions() : undefined,
     options.legenda,
     contentNicheForContext(ctx),
   );
+  if (amzAutoCarousel) {
+    variantesBase = sanitizeAmzAutoCarouselVariants(variantesBase);
+  }
   const variantes = { instagram: variantesBase };
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const pending: PendingSocialPost = {
@@ -15311,6 +15329,7 @@ async function prepararPreviewCarrosselExistente(
     image_urls: imageUrls,
     token,
     facebook_requested: options.facebookRequested || previous?.facebook_requested,
+    amz_auto: amzAutoCarousel || previous?.amz_auto,
     created_at: new Date().toISOString(),
   };
   const saved = await saveAgentState(sb, conversation, { pending_carousel: next }, current);
@@ -15329,6 +15348,7 @@ async function prepararPreviewCarrosselExistente(
     status: "aguardando_escolha_variante",
     fonte: "carrossel_whatsapp",
     carrossel: true,
+    amz_auto_carousel: next.amz_auto === true,
     token,
     cards: imageUrls.length,
     media_id: parentId,
@@ -15371,6 +15391,15 @@ async function toolCriarCarrossel(
 
     const tema = (args?.tema || "").trim();
     if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+    const hasCurrentSlides = Array.isArray(args?.slides) && args.slides.length >= 2;
+    const amzAutoCarousel = isAmzAutoCarouselFlow({
+      userId: ctx.userId,
+      tema,
+      demoProspect,
+      pending: ctx.agentState?.pending_carousel,
+      ajuste: args?.ajuste,
+      hasCurrentSlides,
+    });
     const numSlides = Array.isArray(args.slides) && args.slides.length >= 3
       ? Math.min(10, args.slides.length)
       : requestedCarouselSlideCount(
@@ -15388,104 +15417,119 @@ async function toolCriarCarrossel(
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    const stylePlan = resolveCarouselStyleRequest({
-      request: tema,
-      template: args.template,
-      backgroundColor: args.backgroundColor,
-    });
-    let template = stylePlan.template;
-    const backgroundColor = stylePlan.backgroundColor;
-    if (!template) {
-      if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha do estilo." });
-      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
-      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
-      const pending: PendingCarouselState = {
-        stage: "awaiting_style",
-        tema,
-        num_slides: numSlides,
-        cor_marca: brandColors[0],
-        cor_secundaria_marca: brandColors[1],
-        caption: args?.legenda,
-        facebook_requested: !!args?.facebook_requested,
-        created_at: new Date().toISOString(),
-      };
-      if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
-        return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir o estilo. Tente novamente." });
-      }
-      current.pending_carousel = pending;
-      ctx.agentState = current;
-      const selector = await sendCarrosselStylePicker(ctx.userId, ctx.fromNumber);
-      if (selector !== "automatic") {
-        return JSON.stringify({
-          status: "aguardando_estilo",
-          tema,
-          aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
-        });
-      }
-      template = "dark-premium";
-    }
+    let template: CarouselTemplate | null = null;
+    let backgroundColor: string | undefined;
+    let cor: CarouselColor;
 
-    // 2) COR — cor explícita vence; depois vem a identidade salva do tenant.
-    // Só pergunta quando nenhuma das duas existe.
-    let cor = resolveCarouselColor(args?.cor);
-    if (!cor) {
-      const colorPlan = resolveCarouselColorPlan({
-        explicitColor: args?.cor,
-        request: tema,
-        brandColors,
-        brandFallback: ctx.userId === ADMIN_AMZ_USER_ID
-          ? AMZ_CAROUSEL_COLOR
-          : null,
-      });
-      cor = colorPlan.color;
-      if (cor) {
-        console.log("[carrossel][cor_automatica]", {
-          source: colorPlan.source,
-          color: cor.primaryColor,
-        });
-      }
-    }
-    if (!cor) {
-      if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
-      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
-      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
-      const fallbackColor = ctx.userId === ADMIN_AMZ_USER_ID
-        ? AMZ_CAROUSEL_COLOR
-        : DEFAULT_CAROUSEL_COLOR;
-      const pending: PendingCarouselState = {
-        stage: "awaiting_color",
-        tema,
-        num_slides: numSlides,
-        cor_marca: fallbackColor.primaryColor,
-        cor_secundaria_marca: fallbackColor.secondaryColor,
+    if (amzAutoCarousel) {
+      const locked = amzAutoCarouselStyleLocked();
+      template = locked.template;
+      backgroundColor = locked.backgroundColor;
+      cor = locked.color;
+      console.log("[carrossel][amz_auto_estilo_fixo]", {
         template,
-        background_color: backgroundColor ?? undefined,
-        caption: args?.legenda,
-        facebook_requested: !!args?.facebook_requested,
-        created_at: new Date().toISOString(),
-      };
-      if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
-        return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir a cor. Tente novamente." });
-      }
-      current.pending_carousel = pending;
-      ctx.agentState = current;
-      const selector = await sendCarrosselColorPicker(
-        ctx.userId,
-        ctx.fromNumber,
-        tema,
-        demoProspect,
-      );
-      if (selector !== "automatic") {
-        return JSON.stringify({
-          status: "aguardando_cor",
+        cor: cor.primaryColor,
+      });
+    } else {
+      const stylePlan = resolveCarouselStyleRequest({
+        request: tema,
+        template: args.template,
+        backgroundColor: args.backgroundColor,
+      });
+      template = stylePlan.template;
+      backgroundColor = stylePlan.backgroundColor ?? undefined;
+      if (!template) {
+        if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha do estilo." });
+        const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const pending: PendingCarouselState = {
+          stage: "awaiting_style",
           tema,
-          aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
-          instrucao:
-            "Já enviei ao usuário opções de cor. NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta. Quando ele responder, chame criar_carrossel outra vez com tema=\"" +
-            tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
-        });
+          num_slides: numSlides,
+          cor_marca: brandColors[0],
+          cor_secundaria_marca: brandColors[1],
+          caption: args?.legenda,
+          facebook_requested: !!args?.facebook_requested,
+          created_at: new Date().toISOString(),
+        };
+        if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
+          return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir o estilo. Tente novamente." });
+        }
+        current.pending_carousel = pending;
+        ctx.agentState = current;
+        const selector = await sendCarrosselStylePicker(ctx.userId, ctx.fromNumber);
+        if (selector !== "automatic") {
+          return JSON.stringify({
+            status: "aguardando_estilo",
+            tema,
+            aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
+          });
+        }
+        template = "dark-premium";
       }
-      cor = fallbackColor;
+
+      // 2) COR — cor explícita vence; depois vem a identidade salva do tenant.
+      let resolvedCor = resolveCarouselColor(args?.cor);
+      if (!resolvedCor) {
+        const colorPlan = resolveCarouselColorPlan({
+          explicitColor: args?.cor,
+          request: tema,
+          brandColors,
+          brandFallback: ctx.userId === ADMIN_AMZ_USER_ID
+            ? AMZ_CAROUSEL_COLOR
+            : null,
+        });
+        resolvedCor = colorPlan.color;
+        if (resolvedCor) {
+          console.log("[carrossel][cor_automatica]", {
+            source: colorPlan.source,
+            color: resolvedCor.primaryColor,
+          });
+        }
+      }
+      if (!resolvedCor) {
+        if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
+        const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const fallbackColor = ctx.userId === ADMIN_AMZ_USER_ID
+          ? AMZ_CAROUSEL_COLOR
+          : DEFAULT_CAROUSEL_COLOR;
+        const pending: PendingCarouselState = {
+          stage: "awaiting_color",
+          tema,
+          num_slides: numSlides,
+          cor_marca: fallbackColor.primaryColor,
+          cor_secundaria_marca: fallbackColor.secondaryColor,
+          template,
+          background_color: backgroundColor ?? undefined,
+          caption: args?.legenda,
+          facebook_requested: !!args?.facebook_requested,
+          created_at: new Date().toISOString(),
+        };
+        if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
+          return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir a cor. Tente novamente." });
+        }
+        current.pending_carousel = pending;
+        ctx.agentState = current;
+        const selector = await sendCarrosselColorPicker(
+          ctx.userId,
+          ctx.fromNumber,
+          tema,
+          demoProspect,
+        );
+        if (selector !== "automatic") {
+          return JSON.stringify({
+            status: "aguardando_cor",
+            tema,
+            aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
+            instrucao:
+              "Já enviei ao usuário opções de cor. NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta. Quando ele responder, chame criar_carrossel outra vez com tema=\"" +
+              tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
+          });
+        }
+        resolvedCor = fallbackColor;
+      }
+      cor = resolvedCor;
     }
 
     // 3) Guardrail de volume por tenant/dia
@@ -15536,12 +15580,15 @@ async function toolCriarCarrossel(
       : null;
     let prompt = demoProspect
       ? buildProspectDemoCarouselPrompt({ tema, ramo: prospectBranch, numSlides })
+      : amzAutoCarousel
+      ? buildAmzAutoCarouselPrompt({ tema, numSlides, business })
       : buildCarouselPrompt({ tema, numSlides, business });
     if (args?.ajuste && Array.isArray(args?.slides) && args.slides.length >= 2) {
       prompt += `\n\nCARROSSEL ATUAL:\n${JSON.stringify(args.slides)}\n\nAJUSTE OBRIGATÓRIO DO DONO: ${args.ajuste}\nPreserve todos os cards e textos que não foram citados no ajuste.`;
     }
     console.log("[criar_carrossel] contexto_do_negocio", {
       demonstracao: demoProspect,
+      amz_auto: amzAutoCarousel,
       num_slides: numSlides,
       ramo_prospect: prospectBranch,
       tem_contexto: business?.temContexto ?? false,
@@ -15555,6 +15602,7 @@ async function toolCriarCarrossel(
         tema,
         user_id: ctx.userId,
         neutral_copy: demoProspect,
+        amz_auto_carousel: amzAutoCarousel,
       }, 90000);
     let slides = Array.isArray(conteudo?.slides)
       ? demoProspect
@@ -15568,6 +15616,7 @@ async function toolCriarCarrossel(
         tema,
         user_id: ctx.userId,
         neutral_copy: demoProspect,
+        amz_auto_carousel: amzAutoCarousel,
       }, 90000);
       slides = Array.isArray(conteudo?.slides)
         ? demoProspect
@@ -15581,12 +15630,21 @@ async function toolCriarCarrossel(
         detalhe: `a IA devolveu ${slides.length} cards; eram esperados ${numSlides}`,
       });
     }
+    if (amzAutoCarousel) {
+      slides = sanitizeAmzAutoCarouselSlides(slides);
+    }
     const generatedCaption = (args?.legenda || conteudo?.caption || tema).toString();
-    const caption = demoProspect
+    let caption = demoProspect
       ? sanitizeProspectDemoCaption(generatedCaption, tema)
       : generatedCaption;
+    if (amzAutoCarousel) {
+      caption = sanitizeAmzAutoCarouselCopy(caption);
+    }
 
     // 6) RENDER server-side (Satori + resvg)
+    const amzAutoRender = amzAutoCarousel
+      ? resolveAmzAutoCarouselRenderOptions()
+      : null;
     const render = await callEdge("render-carousel-slides", {
       user_id: ctx.userId,
       slides,
@@ -15594,9 +15652,10 @@ async function toolCriarCarrossel(
       backgroundColor,
       primaryColor: cor.primaryColor,
       secondaryColor: cor.secondaryColor,
-      businessName,
+      businessName: amzAutoRender ? null : businessName,
       profileHandle,
       incluir_logo: !demoProspect,
+      ...(amzAutoRender ?? {}),
     }, 180000);
     const imageUrls: string[] = Array.isArray(render?.image_urls) ? render.image_urls : [];
     if (imageUrls.length !== slides.length) {
@@ -15653,6 +15712,7 @@ async function toolCriarCarrossel(
         media_id: mediaId,
         image_urls: imageUrls,
         facebook_requested: !!args?.facebook_requested,
+        amz_auto: amzAutoCarousel || undefined,
         created_at: new Date().toISOString(),
       };
       if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {

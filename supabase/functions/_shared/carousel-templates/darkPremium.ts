@@ -29,6 +29,10 @@ export interface RenderContext {
   secondaryColor: string;
   totalSlides: number;
   logoDataUrl?: string | null;
+  /** Quando não há logo (ex.: AMZ Auto sem arquivo), marca em texto no rodapé/topo. */
+  brandMarkText?: string | null;
+  /** Layout dedicado AMZ Auto (capa com ícone grande + selo concessionárias). */
+  amzAutoLayout?: boolean;
   businessName?: string | null;
   profileHandle?: string | null;
   ctaLabel?: string | null;
@@ -117,6 +121,88 @@ function logoImg(
   return { type: "img", props: { src: dataUrl, style: { objectFit: "contain", ...style } } };
 }
 
+const AMZ_AUTO_LAYOUT_ORANGE = "#FF6A13";
+
+function pushAmzAutoCompactFooter(children: Node[], ctx: RenderContext): void {
+  if (!ctx.logoDataUrl) return;
+  children.push(
+    el("div", {
+      position: "absolute",
+      bottom: 108,
+      right: 52,
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      opacity: 0.92,
+    }, [
+      logoImg(ctx.logoDataUrl, { width: 56, height: 56 }),
+      el("div", {
+        display: "flex",
+        color: AMZ_AUTO_LAYOUT_ORANGE,
+        fontSize: 16,
+        fontWeight: 800,
+        letterSpacing: 2,
+      }, "AMZ AUTO"),
+    ]),
+  );
+}
+
+function pushAmzAutoCoverHero(children: Node[], ctx: RenderContext): void {
+  if (!ctx.logoDataUrl) return;
+  children.push(
+    el("div", {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      marginTop: 8,
+      marginBottom: 28,
+      gap: 12,
+    }, [
+      logoImg(ctx.logoDataUrl, { width: 190, height: 190 }),
+      el("div", {
+        display: "flex",
+        color: AMZ_AUTO_LAYOUT_ORANGE,
+        fontSize: 30,
+        fontWeight: 900,
+        letterSpacing: 4,
+      }, "AMZ AUTO"),
+    ]),
+  );
+}
+
+function pushBrandMark(
+  children: Node[],
+  ctx: RenderContext,
+  style: Record<string, unknown>,
+): void {
+  if (ctx.logoDataUrl) {
+    children.push(logoImg(ctx.logoDataUrl, style));
+    return;
+  }
+  const mark = (ctx.brandMarkText || "").trim();
+  if (!mark) return;
+  children.push(
+    el("div", {
+      display: "flex",
+      position: style.position,
+      top: style.top,
+      bottom: style.bottom,
+      left: style.left,
+      right: style.right,
+      width: style.width,
+      height: style.height,
+      alignItems: "center",
+      justifyContent: style.right !== undefined ? "flex-end" : "flex-start",
+      color: "rgba(255,255,255,0.75)",
+      fontSize: mark.length > 14 ? 22 : 26,
+      fontWeight: 800,
+      letterSpacing: 2,
+      textTransform: "uppercase",
+      opacity: style.opacity ?? 1,
+    }, mark),
+  );
+}
+
 const baseCard = (primary: string, secondary: string, extra: Record<string, unknown>) => ({
   width: CARD_WIDTH,
   height: CARD_HEIGHT,
@@ -139,7 +225,10 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
     accentBar(p, s),
   ];
 
-  if (ctx.businessName) {
+  const amzAutoCover = ctx.amzAutoLayout && ctx.logoDataUrl;
+  if (amzAutoCover) {
+    pushAmzAutoCoverHero(children, ctx);
+  } else if (ctx.businessName) {
     children.push(
       el("div", {
         display: "flex",
@@ -153,6 +242,10 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
       }, ctx.businessName.toUpperCase()),
     );
   }
+
+  const badgeLabel = amzAutoCover
+    ? "PARA LOJAS E CONCESSIONÁRIAS"
+    : "CARROSSEL";
 
   // Badge
   children.push(
@@ -170,10 +263,11 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
       el("div", {
         display: "flex",
         color: p,
-        fontSize: 20,
+        fontSize: amzAutoCover ? 15 : 20,
         fontWeight: 700,
-        letterSpacing: 4,
-      }, "CARROSSEL"),
+        letterSpacing: amzAutoCover ? 2 : 4,
+        textAlign: "center",
+      }, badgeLabel),
     ]),
   );
 
@@ -230,8 +324,14 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
     ]),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", top: 44, left: 60, width: 220, height: 110 }));
+  if (!amzAutoCover) {
+    pushBrandMark(children, ctx, {
+      position: "absolute",
+      top: 44,
+      left: 60,
+      width: 220,
+      height: 110,
+    });
   }
 
   return el("div", baseCard(p, s, {
@@ -343,8 +443,17 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
     }, progressDots(slide.number ?? 0, ctx.totalSlides, p)),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
+  if (ctx.amzAutoLayout && ctx.logoDataUrl) {
+    pushAmzAutoCompactFooter(children, ctx);
+  } else {
+    pushBrandMark(children, ctx, {
+      position: "absolute",
+      bottom: 46,
+      right: 60,
+      width: 170,
+      height: 80,
+      opacity: 0.7,
+    });
   }
 
   return el("div", baseCard(p, s, {
@@ -421,8 +530,17 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
     }, progressDots(ctx.totalSlides - 1, ctx.totalSlides, p)),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
+  if (ctx.amzAutoLayout && ctx.logoDataUrl) {
+    pushAmzAutoCompactFooter(children, ctx);
+  } else {
+    pushBrandMark(children, ctx, {
+      position: "absolute",
+      bottom: 46,
+      right: 60,
+      width: 170,
+      height: 80,
+      opacity: 0.7,
+    });
   }
 
   return el("div", baseCard(p, s, {
