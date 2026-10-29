@@ -15417,7 +15417,7 @@ async function toolCriarCarrossel(
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    let template: CarouselTemplate;
+    let template: CarouselTemplate | null = null;
     let backgroundColor: string | undefined;
     let cor: CarouselColor;
 

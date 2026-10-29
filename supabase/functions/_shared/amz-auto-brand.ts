@@ -136,7 +136,7 @@ export function isAmzAutoCarouselFlow(input: {
 
   if (input.pending?.amz_auto === true) return true;
   const pendingTema = String(input.pending?.tema || "").trim();
-  return pendingTema &&
+  return Boolean(pendingTema) &&
     shouldUseAmzAutoCarouselBrand(input.userId, pendingTema);
 }
 
