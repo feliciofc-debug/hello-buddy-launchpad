@@ -35,6 +35,9 @@ import {
   buildAmzAutoCarouselBrandContextForCaptions,
   buildAmzAutoCarouselPrompt,
   resolveAmzAutoCarouselRenderOptions,
+  sanitizeAmzAutoCarouselCopy,
+  sanitizeAmzAutoCarouselSlides,
+  sanitizeAmzAutoCarouselVariants,
   shouldUseAmzAutoCarouselBrand,
 } from "../_shared/amz-auto-brand.ts";
 import {
@@ -15275,7 +15278,7 @@ async function prepararPreviewCarrosselExistente(
   };
   const tom = options.tom || "beneficio";
   const amzAutoCarousel = state?.amz_auto === true;
-  const variantesBase = await gerarTresOpcoesRedeSocial(
+  let variantesBase = await gerarTresOpcoesRedeSocial(
     produto,
     tom,
     "instagram",
@@ -15284,6 +15287,9 @@ async function prepararPreviewCarrosselExistente(
     options.legenda,
     contentNicheForContext(ctx),
   );
+  if (amzAutoCarousel) {
+    variantesBase = sanitizeAmzAutoCarouselVariants(variantesBase);
+  }
   const variantes = { instagram: variantesBase };
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const pending: PendingSocialPost = {
@@ -15601,14 +15607,20 @@ async function toolCriarCarrossel(
         detalhe: `a IA devolveu ${slides.length} cards; eram esperados ${numSlides}`,
       });
     }
+    if (amzAutoCarousel) {
+      slides = sanitizeAmzAutoCarouselSlides(slides);
+    }
     const generatedCaption = (args?.legenda || conteudo?.caption || tema).toString();
-    const caption = demoProspect
+    let caption = demoProspect
       ? sanitizeProspectDemoCaption(generatedCaption, tema)
       : generatedCaption;
+    if (amzAutoCarousel) {
+      caption = sanitizeAmzAutoCarouselCopy(caption);
+    }
 
     // 6) RENDER server-side (Satori + resvg)
     const amzAutoRender = amzAutoCarousel
-      ? resolveAmzAutoCarouselRenderOptions(ctx.userId)
+      ? resolveAmzAutoCarouselRenderOptions()
       : null;
     const render = await callEdge("render-carousel-slides", {
       user_id: ctx.userId,
@@ -15617,7 +15629,7 @@ async function toolCriarCarrossel(
       backgroundColor,
       primaryColor: cor.primaryColor,
       secondaryColor: cor.secondaryColor,
-      businessName: amzAutoRender?.businessName ?? businessName,
+      businessName: amzAutoRender ? null : businessName,
       profileHandle,
       incluir_logo: !demoProspect,
       ...(amzAutoRender ?? {}),

@@ -65,6 +65,7 @@ import {
   getTenantLogoDataUrl,
   getTenantLogoDataUrlForBackground,
 } from "../_shared/tenant-logo.ts";
+import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "../_shared/amz-auto-mark-embedded.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -348,9 +349,17 @@ Deno.serve(async (req) => {
     // Logo do PRÓPRIO tenant/cliente, sempre isolada na pasta do tenant.
     let logoDataUrl: string | null = null;
     const skipTenantLogoFallback = body?.skip_tenant_logo_fallback === true;
+    const amzAutoLayout = body?.amz_auto_layout === true;
     if (incluir_logo) {
       try {
-        if (body?.logo_path) {
+        const embedded = typeof body?.embedded_logo_data_url === "string"
+          ? body.embedded_logo_data_url.trim()
+          : "";
+        if (embedded.startsWith("data:image/")) {
+          logoDataUrl = embedded;
+        } else if (amzAutoLayout) {
+          logoDataUrl = AMZ_AUTO_MARK_LOGO_DATA_URL;
+        } else if (body?.logo_path) {
           logoDataUrl = await logoPathDataUrl(supabase, user_id, body.logo_path);
         } else if (!skipTenantLogoFallback) {
           logoDataUrl = vehicle_mode
@@ -371,7 +380,7 @@ Deno.serve(async (req) => {
         console.warn("[render-carousel-slides] logo indisponível:", err);
       }
     }
-    const brandMarkText = !logoDataUrl && body?.brand_mark_text
+    const brandMarkText = !logoDataUrl && !amzAutoLayout && body?.brand_mark_text
       ? String(body.brand_mark_text).trim() || null
       : null;
 
@@ -472,7 +481,8 @@ Deno.serve(async (req) => {
       totalSlides: list.length,
       logoDataUrl,
       brandMarkText,
-      businessName: businessName ?? null,
+      amzAutoLayout,
+      businessName: amzAutoLayout ? null : (businessName ?? null),
       profileHandle: profileHandle ?? null,
       ctaLabel: ctaLabel ?? null,
       backgroundColor,

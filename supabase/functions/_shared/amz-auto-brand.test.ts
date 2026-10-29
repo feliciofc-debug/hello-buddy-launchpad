@@ -1,13 +1,16 @@
-import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertFalse, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildCarouselPrompt } from "./business-context.ts";
+import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "./amz-auto-mark-embedded.ts";
 import {
   AMZ_AUTO_BRAND_NAME,
   AMZ_AUTO_FICHA_ITEMS,
-  amzAutoLogoStoragePath,
   buildAmzAutoCarouselCopyPromptBlock,
   buildAmzAutoCarouselPrompt,
   mentionsAmzAutoInCarouselRequest,
   resolveAmzAutoCarouselRenderOptions,
+  sanitizeAmzAutoCarouselCopy,
+  sanitizeAmzAutoCarouselSlides,
+  sanitizeAmzAutoCarouselVariants,
   shouldUseAmzAutoCarouselBrand,
 } from "./amz-auto-brand.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
@@ -35,22 +38,48 @@ Deno.test("CARROSSEL-AMZAUTO — tenant AMZ + carrossel AMZ Auto inclui ficha co
       `ficha item ausente no prompt: ${item.slice(0, 40)}`,
     );
   }
+  assertEquals(AMZ_AUTO_FICHA_ITEMS[10], "Painel de gestão: tudo acompanhado pelo painel, de qualquer lugar.");
+  assert(prompt.includes("11. Painel de gestão: tudo acompanhado pelo painel, de qualquer lugar."));
   assert(prompt.includes(AMZ_AUTO_BRAND_NAME));
-  assert(prompt.includes("lojas de veículos"));
   const copyBlock = buildAmzAutoCarouselCopyPromptBlock();
-  assert(copyBlock.includes("12.") || copyBlock.includes(AMZ_AUTO_FICHA_ITEMS[11].slice(0, 20)));
+  assert(copyBlock.includes("PROIBIDO citar"));
 });
 
 Deno.test("CARROSSEL-AMZAUTO — outro tenant + amz auto não troca marca", () => {
   assertFalse(shouldUseAmzAutoCarouselBrand(OUTRO_TENANT, "carrossel da AMZ Auto"));
 });
 
-Deno.test("CARROSSEL-AMZAUTO — logo ausente usa texto e não fallback Ofertas", () => {
-  const render = resolveAmzAutoCarouselRenderOptions(AMZ_TENANT_ID);
-  assertEquals(render.businessName, "AMZ Auto");
-  assertEquals(render.brand_mark_text, "AMZ Auto");
+Deno.test("CARROSSEL-AMZAUTO.1 — fluxo AMZ Auto usa logo embutida e layout dedicado", () => {
+  const render = resolveAmzAutoCarouselRenderOptions();
+  assertEquals(render.embedded_logo_data_url, AMZ_AUTO_MARK_LOGO_DATA_URL);
+  assertMatch(render.embedded_logo_data_url, /^data:image\/png;base64,/);
+  assertEquals(render.amz_auto_layout, true);
   assertEquals(render.skip_tenant_logo_fallback, true);
-  assertEquals(render.logo_path, amzAutoLogoStoragePath(AMZ_TENANT_ID));
+});
+
+Deno.test("CARROSSEL-AMZAUTO.1 — filtro remove amzofertas de slides e legendas", () => {
+  const slides = sanitizeAmzAutoCarouselSlides([{
+    type: "content",
+    title: "Painel em amzofertas.com.br",
+    body: "Veja na AMZ Ofertas\nLinha 2\nLinha 3\nLinha 4",
+  }]);
+  assertEquals(slides[0].title, "Painel em AMZ Auto");
+  assert(slides[0].body.includes("AMZ Auto"));
+  assertFalse(slides[0].body.toLowerCase().includes("amzofertas"));
+
+  const variantes = sanitizeAmzAutoCarouselVariants({
+    A: "Confira amzofertas.com.br hoje",
+    B: "AMZ Ofertas para lojas",
+    C: "amzofertas no painel",
+  });
+  for (const key of ["A", "B", "C"] as const) {
+    assertFalse(variantes[key].toLowerCase().includes("amzofertas"));
+    assert(variantes[key].includes("AMZ Auto"));
+  }
+  assertEquals(
+    sanitizeAmzAutoCarouselCopy("Site amzOFERTAS.com.br"),
+    "Site AMZ Auto",
+  );
 });
 
 Deno.test("CARROSSEL-AMZAUTO — detecção aceita variantes de amz auto", () => {

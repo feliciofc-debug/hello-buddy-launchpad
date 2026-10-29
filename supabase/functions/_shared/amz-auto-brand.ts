@@ -1,19 +1,25 @@
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 import type { CarouselColor } from "./carousel-colors.ts";
 import type { TenantBusinessContext } from "./business-context.ts";
+import { AMZ_AUTO_MARK_LOGO_DATA_URL } from "./amz-auto-mark-embedded.ts";
 
 export const AMZ_AUTO_BRAND_NAME = "AMZ Auto";
+export const AMZ_AUTO_MARK_LABEL = "AMZ AUTO";
+export const AMZ_AUTO_MARK_ORANGE = "#FF6A13";
 
 export const AMZ_AUTO_AUDIENCE =
   "donos, gerentes e vendedores de lojas de veículos e concessionárias";
+
+const AMZ_AUTO_FORBIDDEN_COPY =
+  'É PROIBIDO citar "AMZ Ofertas", "amzofertas", "amzofertas.com.br" ou qualquer domínio — use sempre "AMZ Auto".';
 
 /** Mesma paleta da AMZ Ofertas para carrossel (laranja + destaque escuro no template). */
 export const AMZ_AUTO_CAROUSEL_COLOR: CarouselColor = {
   slug: "amz-auto",
   label: "Cor da marca",
   emoji: "🎨",
-  primaryColor: "#FF6A13",
-  secondaryColor: "#FF6A13",
+  primaryColor: AMZ_AUTO_MARK_ORANGE,
+  secondaryColor: AMZ_AUTO_MARK_ORANGE,
 };
 
 export const AMZ_AUTO_FICHA_ITEMS: readonly string[] = [
@@ -27,12 +33,50 @@ export const AMZ_AUTO_FICHA_ITEMS: readonly string[] = [
   "Vistoria e troca: laudo de vistoria com fotos e avaliação do carro na troca.",
   "OS e cotações: ordens de serviço e cotações com prestadores de serviço pelo WhatsApp.",
   "Relatórios no WhatsApp: resumo do dia e desempenho dos vendedores.",
-  "Painel de gestão: tudo acompanhado em amzofertas.com.br.",
+  "Painel de gestão: tudo acompanhado pelo painel, de qualquer lugar.",
   "Integração com o sistema de gestão da loja.",
 ] as const;
 
-export function amzAutoLogoStoragePath(amzTenantId: string = AMZ_TENANT_ID): string {
-  return `${amzTenantId}/amz-auto-logo.png`;
+const FORBIDDEN_AMZ_OFERTAS_PATTERNS: RegExp[] = [
+  /amzofertas\.com\.br/gi,
+  /amz\s*ofertas/gi,
+  /amzofertas/gi,
+];
+
+export function sanitizeAmzAutoCarouselCopy(text: string): string {
+  let out = String(text ?? "");
+  for (const pattern of FORBIDDEN_AMZ_OFERTAS_PATTERNS) {
+    out = out.replace(pattern, AMZ_AUTO_BRAND_NAME);
+  }
+  return out;
+}
+
+export function sanitizeAmzAutoCarouselSlides<T extends Record<string, unknown>>(
+  slides: T[],
+): T[] {
+  return slides.map((slide) => {
+    const next = { ...slide };
+    for (const key of ["title", "body", "highlight", "ctaLabel"] as const) {
+      if (typeof next[key] === "string") {
+        (next as Record<string, string>)[key] = sanitizeAmzAutoCarouselCopy(
+          next[key] as string,
+        );
+      }
+    }
+    return next;
+  });
+}
+
+export function sanitizeAmzAutoCarouselVariants(variantes: {
+  A: string;
+  B: string;
+  C: string;
+}): { A: string; B: string; C: string } {
+  return {
+    A: sanitizeAmzAutoCarouselCopy(variantes.A),
+    B: sanitizeAmzAutoCarouselCopy(variantes.B),
+    C: sanitizeAmzAutoCarouselCopy(variantes.C),
+  };
 }
 
 export function normalizeCarouselRequestText(text: string): string {
@@ -66,6 +110,7 @@ function fichaBlock(): string {
     "FICHA OFICIAL DA PLATAFORMA AMZ AUTO (fonte única — use SOMENTE estes fatos; é proibido inventar recurso, número, preço, cliente, case ou integração que não esteja aqui):",
     `Marca: ${AMZ_AUTO_BRAND_NAME}`,
     `Público-alvo: ${AMZ_AUTO_AUDIENCE}`,
+    AMZ_AUTO_FORBIDDEN_COPY,
     "",
     ...lines,
   ].join("\n");
@@ -76,6 +121,7 @@ export function buildAmzAutoCarouselCopyPromptBlock(): string {
     "=== CARROSSEL AMZ AUTO — VOZ E LEGENDA ===",
     `- Fale com ${AMZ_AUTO_AUDIENCE}.`,
     `- A marca é ${AMZ_AUTO_BRAND_NAME} (plataforma completa para lojas de veículos).`,
+    AMZ_AUTO_FORBIDDEN_COPY,
     "- Não invente preço, promoção, número de clientes, depoimento ou funcionalidade.",
     "- Legenda persuasiva com chamada para contato (WhatsApp/demo), coerente com os slides.",
     fichaBlock(),
@@ -85,6 +131,7 @@ export function buildAmzAutoCarouselCopyPromptBlock(): string {
 export function buildAmzAutoCarouselBrandContextForCaptions(): string {
   return [
     `Marca: ${AMZ_AUTO_BRAND_NAME}. Público: ${AMZ_AUTO_AUDIENCE}.`,
+    AMZ_AUTO_FORBIDDEN_COPY,
     "Legendas A/B/C para Instagram sobre a plataforma completa — benefícios reais da ficha, sem inventar.",
     "CTA: agendar demonstração ou falar no WhatsApp. Não cite produto físico nem estoque de loja.",
     fichaBlock(),
@@ -127,7 +174,7 @@ NÚMERO EXATO DE SLIDES: ${n}
 OBJETIVO DO CARROSSEL:
 - Apresentar a plataforma ${AMZ_AUTO_BRAND_NAME} de forma premium e estratégica
 - Cobrir TODAS as 12 ferramentas da ficha (agrupando 2 ferramentas por slide content quando necessário para caber em ${contentCount} slides de conteúdo)
-- Capa: ${AMZ_AUTO_BRAND_NAME} + promessa clara para lojistas/concessionárias
+- Capa: promessa clara para lojistas/concessionárias (a identidade visual AMZ Auto vai no layout; não repita só o nome da marca como título)
 - Fechamento (cta): chamada para contato / demonstração
 - Nada genérico; só benefícios derivados da ficha
 
@@ -146,25 +193,22 @@ REGRAS:
 - Português do Brasil.
 - Cada slide content deve ter 4 linhas curtas no body (mínimo 4, máximo 5), separadas por \\n.
 - É PROIBIDO usar emojis nos títulos e no body dos slides.
-- Nome da marca nos textos: ${AMZ_AUTO_BRAND_NAME}. Nunca escreva "AMZ Ofertas" neste carrossel.
+- ${AMZ_AUTO_FORBIDDEN_COPY}
+- Nome da marca nos textos: ${AMZ_AUTO_BRAND_NAME}.
 - Não invente recurso, número, preço ou cliente.
 - Responda APENAS JSON válido.`;
 }
 
 export type AmzAutoCarouselRenderOptions = {
-  businessName: string;
-  logo_path: string;
-  brand_mark_text: string;
+  embedded_logo_data_url: string;
+  amz_auto_layout: true;
   skip_tenant_logo_fallback: true;
 };
 
-export function resolveAmzAutoCarouselRenderOptions(
-  amzTenantId: string = AMZ_TENANT_ID,
-): AmzAutoCarouselRenderOptions {
+export function resolveAmzAutoCarouselRenderOptions(): AmzAutoCarouselRenderOptions {
   return {
-    businessName: AMZ_AUTO_BRAND_NAME,
-    logo_path: amzAutoLogoStoragePath(amzTenantId),
-    brand_mark_text: AMZ_AUTO_BRAND_NAME,
+    embedded_logo_data_url: AMZ_AUTO_MARK_LOGO_DATA_URL,
+    amz_auto_layout: true,
     skip_tenant_logo_fallback: true,
   };
 }
