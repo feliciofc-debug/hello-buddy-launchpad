@@ -5,7 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { signInWithEmailPassword } from "@/lib/auth-sign-in";
 import { VEHICLE_DEALER_TENANT_TYPE } from "@/lib/business-tenant";
 import { fetchIsAppAdmin } from "@/lib/app-admin";
-import { writeAmzAutoModePreference } from "@/lib/amz-auto-mode";
+import {
+  AMZ_AUTO_PLATFORM_HOME_PATH,
+  writeAmzAutoModePreference,
+} from "@/lib/amz-auto-mode";
 import { AmzAutoLogo } from "./AmzAutoLogo";
 import { AmzAutoPageShell } from "./AmzAutoLayout";
 
@@ -62,7 +65,7 @@ export default function AmzAutoEntrarPage() {
     }
 
     writeAmzAutoModePreference(true);
-    navigate("/dashboard");
+    navigate(AMZ_AUTO_PLATFORM_HOME_PATH);
   };
 
   const handleSubmit = async (event: FormEvent) => {

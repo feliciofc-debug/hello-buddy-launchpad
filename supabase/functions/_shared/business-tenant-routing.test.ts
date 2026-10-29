@@ -24,6 +24,20 @@ Deno.test("login nunca direciona revenda diretamente ao estoque", async () => {
   assertEquals(helperSource.includes('return "/veiculos"'), false);
 });
 
+Deno.test("AMZ Auto pós-login cai no dashboard com menu lateral", async () => {
+  const entrarSource = await Deno.readTextFile(
+    "src/pages/amz-auto/AmzAutoEntrarPage.tsx",
+  );
+  const dashSource = await Deno.readTextFile("src/pages/DashboardMetricas.tsx");
+  assert(entrarSource.includes("AMZ_AUTO_PLATFORM_HOME_PATH"));
+  assertEquals(entrarSource.includes('navigate("/veiculos")'), false);
+  assert(dashSource.includes("AMZ_AUTO_PLATFORM_HOME_PATH"));
+  const abrirIdx = dashSource.indexOf("Abrir AMZ Auto");
+  const adminOpenBlock = dashSource.slice(Math.max(0, abrirIdx - 280), abrirIdx + 80);
+  assertEquals(adminOpenBlock.includes("navigate('/veiculos')"), false);
+  assert(adminOpenBlock.includes("AMZ_AUTO_PLATFORM_HOME_PATH"));
+});
+
 Deno.test("outros tipos não são tenants empresariais", () => {
   assertEquals(isBusinessTenantType("b2b"), false);
   assertEquals(isBusinessTenantType("parceiro"), false);

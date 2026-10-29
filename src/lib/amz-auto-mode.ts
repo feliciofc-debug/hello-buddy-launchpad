@@ -2,6 +2,9 @@ import { VEHICLE_DEALER_TENANT_TYPE } from "@/lib/business-tenant";
 
 export const AMZ_AUTO_MODE_STORAGE_KEY = "amz_auto_mode";
 
+/** Home da plataforma AMZ Auto (dashboard com menu lateral), nunca o estoque isolado. */
+export const AMZ_AUTO_PLATFORM_HOME_PATH = "/dashboard" as const;
+
 export function readAmzAutoModePreference(): boolean {
   if (typeof sessionStorage === "undefined") return false;
   return sessionStorage.getItem(AMZ_AUTO_MODE_STORAGE_KEY) === "1";

@@ -63,7 +63,11 @@ import BillingBlockedScreen from '@/components/BillingBlockedScreen';
 import { AmzAutoMark } from '@/components/amz-auto/AmzAutoMark';
 import { useAmzAutoMode } from '@/contexts/AmzAutoModeContext';
 import { applyAmzAutoMenuFilter } from '@/lib/amz-auto-menu';
-import { clearAmzAutoModePreference, isRevendaVeiculosProfile } from '@/lib/amz-auto-mode';
+import {
+  AMZ_AUTO_PLATFORM_HOME_PATH,
+  clearAmzAutoModePreference,
+  isRevendaVeiculosProfile,
+} from '@/lib/amz-auto-mode';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -683,7 +687,7 @@ export default function DashboardMetricas() {
                   className="hidden text-xs sm:inline-flex"
                   onClick={() => {
                     enableAmzAutoMode();
-                    navigate('/veiculos');
+                    navigate(AMZ_AUTO_PLATFORM_HOME_PATH);
                   }}
                 >
                   Abrir AMZ Auto
