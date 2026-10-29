@@ -25,6 +25,12 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+/** Orçamento total da função (painel/autopilot abortam ~20–30s). */
+const ENGAGEMENT_REQUEST_BUDGET_MS = 25_000
+/** Timeout por chamada ao LLM — menor que o budget para sobrar fallback. */
+const ENGAGEMENT_LLM_TIMEOUT_MS = 11_000
+const ENGAGEMENT_MAX_TENTATIVAS = 2
+
 // ----------------------------------------------------------------------------
 // Tipos
 // ----------------------------------------------------------------------------
@@ -438,52 +444,77 @@ function injetarLink(caption: string, link: string): string {
   return caption
 }
 
-async function chamarLLM(promptCompleto: string): Promise<string> {
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: promptCompleto }],
-      max_tokens: 700,
-      temperature: 0.85,
-    }),
-  })
+async function chamarLLM(promptCompleto: string, timeoutMs: number): Promise<string> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  const t0 = Date.now()
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: promptCompleto }],
+        max_tokens: 550,
+        temperature: 0.85,
+      }),
+    })
 
-  if (!response.ok) {
-    const txt = await response.text()
-    throw new Error(`LLM erro ${response.status}: ${txt.slice(0, 200)}`)
+    if (!response.ok) {
+      const txt = await response.text()
+      throw new Error(`LLM erro ${response.status}: ${txt.slice(0, 120)}`)
+    }
+
+    const data = await response.json()
+    console.log('[engagement] llm_ok', { ms: Date.now() - t0, timeout_ms: timeoutMs })
+    return (data.choices?.[0]?.message?.content || '').trim()
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === 'AbortError'
+    console.warn('[engagement] llm_fail', {
+      ms: Date.now() - t0,
+      aborted,
+      message: e instanceof Error ? e.message.slice(0, 80) : String(e),
+    })
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
-
-  const data = await response.json()
-  return (data.choices?.[0]?.message?.content || '').trim()
 }
 
 async function fallbackPromocional(
   produto: ProdutoLite,
   link: string,
+  timeoutMs: number,
 ): Promise<string> {
-  // Chama generate-social-post (Modo Promocional original) como fallback.
-  const resp = await fetch(`${SUPABASE_URL}/functions/v1/generate-social-post`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SERVICE_ROLE}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      lead: { nome_completo: 'cliente', profissao: 'consumidor' },
-      produto: `${produto.nome}${produto.preco ? ` — R$ ${produto.preco.toFixed(2).replace('.', ',')}` : ''}`,
-      objetivo: 'gerar_curiosidade',
-      redeSocial: 'Facebook',
-    }),
-  })
-  const data = await resp.json()
-  const post = data?.post || ''
-  // Garante o link no topo conforme estrutura geral
-  return `${link}\n\n${post}`.trim()
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  const t0 = Date.now()
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/generate-social-post`, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        'Authorization': `Bearer ${SERVICE_ROLE}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        lead: { nome_completo: 'cliente', profissao: 'consumidor' },
+        produto: `${produto.nome}${produto.preco ? ` — R$ ${produto.preco.toFixed(2).replace('.', ',')}` : ''}`,
+        objetivo: 'gerar_curiosidade',
+        redeSocial: 'Facebook',
+      }),
+    })
+    const data = await resp.json()
+    const post = data?.post || ''
+    console.log('[engagement] fallback_promocional_ok', { ms: Date.now() - t0 })
+    return `${link}\n\n${post}`.trim()
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -649,15 +680,25 @@ serve(async (req) => {
     beneficios: (produto as any).beneficios ?? null,
   }
 
-  // Loop de até 3 tentativas
-  const MAX_TENT = 3
+  const requestStarted = Date.now()
+  const deadline = requestStarted + ENGAGEMENT_REQUEST_BUDGET_MS
+  const timeLeftMs = () => Math.max(0, deadline - Date.now())
+
+  console.log('[engagement] start', {
+    produto_id: isVehicleRequest ? null : produto.id,
+    veiculo: isVehicleRequest,
+    estilo: estiloEscolhido,
+    budget_ms: ENGAGEMENT_REQUEST_BUDGET_MS,
+  })
+
   let tentativas = 0
   let captionFinal = ''
   let validacaoFinal: ValidacaoResultado = { ok: false, motivo: 'sem_tentativa' }
   let usouFallback = false
+  let timedOut = false
   const motivosFalha: string[] = []
 
-  while (tentativas < MAX_TENT) {
+  while (tentativas < ENGAGEMENT_MAX_TENTATIVAS && timeLeftMs() > 2500) {
     tentativas++
 
     const promptMiolo = PROMPT_BUILDERS[estiloEscolhido](produtoLite)
@@ -672,12 +713,19 @@ serve(async (req) => {
     ].join('\n\n')
 
     let bruto = ''
+    const llmTimeout = Math.min(ENGAGEMENT_LLM_TIMEOUT_MS, timeLeftMs() - 1500)
+    if (llmTimeout < 2000) {
+      timedOut = true
+      motivosFalha.push('budget_exceeded_before_llm')
+      break
+    }
     try {
-      bruto = await chamarLLM(promptCompleto)
+      bruto = await chamarLLM(promptCompleto, llmTimeout)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      console.error(`❌ Tentativa ${tentativas} falhou no LLM:`, msg)
-      motivosFalha.push(`llm_error:${msg.slice(0, 80)}`)
+      const aborted = e instanceof Error && e.name === 'AbortError'
+      if (aborted) timedOut = true
+      motivosFalha.push(aborted ? 'llm_timeout' : `llm_error:${msg.slice(0, 80)}`)
       continue
     }
 
@@ -699,10 +747,9 @@ serve(async (req) => {
     validacaoFinal = validacao
   }
 
-  // Fallback se 3 tentativas falharam (apenas quando temLink — fallbackPromocional exige link)
-  if (!captionFinal && temLink) {
+  if (!captionFinal && temLink && timeLeftMs() > 2000) {
     try {
-      captionFinal = await fallbackPromocional(produtoLite, link)
+      captionFinal = await fallbackPromocional(produtoLite, link, Math.min(8000, timeLeftMs() - 500))
       usouFallback = true
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -745,16 +792,43 @@ serve(async (req) => {
     console.error('❌ Falha ao gravar log:', JSON.stringify(logErr))
   }
 
+  if (!captionFinal) {
+    console.warn('[engagement] empty_caption', {
+      ms_total: Date.now() - requestStarted,
+      timed_out: timedOut,
+      tentativas,
+    })
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Não consegui gerar a caption agora. Tente de novo ou use o modo promocional.',
+        timed_out: timedOut,
+        tentativas,
+        motivos_falha: motivosFalha,
+        elapsed_ms: Date.now() - requestStarted,
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
+  }
+
+  console.log('[engagement] done', {
+    ms_total: Date.now() - requestStarted,
+    tentativas,
+    fallback: usouFallback,
+    caracteres: captionFinal.length,
+  })
+
   return new Response(
     JSON.stringify({
       success: true,
-      version: 'v3.1-no-price-fixed-percentage',
+      version: 'v3.2-budget-timeout',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
       caption: captionFinal,
       caracteres: captionFinal.length,
       motivos_falha_anteriores: motivosFalha,
+      elapsed_ms: Date.now() - requestStarted,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   )

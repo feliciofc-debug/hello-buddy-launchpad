@@ -4,13 +4,25 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCopyStyle, userIdDoRequest } from "../_shared/copy-style.ts";
 import { buildGerarPostsVehiclePrompt } from "../_shared/gerar-posts-vehicle-prompt.ts";
 import { sanitizeVehiclePostsResult } from "../_shared/vehicle-post-caption.ts";
+import {
+  GERAR_POSTS_FRIENDLY_ERROR,
+  GERAR_POSTS_JSON_RETRY_SUFFIX,
+  parseAiJsonObject,
+} from "../_shared/gerar-posts-ai-json.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function callGerarPostsLovable(prompt: string, apiKey: string): Promise<Record<string, unknown>> {
+type GerarPostsLovableResult =
+  | { ok: true; posts: Record<string, unknown> }
+  | { ok: false; friendlyError: string; reason: string };
+
+async function fetchGerarPostsAiJson(
+  prompt: string,
+  apiKey: string,
+): Promise<{ ok: true; raw: string } | { ok: false; httpStatus?: number; reason: string }> {
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -37,35 +49,66 @@ async function callGerarPostsLovable(prompt: string, apiKey: string): Promise<Re
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Erro na Lovable AI:', response.status, errorText);
+    console.error('[gerar-posts] lovable_http_error', {
+      status: response.status,
+      bytes: errorText.length,
+    });
 
     if (response.status === 429) {
-      throw new Error('Limite de requisições excedido. Tente novamente em alguns instantes.');
+      return { ok: false, httpStatus: 429, reason: 'rate_limit' };
     }
     if (response.status === 402) {
-      throw new Error('Créditos insuficientes. Por favor, adicione créditos ao workspace.');
+      return { ok: false, httpStatus: 402, reason: 'credits' };
     }
-
-    throw new Error(`Erro na API: ${response.status}`);
+    return { ok: false, httpStatus: response.status, reason: 'http_error' };
   }
 
   const data = await response.json();
-  let texto = data.choices[0].message.content;
+  const raw = String(data?.choices?.[0]?.message?.content ?? '').trim();
+  if (!raw) return { ok: false, reason: 'empty_content' };
+  return { ok: true, raw };
+}
 
-  texto = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+async function callGerarPostsLovable(prompt: string, apiKey: string): Promise<GerarPostsLovableResult> {
+  const attempts = [prompt, `${prompt}${GERAR_POSTS_JSON_RETRY_SUFFIX}`];
 
-  const jsonMatch = texto.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('Resposta da IA não contém JSON válido');
+  for (let i = 0; i < attempts.length; i++) {
+    const fetched = await fetchGerarPostsAiJson(attempts[i], apiKey);
+    if (!fetched.ok) {
+      if (fetched.reason === 'rate_limit') {
+        return { ok: false, friendlyError: 'Limite de requisições excedido. Tente novamente em alguns instantes.', reason: fetched.reason };
+      }
+      if (fetched.reason === 'credits') {
+        return { ok: false, friendlyError: 'Créditos insuficientes. Por favor, adicione créditos ao workspace.', reason: fetched.reason };
+      }
+      if (i === attempts.length - 1) {
+        return { ok: false, friendlyError: GERAR_POSTS_FRIENDLY_ERROR, reason: fetched.reason };
+      }
+      continue;
+    }
+
+    const parsed = parseAiJsonObject<Record<string, unknown>>(fetched.raw);
+    if (parsed.ok) {
+      return { ok: true, posts: parsed.value };
+    }
+    console.warn('[gerar-posts] ai_json_parse_failed', {
+      attempt: i + 1,
+      reason: parsed.reason,
+      raw_length: fetched.raw.length,
+    });
   }
 
-  const jsonStr = jsonMatch[0]
-    .replace(/,(\s*[}\]])/g, '$1')
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'")
-    .trim();
+  return { ok: false, friendlyError: GERAR_POSTS_FRIENDLY_ERROR, reason: 'invalid_json' };
+}
 
-  return JSON.parse(jsonStr);
+function jsonFriendlyResponse(
+  payload: Record<string, unknown>,
+  status = 200,
+): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 serve(async (req) => {
@@ -105,12 +148,12 @@ serve(async (req) => {
         copyStyle,
       );
       console.log(`Gerando posts veículo: ${veiculo.marca} ${veiculo.modelo}`);
-      const resultado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
-      sanitizeVehiclePostsResult(resultado);
-      return new Response(
-        JSON.stringify({ posts: resultado }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const gerado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
+      if (!gerado.ok) {
+        return jsonFriendlyResponse({ error: gerado.friendlyError, code: gerado.reason });
+      }
+      sanitizeVehiclePostsResult(gerado.posts);
+      return jsonFriendlyResponse({ posts: gerado.posts });
     }
 
     console.log(`Gerando posts para produto: ${produto.nome}`);
@@ -186,7 +229,11 @@ Retorne APENAS um JSON válido no formato:
   }
 }`;
 
-    const resultado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
+    const gerado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
+    if (!gerado.ok) {
+      return jsonFriendlyResponse({ error: gerado.friendlyError, code: gerado.reason });
+    }
+    const resultado = gerado.posts;
 
     const nomesPermitidosLower = new Set(nomesDetectados.flatMap(n => n.toLowerCase().split(/\s+/)));
     const blacklistNomes = ['felício','felicio','joão','joao','maria','ana','carlos','pedro','lucas','bruno','rafael','fernando','patrícia','patricia','juliana'];
@@ -226,15 +273,21 @@ Retorne APENAS um JSON válido no formato:
 
     console.log(`Posts gerados com sucesso para 3 plataformas`);
 
-    return new Response(
-      JSON.stringify({ posts: resultado }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonFriendlyResponse({ posts: resultado });
   } catch (error) {
-    console.error('Erro ao gerar posts:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    console.error('[gerar-posts] unhandled_error', { message: message.slice(0, 120) });
+    if (
+      message === 'LOVABLE_API_KEY não configurada' ||
+      message === 'Dados do veículo incompletos.'
+    ) {
+      return new Response(JSON.stringify({ error: message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    return jsonFriendlyResponse(
+      { error: GERAR_POSTS_FRIENDLY_ERROR, code: 'internal' },
     );
   }
 });
