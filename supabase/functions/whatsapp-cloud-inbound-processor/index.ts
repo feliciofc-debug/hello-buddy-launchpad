@@ -31,6 +31,13 @@ import {
   getTenantBusinessContext,
 } from "../_shared/business-context.ts";
 import {
+  AMZ_AUTO_CAROUSEL_COLOR,
+  buildAmzAutoCarouselBrandContextForCaptions,
+  buildAmzAutoCarouselPrompt,
+  resolveAmzAutoCarouselRenderOptions,
+  shouldUseAmzAutoCarouselBrand,
+} from "../_shared/amz-auto-brand.ts";
+import {
   requestedCarouselSlideCount,
   sanitizeCarouselSlides,
   sanitizeProspectDemoCaption,
@@ -3290,6 +3297,7 @@ type PendingCarouselState = {
   image_urls?: string[];
   token?: string;
   facebook_requested?: boolean;
+  amz_auto?: boolean;
   created_at: string;
 };
 
@@ -8658,7 +8666,9 @@ function formatSocialPostToolResult(raw: string): string {
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
     if (data?.carrossel) {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
-      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Enviei todos em ordem e ainda não publiquei.`;
+      const resumo = data?.amz_auto_carousel
+        ? `Carrossel ${data.cards} cards da AMZ Auto pronto. Enviei todos em ordem e ainda não publiquei.`
+        : `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Enviei todos em ordem e ainda não publiquei.`;
       const pergunta = "Antes de publicar ou agendar, escolha o texto: *A*, *B* ou *C*.";
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
@@ -15264,12 +15274,13 @@ async function prepararPreviewCarrosselExistente(
     midia_tipo: "carrossel" as const,
   };
   const tom = options.tom || "beneficio";
+  const amzAutoCarousel = state?.amz_auto === true;
   const variantesBase = await gerarTresOpcoesRedeSocial(
     produto,
     tom,
     "instagram",
     options.legenda ? `Use esta orientação do dono na legenda: ${options.legenda}` : undefined,
-    undefined,
+    amzAutoCarousel ? buildAmzAutoCarouselBrandContextForCaptions() : undefined,
     options.legenda,
     contentNicheForContext(ctx),
   );
@@ -15311,6 +15322,7 @@ async function prepararPreviewCarrosselExistente(
     image_urls: imageUrls,
     token,
     facebook_requested: options.facebookRequested || previous?.facebook_requested,
+    amz_auto: amzAutoCarousel || previous?.amz_auto,
     created_at: new Date().toISOString(),
   };
   const saved = await saveAgentState(sb, conversation, { pending_carousel: next }, current);
@@ -15329,6 +15341,7 @@ async function prepararPreviewCarrosselExistente(
     status: "aguardando_escolha_variante",
     fonte: "carrossel_whatsapp",
     carrossel: true,
+    amz_auto_carousel: next.amz_auto === true,
     token,
     cards: imageUrls.length,
     media_id: parentId,
@@ -15371,6 +15384,8 @@ async function toolCriarCarrossel(
 
     const tema = (args?.tema || "").trim();
     if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+    const amzAutoCarousel = !demoProspect &&
+      shouldUseAmzAutoCarouselBrand(ctx.userId, tema);
     const numSlides = Array.isArray(args.slides) && args.slides.length >= 3
       ? Math.min(10, args.slides.length)
       : requestedCarouselSlideCount(
@@ -15434,7 +15449,7 @@ async function toolCriarCarrossel(
         request: tema,
         brandColors,
         brandFallback: ctx.userId === ADMIN_AMZ_USER_ID
-          ? AMZ_CAROUSEL_COLOR
+          ? (amzAutoCarousel ? AMZ_AUTO_CAROUSEL_COLOR : AMZ_CAROUSEL_COLOR)
           : null,
       });
       cor = colorPlan.color;
@@ -15450,7 +15465,7 @@ async function toolCriarCarrossel(
       const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const fallbackColor = ctx.userId === ADMIN_AMZ_USER_ID
-        ? AMZ_CAROUSEL_COLOR
+        ? (amzAutoCarousel ? AMZ_AUTO_CAROUSEL_COLOR : AMZ_CAROUSEL_COLOR)
         : DEFAULT_CAROUSEL_COLOR;
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
@@ -15536,12 +15551,15 @@ async function toolCriarCarrossel(
       : null;
     let prompt = demoProspect
       ? buildProspectDemoCarouselPrompt({ tema, ramo: prospectBranch, numSlides })
+      : amzAutoCarousel
+      ? buildAmzAutoCarouselPrompt({ tema, numSlides, business })
       : buildCarouselPrompt({ tema, numSlides, business });
     if (args?.ajuste && Array.isArray(args?.slides) && args.slides.length >= 2) {
       prompt += `\n\nCARROSSEL ATUAL:\n${JSON.stringify(args.slides)}\n\nAJUSTE OBRIGATÓRIO DO DONO: ${args.ajuste}\nPreserve todos os cards e textos que não foram citados no ajuste.`;
     }
     console.log("[criar_carrossel] contexto_do_negocio", {
       demonstracao: demoProspect,
+      amz_auto: amzAutoCarousel,
       num_slides: numSlides,
       ramo_prospect: prospectBranch,
       tem_contexto: business?.temContexto ?? false,
@@ -15555,6 +15573,7 @@ async function toolCriarCarrossel(
         tema,
         user_id: ctx.userId,
         neutral_copy: demoProspect,
+        amz_auto_carousel: amzAutoCarousel,
       }, 90000);
     let slides = Array.isArray(conteudo?.slides)
       ? demoProspect
@@ -15568,6 +15587,7 @@ async function toolCriarCarrossel(
         tema,
         user_id: ctx.userId,
         neutral_copy: demoProspect,
+        amz_auto_carousel: amzAutoCarousel,
       }, 90000);
       slides = Array.isArray(conteudo?.slides)
         ? demoProspect
@@ -15587,6 +15607,9 @@ async function toolCriarCarrossel(
       : generatedCaption;
 
     // 6) RENDER server-side (Satori + resvg)
+    const amzAutoRender = amzAutoCarousel
+      ? resolveAmzAutoCarouselRenderOptions(ctx.userId)
+      : null;
     const render = await callEdge("render-carousel-slides", {
       user_id: ctx.userId,
       slides,
@@ -15594,9 +15617,10 @@ async function toolCriarCarrossel(
       backgroundColor,
       primaryColor: cor.primaryColor,
       secondaryColor: cor.secondaryColor,
-      businessName,
+      businessName: amzAutoRender?.businessName ?? businessName,
       profileHandle,
       incluir_logo: !demoProspect,
+      ...(amzAutoRender ?? {}),
     }, 180000);
     const imageUrls: string[] = Array.isArray(render?.image_urls) ? render.image_urls : [];
     if (imageUrls.length !== slides.length) {
@@ -15653,6 +15677,7 @@ async function toolCriarCarrossel(
         media_id: mediaId,
         image_urls: imageUrls,
         facebook_requested: !!args?.facebook_requested,
+        amz_auto: amzAutoCarousel || undefined,
         created_at: new Date().toISOString(),
       };
       if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {

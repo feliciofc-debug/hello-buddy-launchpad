@@ -347,26 +347,33 @@ Deno.serve(async (req) => {
 
     // Logo do PRÓPRIO tenant/cliente, sempre isolada na pasta do tenant.
     let logoDataUrl: string | null = null;
+    const skipTenantLogoFallback = body?.skip_tenant_logo_fallback === true;
     if (incluir_logo) {
       try {
-        logoDataUrl = vehicle_mode
-          ? await logoPathDataUrl(supabase, user_id, body?.logo_path) ??
-            await getTenantLogoDataUrlForBackground(
+        if (body?.logo_path) {
+          logoDataUrl = await logoPathDataUrl(supabase, user_id, body.logo_path);
+        } else if (!skipTenantLogoFallback) {
+          logoDataUrl = vehicle_mode
+            ? await getTenantLogoDataUrlForBackground(
               supabase,
               user_id,
               "dark",
               true,
             )
-          : await getTenantLogoDataUrlForBackground(
-            supabase,
-            user_id,
-            logoBackgroundFor(selectedTemplate, backgroundColor),
-            true,
-          ) ?? await getTenantLogoDataUrl(supabase, user_id);
+            : await getTenantLogoDataUrlForBackground(
+              supabase,
+              user_id,
+              logoBackgroundFor(selectedTemplate, backgroundColor),
+              true,
+            ) ?? await getTenantLogoDataUrl(supabase, user_id);
+        }
       } catch (err) {
         console.warn("[render-carousel-slides] logo indisponível:", err);
       }
     }
+    const brandMarkText = !logoDataUrl && body?.brand_mark_text
+      ? String(body.brand_mark_text).trim() || null
+      : null;
 
     if (vehicle_mode) {
       const format: VehicleCarouselFormat = body?.format === "square"
@@ -464,6 +471,7 @@ Deno.serve(async (req) => {
       secondaryColor,
       totalSlides: list.length,
       logoDataUrl,
+      brandMarkText,
       businessName: businessName ?? null,
       profileHandle: profileHandle ?? null,
       ctaLabel: ctaLabel ?? null,

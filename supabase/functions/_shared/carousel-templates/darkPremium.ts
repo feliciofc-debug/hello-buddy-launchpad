@@ -29,6 +29,8 @@ export interface RenderContext {
   secondaryColor: string;
   totalSlides: number;
   logoDataUrl?: string | null;
+  /** Quando não há logo (ex.: AMZ Auto sem arquivo), marca em texto no rodapé/topo. */
+  brandMarkText?: string | null;
   businessName?: string | null;
   profileHandle?: string | null;
   ctaLabel?: string | null;
@@ -115,6 +117,39 @@ function logoImg(
   style: Record<string, unknown>,
 ): Node {
   return { type: "img", props: { src: dataUrl, style: { objectFit: "contain", ...style } } };
+}
+
+function pushBrandMark(
+  children: Node[],
+  ctx: RenderContext,
+  style: Record<string, unknown>,
+): void {
+  if (ctx.logoDataUrl) {
+    children.push(logoImg(ctx.logoDataUrl, style));
+    return;
+  }
+  const mark = (ctx.brandMarkText || "").trim();
+  if (!mark) return;
+  children.push(
+    el("div", {
+      display: "flex",
+      position: style.position,
+      top: style.top,
+      bottom: style.bottom,
+      left: style.left,
+      right: style.right,
+      width: style.width,
+      height: style.height,
+      alignItems: "center",
+      justifyContent: style.right !== undefined ? "flex-end" : "flex-start",
+      color: "rgba(255,255,255,0.75)",
+      fontSize: mark.length > 14 ? 22 : 26,
+      fontWeight: 800,
+      letterSpacing: 2,
+      textTransform: "uppercase",
+      opacity: style.opacity ?? 1,
+    }, mark),
+  );
 }
 
 const baseCard = (primary: string, secondary: string, extra: Record<string, unknown>) => ({
@@ -230,9 +265,13 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
     ]),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", top: 44, left: 60, width: 220, height: 110 }));
-  }
+  pushBrandMark(children, ctx, {
+    position: "absolute",
+    top: 44,
+    left: 60,
+    width: 220,
+    height: 110,
+  });
 
   return el("div", baseCard(p, s, {
     flexDirection: "column",
@@ -343,9 +382,14 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
     }, progressDots(slide.number ?? 0, ctx.totalSlides, p)),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
-  }
+  pushBrandMark(children, ctx, {
+    position: "absolute",
+    bottom: 46,
+    right: 60,
+    width: 170,
+    height: 80,
+    opacity: 0.7,
+  });
 
   return el("div", baseCard(p, s, {
     flexDirection: "column",
@@ -421,9 +465,14 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
     }, progressDots(ctx.totalSlides - 1, ctx.totalSlides, p)),
   );
 
-  if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
-  }
+  pushBrandMark(children, ctx, {
+    position: "absolute",
+    bottom: 46,
+    right: 60,
+    width: 170,
+    height: 80,
+    opacity: 0.7,
+  });
 
   return el("div", baseCard(p, s, {
     flexDirection: "column",
