@@ -73,6 +73,10 @@ export type GestaoFechamentoDia = {
   acoes: string[];
 };
 
+export type GestaoRelatorioModo =
+  | { tipo: "fechamento" }
+  | { tipo: "posicao"; agora: Date };
+
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pct = (value: number) =>
@@ -114,6 +118,27 @@ export function formatarCabecalhoFechamento(lojaNome: string, dia: string): stri
   return `📊 *FECHAMENTO DO DIA — ${nome} · ${ds}/${ms} (${weekday})*`;
 }
 
+export function formatarCabecalhoPosicao(
+  lojaNome: string,
+  agora: Date,
+): string {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(agora);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  const nome = lojaNome.trim() || "Minha loja";
+  return `📊 *POSIÇÃO ATÉ AGORA — ${nome} · ${part("day")}/${
+    part("month")
+  }/${part("year")} ${part("hour")}:${part("minute")}*`;
+}
+
 /** Conversa de cliente: exclui dono, gestores e parceiros. */
 export function contatoInternoFechamento(
   contactNumber: string,
@@ -144,9 +169,14 @@ function venda(
 export function formatarGestaoFechamentoDia(
   f: GestaoFechamentoDia,
   limite = 3500,
+  modo: GestaoRelatorioModo = { tipo: "fechamento" },
 ): string {
   const sections: string[][] = [];
-  sections.push([formatarCabecalhoFechamento(f.lojaNome, f.dia)]);
+  sections.push([
+    modo.tipo === "posicao"
+      ? formatarCabecalhoPosicao(f.lojaNome, modo.agora)
+      : formatarCabecalhoFechamento(f.lojaNome, f.dia),
+  ]);
 
   const vendas = ["🚗 *VENDAS*"];
   if (f.vendasHoje.qtd > 0) {
@@ -301,7 +331,11 @@ export function formatarGestaoFechamentoDia(
   if (text.length <= limite) return text;
 
   const semTop = { ...f, custoEstoque: { ...f.custoEstoque, top3: [] } };
-  text = formatarGestaoFechamentoDia(semTop, Number.MAX_SAFE_INTEGER);
+  text = formatarGestaoFechamentoDia(
+    semTop,
+    Number.MAX_SAFE_INTEGER,
+    modo,
+  );
   if (text.length <= limite) return text;
   return `${text.slice(0, limite - 1).trimEnd()}…`;
 }
@@ -634,6 +668,7 @@ export async function buildGestaoFechamentoDia(
   opts: {
     financeiroPermitido?: boolean;
     giroItems?: GiroResumoVeiculoLinha[];
+    modo?: GestaoRelatorioModo;
   } = {},
 ): Promise<{ dados: GestaoFechamentoDia; texto: string }> {
   const inicioMes = monthStart(dia);
@@ -865,5 +900,12 @@ export async function buildGestaoFechamentoDia(
     },
     acoes: acoes.slice(0, 3),
   };
-  return { dados, texto: formatarGestaoFechamentoDia(dados) };
+  return {
+    dados,
+    texto: formatarGestaoFechamentoDia(
+      dados,
+      3500,
+      opts.modo ?? { tipo: "fechamento" },
+    ),
+  };
 }

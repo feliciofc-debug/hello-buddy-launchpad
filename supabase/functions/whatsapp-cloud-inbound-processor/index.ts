@@ -88,8 +88,6 @@ import {
   looksLikeVehicleKmPrecoReply,
   shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
-  vehicleCaptionMissingKmOrPreco,
-  vehicleSocialCaptionGateButtons,
   vehicleSocialCopyCancelRequest,
   vehicleSocialCopyPendingExpired,
 } from "../_shared/vehicle-social-caption.ts";
@@ -461,6 +459,7 @@ import {
 } from "../_shared/whatsapp-image-brand.ts";
 import {
   canRunSocialPostAction,
+  friendlySocialToolResultFallback,
   selectSocialVariantScripts,
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
@@ -729,6 +728,12 @@ import {
   type LastAnuncioImage,
   type PendingAnuncioPost,
 } from "../_shared/anuncio-social-flow.ts";
+import {
+  cleanVehicleTitle,
+  composeVehicleAdVariant,
+  vehicleAnuncioAiBriefing,
+  vehicleAnuncioFactsForAi,
+} from "../_shared/anuncio-veiculo-captions.ts";
 import {
   type ContentNiche,
   resolveNichoDoConteudo,
@@ -7310,12 +7315,44 @@ async function generateAnuncioCaptions(
       ]),
     ) as PostVariantes;
   if (niche === "veiculo") {
-    const captions = finish(
+    const fallbackCaptions = finish(
       generateVehicleAdCaptions(last.data, variation, niche),
     );
-    return Object.fromEntries(
-      networks.map((network) => [network, { ...captions }]),
-    );
+    const aiData = vehicleAnuncioFactsForAi(last.data);
+    const product = {
+      nome: cleanVehicleTitle(last.data),
+      descricao: JSON.stringify(aiData),
+      source: "anuncio_veiculo",
+    };
+    const briefing = vehicleAnuncioAiBriefing(last.data);
+    const entries = await Promise.all(networks.map(async (network) => {
+      try {
+        const generated = await gerarTresOpcoesRedeSocial(
+          product,
+          "beneficio",
+          network === "tiktok" ? "instagram" : network,
+          variation
+            ? "Crie novas abordagens Direta, História e Interativa sem mudar os fatos."
+            : undefined,
+          undefined,
+          briefing,
+          niche,
+        );
+        const composed = finish({
+          A: composeVehicleAdVariant(generated.A, last.data, "A"),
+          B: composeVehicleAdVariant(generated.B, last.data, "B"),
+          C: composeVehicleAdVariant(generated.C, last.data, "C"),
+        });
+        return [network, composed] as const;
+      } catch (error) {
+        console.warn(
+          "[anuncio_post][vehicle_captions_fallback]",
+          (error as Error).message,
+        );
+        return [network, fallbackCaptions] as const;
+      }
+    }));
+    return Object.fromEntries(entries);
   }
 
   const fallback = finish(generateProductAdCaptions(last.data));
@@ -8740,6 +8777,10 @@ function formatSocialPostToolResult(raw: string): string {
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
 
+  if (data?.status === "vehicle_social_copy_gate") {
+    return friendlySocialToolResultFallback(raw);
+  }
+
   if (data?.erro) {
     if (data?.mensagem) return data.mensagem;
     const sugestoes = Array.isArray(data.sugestoes_do_catalogo) && data.sugestoes_do_catalogo.length
@@ -8748,7 +8789,7 @@ function formatSocialPostToolResult(raw: string): string {
     return `Não consegui preparar o post: ${data.erro}.${sugestoes}`;
   }
 
-  return raw;
+  return friendlySocialToolResultFallback(raw);
 }
 
 type WhatsAppInteractiveList = {
@@ -11224,63 +11265,6 @@ async function toolPostarMidiaBiblioteca(
         }
       }
     }
-    const vehicleCopySkipMissing = !!(
-      pendingVehicleCopy?.skip_missing_fields &&
-      pendingVehicleCopy.midia_id === midia.id
-    );
-    if (vehicleSocialPost && !isVideo) {
-      const telLoja = await buscarTelefoneAgenteTenant(ctx.userId);
-      const captionData = vehicleCaptionDataFromSources({
-        nome,
-        descricao: descricaoFinal,
-        briefing,
-        precoNum: precoNum && !isNaN(precoNum) ? precoNum : null,
-        telefone: telLoja || undefined,
-      });
-      const missingFields = vehicleCaptionMissingKmOrPreco(captionData);
-      if (
-        missingFields.length &&
-        !vehicleCopySkipMissing &&
-        pendingVehicleCopy?.stage !== "awaiting_fields_text"
-      ) {
-        if (ctx.convId) {
-          const conversation = {
-            id: ctx.convId,
-            userId: ctx.userId,
-            contactNumber: ctx.fromNumber,
-          };
-          const current = ctx.agentState ??
-            await loadAgentState(sb, conversation);
-          const saved = await saveAgentState(sb, conversation, {
-            pending_vehicle_social_copy: {
-              stage: "awaiting_km_preco",
-              midia_id: midia.id,
-              tool_args: { ...args, midia_id: midia.id },
-              created_at: new Date().toISOString(),
-            },
-          }, current);
-          if (saved && ctx.agentState) {
-            ctx.agentState.pending_vehicle_social_copy = {
-              stage: "awaiting_km_preco",
-              midia_id: midia.id,
-              tool_args: { ...args, midia_id: midia.id },
-              created_at: new Date().toISOString(),
-            };
-          }
-        }
-        const faltando = missingFields.map((field) =>
-          field === "km" ? "quilometragem" : "preço"
-        ).join(" e ");
-        return JSON.stringify({
-          status: "vehicle_social_copy_gate",
-          missing: missingFields,
-          mensagem:
-            `Para montar a legenda do veículo, ainda faltam ${faltando}. Informe agora ou gere sem esses dados.`,
-          botoes: vehicleSocialCaptionGateButtons(),
-        });
-      }
-    }
-
     // Detecta mídia INSTITUCIONAL da marca AMZ (arte/logo, sem produto concreto).
     // Só injeta o pitch da plataforma quando NÃO existe descrição visual de produto —
     // senão a copy virava propaganda da AMZ em cima da foto de um produto do cliente.
@@ -23992,8 +23976,16 @@ async function callGemini(
             || st === "aguardando_privacidade_tiktok"
             || st === "aguardando_declaracao_tiktok"
             || st === "aguardando_retry_instagram"
+            || st === "vehicle_social_copy_gate"
             || st === "publicado"
             || st === "cancelado"
+            || [
+              "postar_midia_biblioteca",
+              "postar_redes_sociais",
+              "confirmar_postagem_redes",
+              "revisar_post_pendente",
+              "escolher_variante_post",
+            ].includes(name)
             || (
               parsed?.erro
               && ["postar_midia_biblioteca", "postar_redes_sociais", "confirmar_postagem_redes", "revisar_post_pendente", "escolher_variante_post"].includes(name)

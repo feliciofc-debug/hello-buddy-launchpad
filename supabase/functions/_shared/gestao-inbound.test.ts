@@ -1,4 +1,8 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { inferGestaoCategoria } from "./gestao-categoria-pt.ts";
 import {
   classifyGestaoIntent,
@@ -154,6 +158,20 @@ Deno.test("AJUDA-1 — fechamento inbound usa builder de produção", async () =
   assert(source.includes('intent.kind === "fechamento_dia"'));
   assert(source.includes("buildGestaoFechamentoDia("));
   assert(source.includes("financeiroPermitido: true"));
+});
+
+Deno.test("AJUSTES-04/11 — como está a loja reutiliza o builder do fechamento", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./gestao-inbound.ts", import.meta.url),
+  );
+  const start = source.indexOf('intent.kind === "posicao_loja"');
+  const end = source.indexOf('intent.kind === "relatorio_vendedores"', start);
+  const block = source.slice(start, end);
+  assert(start >= 0 && end > start);
+  assertStringIncludes(block, "buildGestaoFechamentoDia(");
+  assertStringIncludes(block, 'modo: { tipo: "posicao", agora: agoraSP }');
+  assertEquals(block.includes("loadPosicaoLojaFacts"), false);
+  assertEquals(block.includes("formatPosicaoLojaWhatsApp"), false);
 });
 
 Deno.test("AJUDA-1 — ajuda curta oferece a cartilha sem anexar de imediato", async () => {

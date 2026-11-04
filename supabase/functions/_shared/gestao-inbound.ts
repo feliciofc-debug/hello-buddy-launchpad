@@ -44,10 +44,8 @@ import {
 } from "./gestao-equipe-inbound.ts";
 import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
 import {
-  formatPosicaoLojaWhatsApp,
   formatRelatorioVendedoresWhatsApp,
   formatVendedorDetalheWhatsApp,
-  loadPosicaoLojaFacts,
   loadRelatorioVendedoresFacts,
   lojaNomeFromText,
 } from "./gestao-posicao-loja.ts";
@@ -1116,13 +1114,21 @@ export async function tryProcessGestaoLucroInbound(input: {
     return { handled: true, reply: formatGestaoDreWhatsApp(facts) };
   }
   if (intent.kind === "posicao_loja") {
-    const facts = await loadPosicaoLojaFacts(input.sb as never, input.userId, agoraSP, posicaoOpts);
+    const posicao = await buildGestaoFechamentoDia(
+      input.sb as Parameters<typeof buildGestaoFechamentoDia>[0],
+      input.userId,
+      hojeSaoPaulo(),
+      {
+        financeiroPermitido: true,
+        modo: { tipo: "posicao", agora: agoraSP },
+      },
+    );
     console.log("[gestao-inbound][posicao_loja]", {
-      vendas_mes: facts.mes.qtdVendas,
-      estoque: facts.estoque.qtd,
-      alertas: facts.atencao.contas7DiasQtd + facts.atencao.contasVencidasQtd,
+      vendas_mes: posicao.dados.vendasMes.qtd,
+      estoque: posicao.dados.estoque.total,
+      alertas: posicao.dados.financeiro?.contasVencidas ?? 0,
     });
-    return { handled: true, reply: formatPosicaoLojaWhatsApp(facts) };
+    return { handled: true, reply: posicao.texto };
   }
   if (intent.kind === "relatorio_vendedores") {
     const facts = await loadRelatorioVendedoresFacts(

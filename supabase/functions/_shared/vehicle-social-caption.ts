@@ -45,6 +45,9 @@ export function vehicleCaptionDataFromSources(
   if (parsed.motor && !data.combustivel) {
     data.combustivel = parsed.motor;
   }
+  if (/\b(moto|motocicleta|motociclo)\b/i.test(blob)) {
+    data.tipo_veiculo = "moto";
+  }
   return data;
 }
 

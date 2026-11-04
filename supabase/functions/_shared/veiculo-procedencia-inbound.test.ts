@@ -6,6 +6,7 @@ import {
 import {
   formatMolicarPlateResult,
   isProcedenciaWhatsAppRequest,
+  lookupFipeForMolicarResult,
   parseMolicarPlateLookupText,
   parsePlacaFromProcedenciaText,
   tryProcessVeiculoProcedenciaInbound,
@@ -117,7 +118,7 @@ Deno.test("VEIC-WPP-1 — placa pura consulta Molicar e oferece três ações", 
     },
   }) as never);
   assertEquals(calls, 1);
-  assertStringIncludes(result.reply ?? "", "Molicar Price");
+  assertStringIncludes(result.reply ?? "", "Preço Molicar");
   assertEquals(
     result.interactiveButtons?.buttons.map((button) => button.title),
     [
@@ -126,6 +127,67 @@ Deno.test("VEIC-WPP-1 — placa pura consulta Molicar e oferece três ações", 
       "Cadastrar estoque",
     ],
   );
+});
+
+Deno.test("AJUSTES-04/11 — FIPE por código/ano/combustível entra antes dos preços Molicar", async () => {
+  let lookupInput: Record<string, unknown> | null = null;
+  const quote = await lookupFipeForMolicarResult({
+    fipe_codigo: "001234-5",
+    dados: {
+      ano_modelo: 2022,
+      combustivel: "Flex",
+      carroceria: "Sedan",
+    },
+    precos: {},
+  }, async (input) => {
+    lookupInput = input;
+    return {
+      brand: "Toyota",
+      model: "Corolla XEi",
+      modelYear: 2022,
+      fuel: "Gasolina",
+      price: "R$ 112.345,00",
+      referenceMonth: "novembro de 2026",
+      codeFipe: "001234-5",
+    };
+  });
+  assertEquals(lookupInput, {
+    codeFipe: "001234-5",
+    yearId: "2022-1",
+    vehicleType: "cars",
+  });
+  const text = formatMolicarPlateResult({
+    dados: {
+      marca: "Toyota",
+      modelo: "Corolla",
+      ano_modelo: 2022,
+      combustivel: "Flex",
+    },
+    precos: { referencia: 100_000, b2b: 90_000, c2b: 85_000 },
+    fipe_quote: quote,
+  });
+  const lines = text.split("\n");
+  assertStringIncludes(lines[4], "Tabela FIPE: R$ 112.345,00");
+  assertStringIncludes(lines[4], "referência novembro de 2026");
+  assertStringIncludes(lines[5], "Preço Molicar");
+  assertEquals(lines[6], "B2B: R$ 90.000,00 · C2B: R$ 85.000,00");
+});
+
+Deno.test("AJUSTES-04/11 — FIPE insegura ou indisponível é omitida", async () => {
+  const invalid = await lookupFipeForMolicarResult({
+    fipe_codigo: "001234-5",
+    dados: { ano_modelo: 2022, combustivel: "Elétrico" },
+    precos: {},
+  }, async () => {
+    throw new Error("não deveria consultar");
+  });
+  assertEquals(invalid, null);
+  const text = formatMolicarPlateResult({
+    dados: { marca: "GWM", modelo: "Ora 03", ano_modelo: 2024 },
+    precos: { referencia: 150_000, b2b: 140_000, c2b: 130_000 },
+    fipe_quote: null,
+  });
+  assertEquals(text.includes("Tabela FIPE:"), false);
 });
 
 Deno.test("VEIC-WPP-1 — cache negativo e limite diário têm respostas estáveis", async () => {

@@ -17,6 +17,7 @@ export type FipePrice = {
   referenceMonth: string;
   codeFipe: string;
 };
+export type FipeVehicleType = "cars" | "motorcycles" | "trucks";
 
 export function formatFipeResult(result: FipePrice): string {
   const reference = String(result.referenceMonth || "")
@@ -311,17 +312,19 @@ export function createFipeClient(options: {
     modelId?: string;
     yearId: string;
     codeFipe?: string;
+    vehicleType?: FipeVehicleType;
   }): Promise<FipePrice> {
     const refs = await references();
     const referenceCode = refs[0]?.code ?? "current";
+    const vehicleType = input.vehicleType ?? "cars";
     const identity = input.codeFipe
-      ? `code:${input.codeFipe}`
+      ? `${vehicleType}:code:${input.codeFipe}`
       : `model:${input.brandId}:${input.modelId}`;
     const cacheKey = `${referenceCode}:${identity}:${input.yearId}`;
     const cached = priceCache.get(cacheKey);
     if (cached) return cached;
     const path = input.codeFipe
-      ? `/cars/${encodeURIComponent(input.codeFipe)}/years/${
+      ? `/${vehicleType}/${encodeURIComponent(input.codeFipe)}/years/${
         encodeURIComponent(input.yearId)
       }`
       : `/cars/brands/${encodeURIComponent(input.brandId || "")}/models/${

@@ -9,6 +9,7 @@ import {
   contatoInternoFechamento,
   estoqueValorCustoInvestidoFechamento,
   formatarCabecalhoFechamento,
+  formatarCabecalhoPosicao,
   formatarGestaoFechamentoDia,
   isEventoNoDiaSp,
   montarFiltroContasFechamento,
@@ -207,6 +208,36 @@ Deno.test("RESUMO-2.1 — textos cabeçalho e labels corrigidos", () => {
   });
   assertStringIncludes(semVenda, "🚗 *VENDAS*");
   assertStringIncludes(semVenda, "Hoje: nenhuma venda");
+});
+
+Deno.test("AJUSTES-04/11 — posição usa exatamente o corpo do fechamento com título parcial", () => {
+  const agora = new Date("2026-11-04T12:37:00.000Z");
+  const posicao = formatarGestaoFechamentoDia(
+    fixture(),
+    3500,
+    { tipo: "posicao", agora },
+  );
+  assertStringIncludes(
+    posicao,
+    "POSIÇÃO ATÉ AGORA — Auto Center SP · 04/11/2026 09:37",
+  );
+  for (
+    const section of [
+      "VENDAS",
+      "ESTOQUE",
+      "CUSTO DO ESTOQUE PARADO",
+      "OPERAÇÃO",
+      "FINANCEIRO",
+      "ATENDIMENTO",
+      "DECIDA HOJE",
+    ]
+  ) {
+    assertStringIncludes(posicao, section);
+  }
+  assertEquals(
+    formatarCabecalhoPosicao("Auto Center SP", agora),
+    "📊 *POSIÇÃO ATÉ AGORA — Auto Center SP · 04/11/2026 09:37*",
+  );
 });
 
 Deno.test("RESUMO-2.2 — conversas: mensagens do dia primeiro, sem listar todas", async () => {

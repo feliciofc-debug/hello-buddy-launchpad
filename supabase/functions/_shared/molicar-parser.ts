@@ -58,6 +58,8 @@ function normalizedPrice(
 }
 
 export type MolicarPrices = {
+  fipe: number | null;
+  fipeReferencia: string | null;
   referencia: number | null;
   b2c: number | null;
   b2b: number | null;
@@ -92,6 +94,14 @@ export function parseMolicarResponse(payload: unknown): MolicarParsed {
     first(root, ["VehicleData", "vehicleData", "vehicle_data", "veiculo"]),
   );
   const pricing = object(first(root, ["Pricing", "pricing", "precos"]));
+  const rawFipe = first(root, [
+    "FIPE",
+    "Fipe",
+    "fipe",
+    "fipeData",
+    "fipe_data",
+  ]);
+  const fipeData = object(rawFipe);
   const market = object(first(pricing, ["Market", "market"]));
   const marketPrices = object(first(market, ["Prices", "prices"]));
   const values = {
@@ -154,6 +164,12 @@ export function parseMolicarResponse(payload: unknown): MolicarParsed {
     portas: first(vehicle, ["NrDoors", "nrDoors", "portas"]),
     lugares: first(vehicle, ["NrSeats", "nrSeats", "lugares"]),
     carroceria: first(vehicle, ["BodyType", "bodyType", "carroceria"]),
+    tipo_veiculo: first(vehicle, [
+      "VehicleType",
+      "vehicleType",
+      "tipoVeiculo",
+      "tipo_veiculo",
+    ]),
     numero_motor: first(vehicle, ["EngineNumber", "engineNumber"]),
     uf_atual: first(vehicle, ["UFCurrent", "ufCurrent"]),
     contexto_mercado: context,
@@ -164,6 +180,16 @@ export function parseMolicarResponse(payload: unknown): MolicarParsed {
     ]),
     pacotes_molicar: first(root, ["MolicarPackages", "molicarPackages"]),
   }));
+  const fipePrice = normalizedPrice(values, [
+    "FipePrice",
+    "FIPEPrice",
+    "fipePrice",
+    "FipeValue",
+    "FIPEValue",
+    "fipeValue",
+    "valorFipe",
+    "precoFipe",
+  ]) ?? normalizedPrice(fipeData, ["Price", "price", "Value", "value"]);
 
   return {
     molicarId: text(
@@ -185,12 +211,42 @@ export function parseMolicarResponse(payload: unknown): MolicarParsed {
     )?.replace(/\s/g, "").toUpperCase() ?? null,
     renavam: text(first(root, ["Renavam", "renavam"]), 20),
     fipeCodigo: text(
-      first(root, ["FIPE", "Fipe", "fipe", "fipeCodigo", "codigoFipe", "fipe_code", "fipeCode"]),
+      first(fipeData, [
+        "Code",
+        "code",
+        "Codigo",
+        "codigo",
+        "fipeCodigo",
+        "codigoFipe",
+      ]) ??
+        (Object.keys(fipeData).length ? null : rawFipe) ??
+        first(root, [
+          "fipeCodigo",
+          "codigoFipe",
+          "fipe_code",
+          "fipeCode",
+        ]),
       20,
     ),
     dados,
     procedencia: Object.keys(procedencia).length ? procedencia : null,
     precos: {
+      fipe: fipePrice,
+      fipeReferencia: text(
+        first(fipeData, [
+          "ReferenceMonth",
+          "referenceMonth",
+          "MesReferencia",
+          "mesReferencia",
+          "referencia",
+        ]) ??
+          first(root, [
+            "FipeReferenceMonth",
+            "fipeReferenceMonth",
+            "fipe_mes_referencia",
+          ]),
+        80,
+      ),
       referencia: normalizedPrice(values, [
         "MolicarPrice",
         "molicarPrice",

@@ -42,12 +42,45 @@ export type SocialInteractiveButtons = {
   buttons: Array<{ id: string; title: string }>;
 };
 
+export function friendlySocialToolResultFallback(raw: string): string {
+  try {
+    const data = JSON.parse(raw);
+    if (typeof data?.mensagem === "string" && data.mensagem.trim()) {
+      return data.mensagem.trim();
+    }
+    return "Não consegui concluir essa etapa agora. Tente novamente em instantes.";
+  } catch {
+    return raw;
+  }
+}
+
 export function socialInteractiveButtonsFromResult(
   raw: string,
 ): SocialInteractiveButtons | undefined {
   try {
     const data = JSON.parse(raw);
     const status = String(data?.status);
+    if (status === "vehicle_social_copy_gate") {
+      const buttons = Array.isArray(data?.botoes)
+        ? data.botoes
+          .filter((button: unknown) =>
+            button && typeof button === "object" &&
+            typeof (button as { id?: unknown }).id === "string" &&
+            typeof (button as { title?: unknown }).title === "string"
+          )
+          .map((button: { id: string; title: string }) => ({
+            id: button.id,
+            title: button.title,
+          }))
+        : [];
+      if (!buttons.length) return undefined;
+      return {
+        body: typeof data?.mensagem === "string" && data.mensagem.trim()
+          ? data.mensagem.trim()
+          : "Você pode informar os dados que tiver ou continuar sem eles.",
+        buttons,
+      };
+    }
     if (
       ![
         "aguardando_escolha_variante",
