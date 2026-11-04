@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   canRunSocialPostAction,
+  friendlySocialToolResultFallback,
   selectSocialVariantScripts,
   socialApprovalButtons,
   socialInteractiveButtonsFromResult,
@@ -87,5 +88,33 @@ Deno.test("prévia exclusiva do LinkedIn exige A/B/C antes de publicar", () => {
       { id: "social_variant:B:abcd1234", title: "Opção B" },
       { id: "social_variant:C:abcd1234", title: "Opção C" },
     ],
+  );
+});
+
+Deno.test("resultado social nunca expõe JSON cru e preserva mensagem amigável", () => {
+  const gate = JSON.stringify({
+    status: "vehicle_social_copy_gate",
+    mensagem: "Pode informar os dados ou continuar sem eles.",
+    botoes: [
+      { id: "vehicle_social_copy:inform", title: "Informar agora" },
+      { id: "vehicle_social_copy:skip", title: "Continuar sem dados" },
+    ],
+  });
+  assertEquals(
+    friendlySocialToolResultFallback(gate),
+    "Pode informar os dados ou continuar sem eles.",
+  );
+  assertEquals(socialInteractiveButtonsFromResult(gate), {
+    body: "Pode informar os dados ou continuar sem eles.",
+    buttons: [
+      { id: "vehicle_social_copy:inform", title: "Informar agora" },
+      { id: "vehicle_social_copy:skip", title: "Continuar sem dados" },
+    ],
+  });
+
+  const unknown = JSON.stringify({ status: "status_novo_sem_formatador" });
+  assertEquals(
+    friendlySocialToolResultFallback(unknown),
+    "Não consegui concluir essa etapa agora. Tente novamente em instantes.",
   );
 });

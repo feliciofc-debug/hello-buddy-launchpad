@@ -5,7 +5,10 @@ import {
 } from "./gestao-auth-phone.ts";
 import { isGestaoAffirmative, isGestaoNegative } from "./gestao-intent-pt.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
-import { runMolicarConsulta } from "./molicar-service.ts";
+import {
+  type MolicarFipeOmitMotivo,
+  runMolicarConsulta,
+} from "./molicar-service.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import { runMolicarProcedenciaQuery } from "./molicar-procedencia-service.ts";
 import { maybeNotifyMolicarProcedenciaOwner } from "./molicar-procedencia-notify.ts";
@@ -14,6 +17,15 @@ import {
   logProcedenciaSkip,
 } from "./molicar-procedencia-errors.ts";
 import { normalizeBrazilianPlate } from "./vehicle-plate.ts";
+import {
+  createFipeClient,
+  type FipePrice,
+  type FipeVehicleType,
+} from "./fipe.ts";
+import {
+  lookupFipeStrictByVehicleIdentity,
+  MOLICAR_PLATE_FIPE_TIMEOUT_MS,
+} from "./molicar-fipe-lookup.ts";
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const MOLICAR_WA_PREFIX = "molicar_wa:";
 const MOLICAR_PANEL_PATH = "Gestão › Integrações › Molicar";
@@ -118,6 +130,203 @@ function value(
   return typeof found === "string" || typeof found === "number" ? found : null;
 }
 
+export type MolicarFipeQuote = {
+  price: string;
+  referenceMonth: string;
+  source: "molicar" | "fipe_publica";
+};
+
+export function logMolicarFipeOmitida(motivo: MolicarFipeOmitMotivo): void {
+  console.warn(`[molicar][fipe] omitida motivo=${motivo}`);
+}
+
+const plateFipeClient = createFipeClient({
+  timeoutMs: MOLICAR_PLATE_FIPE_TIMEOUT_MS,
+});
+
+const PRESET_FIPE_OMIT_MOTIVOS = new Set<MolicarFipeOmitMotivo>([
+  "sem_codigo",
+  "cache_antigo",
+  "api_falhou",
+  "divergente",
+  "ambiguo",
+  "sem_match",
+  "timeout",
+]);
+
+type ConsultarFipePorCodigo = (input: {
+  codeFipe: string;
+  yearId: string;
+  vehicleType?: FipeVehicleType;
+}) => Promise<FipePrice>;
+
+export type MolicarFipeLookupDeps = {
+  fetchPriceByCode?: ConsultarFipePorCodigo;
+  strictByVehicle?: typeof lookupFipeStrictByVehicleIdentity;
+};
+
+function resolveFipeLookupDeps(
+  deps?: MolicarFipeLookupDeps | ConsultarFipePorCodigo,
+): MolicarFipeLookupDeps {
+  if (typeof deps === "function") {
+    return { fetchPriceByCode: deps };
+  }
+  return deps ?? {};
+}
+
+function normalizeFipeValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/[^\d,.-]/g, "").includes(",")
+    ? raw.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")
+    : raw.replace(/[^\d.-]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeComparable(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function fipeFuelCode(fuel: unknown): "1" | "2" | "3" | null {
+  const normalized = normalizeComparable(fuel);
+  if (/\bdiesel\b/.test(normalized)) return "3";
+  if (/\balcool\b|\betanol\b/.test(normalized)) return "2";
+  if (/\bgasolina\b|\bflex\b/.test(normalized)) return "1";
+  return null;
+}
+
+function fipeFuelMatches(code: "1" | "2" | "3", returned: unknown): boolean {
+  const normalized = normalizeComparable(returned);
+  if (code === "3") return /\bdiesel\b/.test(normalized);
+  if (code === "2") return /\balcool\b|\betanol\b/.test(normalized);
+  return /\bgasolina\b|\bflex\b/.test(normalized);
+}
+
+function fipeVehicleType(result: Record<string, unknown>): FipeVehicleType {
+  const dados = (result.dados ?? {}) as Record<string, unknown>;
+  const type = normalizeComparable(
+    `${dados.tipo_veiculo ?? ""} ${dados.carroceria ?? ""}`,
+  );
+  if (/\bmoto\b|\bmotocic/.test(type)) return "motorcycles";
+  if (/\bcaminh|\btruck\b|\bcavalo mecanico\b/.test(type)) return "trucks";
+  return "cars";
+}
+
+function sameFipeCode(left: unknown, right: unknown): boolean {
+  const clean = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+  return !!clean(left) && clean(left) === clean(right);
+}
+
+export async function lookupFipeForMolicarResult(
+  result: Record<string, unknown>,
+  deps?: MolicarFipeLookupDeps | ConsultarFipePorCodigo,
+): Promise<MolicarFipeQuote | null> {
+  const { fetchPriceByCode, strictByVehicle } = resolveFipeLookupDeps(deps);
+  const fetchPrice = fetchPriceByCode ??
+    ((input) => plateFipeClient.consultarPreco(input));
+  const strictLookup = strictByVehicle ?? lookupFipeStrictByVehicleIdentity;
+
+  const presetMotivo = result.fipe_omit_motivo;
+  if (
+    typeof presetMotivo === "string" &&
+    PRESET_FIPE_OMIT_MOTIVOS.has(presetMotivo as MolicarFipeOmitMotivo)
+  ) {
+    logMolicarFipeOmitida(presetMotivo as MolicarFipeOmitMotivo);
+    return null;
+  }
+
+  const precos = (result.precos ?? {}) as Record<string, unknown>;
+  const directValue = normalizeFipeValue(precos.fipe);
+  const directReference = String(precos.fipeReferencia ?? "").trim();
+  if (directValue && directReference) {
+    return {
+      price: formatGestaoMoney(directValue),
+      referenceMonth: directReference,
+      source: "molicar",
+    };
+  }
+
+  const dados = (result.dados ?? {}) as Record<string, unknown>;
+  const codeFipe = String(result.fipe_codigo ?? "").trim();
+  const modelYear = Number(value(dados, "ano_modelo"));
+  const fuelCode = fipeFuelCode(value(dados, "combustivel"));
+  const vehicleType = fipeVehicleType(result);
+
+  if (
+    /^\d{6}-?\d$/.test(codeFipe) &&
+    Number.isInteger(modelYear) &&
+    modelYear >= 1900 &&
+    modelYear <= 2200 &&
+    fuelCode
+  ) {
+    try {
+      const quote = await fetchPrice({
+        codeFipe,
+        yearId: `${modelYear}-${fuelCode}`,
+        vehicleType,
+      });
+      if (
+        !sameFipeCode(quote.codeFipe, codeFipe) ||
+        Number(quote.modelYear) !== modelYear ||
+        !fipeFuelMatches(fuelCode, quote.fuel) ||
+        !String(quote.price || "").trim() ||
+        !String(quote.referenceMonth || "").trim()
+      ) {
+        logMolicarFipeOmitida("divergente");
+      } else {
+        return {
+          price: String(quote.price).trim(),
+          referenceMonth: String(quote.referenceMonth).trim(),
+          source: "fipe_publica",
+        };
+      }
+    } catch {
+      logMolicarFipeOmitida("api_falhou");
+    }
+  }
+
+  const strict = await strictLookup({
+    marca: value(dados, "marca"),
+    modelo: value(dados, "modelo"),
+    versao: value(dados, "versao"),
+    ano_modelo: value(dados, "ano_modelo"),
+    combustivel: value(dados, "combustivel"),
+    vehicleType,
+  });
+  if (strict.ok) return strict.quote;
+  logMolicarFipeOmitida(strict.omit);
+  return null;
+}
+
+export async function lookupFipeForMolicarPlate(
+  result: Record<string, unknown>,
+  deps?: MolicarFipeLookupDeps | ConsultarFipePorCodigo,
+  timeoutMs = MOLICAR_PLATE_FIPE_TIMEOUT_MS,
+): Promise<MolicarFipeQuote | null> {
+  let finished = false;
+  const lookup = lookupFipeForMolicarResult(result, deps).then((quote) => {
+    finished = true;
+    return quote;
+  });
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), timeoutMs);
+  });
+  const quote = await Promise.race([lookup, timeout]);
+  if (!finished) {
+    logMolicarFipeOmitida("timeout");
+    return null;
+  }
+  return quote;
+}
+
 export function formatMolicarPlateResult(
   result: Record<string, unknown>,
 ): string {
@@ -131,6 +340,7 @@ export function formatMolicarPlateResult(
     typeof candidate === "number" && candidate > 0
       ? formatGestaoMoney(candidate)
       : "não disponível no plano";
+  const fipe = result.fipe_quote as MolicarFipeQuote | null | undefined;
   return [
     "🚘 Consulta Molicar",
     `Marca/modelo/versão: ${
@@ -141,9 +351,13 @@ export function formatMolicarPlateResult(
       read(value(dados, "ano_modelo") ?? value(dados, "ano_fabricacao"))
     }`,
     `Combustível: ${read(value(dados, "combustivel"))}`,
-    `Molicar Price: ${price(precos.referencia)}`,
-    `B2B: ${price(precos.b2b)}`,
-    `C2B: ${price(precos.c2b)}`,
+    ...(fipe
+      ? [
+        `Tabela FIPE: ${fipe.price} · referência ${fipe.referenceMonth}`,
+      ]
+      : []),
+    `Preço Molicar: ${price(precos.referencia)}`,
+    `B2B: ${price(precos.b2b)} · C2B: ${price(precos.c2b)}`,
   ].join("\n");
 }
 
@@ -215,6 +429,7 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
     runConsulta?: typeof runMolicarConsulta;
     runProcedencia?: typeof runMolicarProcedenciaQuery;
     notifyProcedencia?: typeof maybeNotifyMolicarProcedenciaOwner;
+    lookupFipe?: typeof lookupFipeForMolicarPlate;
   };
 }): Promise<{
   handled: boolean;
@@ -437,9 +652,15 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
         reply: "Não encontrei essa placa na Molicar. Confere as letras?",
       };
     }
+    const fipeQuote = await (
+      input.dependencies?.lookupFipe ?? lookupFipeForMolicarPlate
+    )(result);
     return {
       handled: true,
-      reply: formatMolicarPlateResult(result),
+      reply: formatMolicarPlateResult({
+        ...result,
+        fipe_quote: fipeQuote,
+      }),
       interactiveButtons: molicarResultButtons(plate),
     };
   } catch (error) {

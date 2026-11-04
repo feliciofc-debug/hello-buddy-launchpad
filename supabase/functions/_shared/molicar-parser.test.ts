@@ -71,8 +71,11 @@ Deno.test("MOLICAR-1 parser defensivo aceita o contrato Decoder v3 completo", ()
   });
   assertEquals(parsed.placa, "ABC1D23");
   assertEquals(parsed.molicarId, "123");
+  assertEquals(parsed.fipeCodigo, "001234-5");
   assertEquals(parsed.dados.marca, "Honda");
   assertEquals(parsed.precos, {
+    fipe: null,
+    fipeReferencia: null,
     referencia: 100500.2,
     b2c: 105000,
     b2b: 90000,
@@ -92,6 +95,8 @@ Deno.test("MOLICAR-1 aceita resposta parcial sem Pricing nem procedência", () =
     VehicleData: { Brand: "Fiat", Model: "Pulse" },
   });
   assertEquals(parsed.precos, {
+    fipe: null,
+    fipeReferencia: null,
     referencia: null,
     b2c: null,
     b2b: null,
@@ -101,6 +106,21 @@ Deno.test("MOLICAR-1 aceita resposta parcial sem Pricing nem procedência", () =
     contexto: {},
   });
   assertEquals(parsed.procedencia, null);
+});
+
+Deno.test("AJUSTES-04/11 — parser preserva valor e referência FIPE quando a Molicar enviar", () => {
+  const parsed = parseMolicarResponse({
+    Decoder: { Plate: "ABC1D23", ModelYear: 2024 },
+    VehicleData: { Brand: "Honda", Model: "City", FuelType: "Flex" },
+    FIPE: {
+      Code: "001234-5",
+      Price: "R$ 101.234,56",
+      ReferenceMonth: "novembro de 2026",
+    },
+  });
+  assertEquals(parsed.fipeCodigo, "001234-5");
+  assertEquals(parsed.precos.fipe, 101234.56);
+  assertEquals(parsed.precos.fipeReferencia, "novembro de 2026");
 });
 
 Deno.test("MOLICAR-1 normaliza placa/VIN e rejeita identidade inválida", () => {

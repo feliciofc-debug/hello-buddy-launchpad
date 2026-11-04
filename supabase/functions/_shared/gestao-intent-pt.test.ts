@@ -34,6 +34,12 @@ Deno.test("intent posicao loja frases dono", () => {
   assertEquals(classifyGestaoIntent("como está a loja?").kind, "posicao_loja");
   assertEquals(classifyGestaoIntent("posição da loja").kind, "posicao_loja");
   assertEquals(classifyGestaoIntent("como estamos").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("relatório").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("relatório gerencial").kind, "posicao_loja");
+  assertEquals(
+    classifyGestaoIntent("relatório dos vendedores").kind,
+    "relatorio_vendedores",
+  );
 });
 
 Deno.test("AJUDA-1 — fechamento usa o builder dedicado", () => {

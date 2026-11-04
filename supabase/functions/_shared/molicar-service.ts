@@ -13,6 +13,7 @@ import {
   restrictedAmzCredentials,
 } from "./molicar-client.ts";
 import {
+  molicarDecoderResponseKeyShape,
   normalizeMolicarIdentity,
   parseMolicarResponse,
 } from "./molicar-parser.ts";
@@ -188,7 +189,20 @@ async function savePriceReferences(
   if (error) throw error;
 }
 
-function publicSnapshot(row: Record<string, unknown>, cache: boolean) {
+export type MolicarFipeOmitMotivo =
+  | "sem_codigo"
+  | "cache_antigo"
+  | "api_falhou"
+  | "divergente"
+  | "ambiguo"
+  | "sem_match"
+  | "timeout";
+
+function publicSnapshot(
+  row: Record<string, unknown>,
+  cache: boolean,
+  extra: Record<string, unknown> = {},
+) {
   return {
     id: row.id,
     cache,
@@ -203,7 +217,44 @@ function publicSnapshot(row: Record<string, unknown>, cache: boolean) {
     precos: row.precos,
     procedencia: row.procedencia,
     not_found: snapshotNotFound(row),
+    ...extra,
   };
+}
+
+export function hasMolicarFipeCodigo(row: Record<string, unknown>): boolean {
+  return /^\d{6}-?\d$/.test(String(row.fipe_codigo ?? "").trim());
+}
+
+export function molicarFipeRefreshAlreadyAttempted(
+  row: Record<string, unknown>,
+): boolean {
+  const dados = (row.dados ?? {}) as Record<string, unknown>;
+  return dados._fipe_refresh_attempted === true;
+}
+
+function markFipeRefreshAttempted(
+  dados: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...dados, _fipe_refresh_attempted: true };
+}
+
+export function shouldReuseMolicarPriceCache(
+  cached: Record<string, unknown>,
+  priceCacheFresh: boolean,
+  force: boolean,
+): boolean {
+  if (!priceCacheFresh || force === true) return false;
+  return hasMolicarFipeCodigo(cached) ||
+    molicarFipeRefreshAlreadyAttempted(cached);
+}
+
+export function shouldRefetchMolicarForMissingFipe(
+  cached: Record<string, unknown>,
+  priceCacheFresh: boolean,
+  force: boolean,
+): boolean {
+  return priceCacheFresh && force !== true && !hasMolicarFipeCodigo(cached) &&
+    !molicarFipeRefreshAlreadyAttempted(cached);
 }
 
 function saoPauloDateKey(now = new Date()): string {
@@ -310,10 +361,12 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
   if (cached && isMolicarNotFoundCacheFresh(cached)) {
     return { ...publicSnapshot(cached, true), quota: null };
   }
-  if (
-    cached && input.force !== true &&
-    isMolicarPriceCacheFresh(cached, conta.atualizar_preco_dias)
-  ) {
+  const priceCacheFresh = Boolean(
+    cached &&
+      isMolicarPriceCacheFresh(cached, conta.atualizar_preco_dias),
+  );
+  let dailyLimitVerified = false;
+  if (cached && priceCacheFresh) {
     const links: Record<string, string> = {};
     if (input.veiculo_id && !cached.veiculo_id) {
       links.veiculo_id = String(input.veiculo_id);
@@ -336,10 +389,33 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
         );
       }
     }
-    return { ...publicSnapshot(cached, true), quota: null };
+    if (shouldReuseMolicarPriceCache(cached, priceCacheFresh, input.force === true)) {
+      const extra = !hasMolicarFipeCodigo(cached)
+        ? { fipe_omit_motivo: "sem_codigo" as const }
+        : {};
+      return { ...publicSnapshot(cached, true, extra), quota: null };
+    }
+    if (shouldRefetchMolicarForMissingFipe(cached, priceCacheFresh, input.force === true)) {
+      try {
+        await enforceDailyLimit(db, userId);
+        dailyLimitVerified = true;
+      } catch (error) {
+        if (error instanceof MolicarDailyLimitError) {
+          return {
+            ...publicSnapshot(cached, true, {
+              fipe_omit_motivo: "cache_antigo" as const,
+            }),
+            quota: null,
+          };
+        }
+        throw error;
+      }
+    }
   }
 
-  await enforceDailyLimit(db, userId);
+  if (!dailyLimitVerified) {
+    await enforceDailyLimit(db, userId);
+  }
   const quota = await consumeQuota(db, userId);
   let result: Awaited<ReturnType<typeof molicarVehicleQuery>>;
   try {
@@ -377,6 +453,10 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     }
     throw error;
   }
+  console.warn(
+    "[molicar][decoder] chaves",
+    JSON.stringify(molicarDecoderResponseKeyShape(result.body)),
+  );
   const parsed = parseMolicarResponse(result.body);
   const notFound = semanticNotFound(result.body);
   const placa = identity.placa ?? parsed.placa;
@@ -392,7 +472,9 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     http_status: result.status,
     dados: notFound
       ? { ...parsed.dados, decoder: { status: "RESOURCE_NOT_FOUND" } }
-      : parsed.dados,
+      : parsed.fipeCodigo
+      ? parsed.dados
+      : markFipeRefreshAttempted(parsed.dados as Record<string, unknown>),
     precos: notFound ? {} : parsed.precos,
     procedencia: parsed.procedencia,
     renavam: parsed.renavam,

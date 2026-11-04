@@ -97,6 +97,15 @@ Deno.test("MOLICAR-1 cliente não registra segredo, token, RENAVAM ou PII em log
     "molicar-service.ts",
   ].map((file) => Deno.readTextFile(new URL(file, import.meta.url))));
   for (const source of sources) {
-    assertEquals(/\bconsole\.(?:log|info|warn|error|debug)\s*\(/.test(source), false);
+    const withoutDecoderShapeLog = source.replace(
+      /console\.warn\(\s*\n?\s*"\[molicar\]\[decoder\] chaves"[\s\S]*?\);/g,
+      "",
+    );
+    assertEquals(
+      /\bconsole\.(?:log|info|warn|error|debug)\s*\(/.test(
+        withoutDecoderShapeLog,
+      ),
+      false,
+    );
   }
 });

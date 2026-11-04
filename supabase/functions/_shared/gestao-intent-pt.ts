@@ -102,6 +102,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     /\bposicao\s+da\s+loja\b/.test(t) ||
     /\bstatus\s+da\s+loja\b/.test(t) ||
     /\bresumo\s+(da\s+loja|geral)\b/.test(t) ||
+    /^relatorio(?:\s+(?:da\s+loja|gerencial))?[.!?]*$/.test(t) ||
     /\bcomo\s+(estamos|esta\s+a\s+loja|ta\s+a\s+loja|estao\s+a\s+loja|estão\s+a\s+loja)\b/
       .test(t)
   ) {
