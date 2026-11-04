@@ -5,7 +5,10 @@ import {
 } from "./gestao-auth-phone.ts";
 import { isGestaoAffirmative, isGestaoNegative } from "./gestao-intent-pt.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
-import { runMolicarConsulta } from "./molicar-service.ts";
+import {
+  type MolicarFipeOmitMotivo,
+  runMolicarConsulta,
+} from "./molicar-service.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import { runMolicarProcedenciaQuery } from "./molicar-procedencia-service.ts";
 import { maybeNotifyMolicarProcedenciaOwner } from "./molicar-procedencia-notify.ts";
@@ -129,6 +132,10 @@ export type MolicarFipeQuote = {
   source: "molicar" | "fipe_publica";
 };
 
+export function logMolicarFipeOmitida(motivo: MolicarFipeOmitMotivo): void {
+  console.warn(`[molicar][fipe] omitida motivo=${motivo}`);
+}
+
 type ConsultarFipePorCodigo = (input: {
   codeFipe: string;
   yearId: string;
@@ -190,6 +197,17 @@ export async function lookupFipeForMolicarResult(
   result: Record<string, unknown>,
   fetchPrice: ConsultarFipePorCodigo = consultarPreco,
 ): Promise<MolicarFipeQuote | null> {
+  const presetMotivo = result.fipe_omit_motivo;
+  if (
+    presetMotivo === "sem_codigo" ||
+    presetMotivo === "cache_antigo" ||
+    presetMotivo === "api_falhou" ||
+    presetMotivo === "divergente"
+  ) {
+    logMolicarFipeOmitida(presetMotivo);
+    return null;
+  }
+
   const precos = (result.precos ?? {}) as Record<string, unknown>;
   const directValue = normalizeFipeValue(precos.fipe);
   const directReference = String(precos.fipeReferencia ?? "").trim();
@@ -212,6 +230,7 @@ export async function lookupFipeForMolicarResult(
     modelYear > 2200 ||
     !fuelCode
   ) {
+    logMolicarFipeOmitida("sem_codigo");
     return null;
   }
 
@@ -228,6 +247,7 @@ export async function lookupFipeForMolicarResult(
       !String(quote.price || "").trim() ||
       !String(quote.referenceMonth || "").trim()
     ) {
+      logMolicarFipeOmitida("divergente");
       return null;
     }
     return {
@@ -235,8 +255,8 @@ export async function lookupFipeForMolicarResult(
       referenceMonth: String(quote.referenceMonth).trim(),
       source: "fipe_publica",
     };
-  } catch (error) {
-    console.warn("[molicar][fipe] consulta omitida", (error as Error).message);
+  } catch {
+    logMolicarFipeOmitida("api_falhou");
     return null;
   }
 }

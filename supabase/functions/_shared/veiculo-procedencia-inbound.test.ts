@@ -173,6 +173,62 @@ Deno.test("AJUSTES-04/11 — FIPE por código/ano/combustível entra antes dos p
   assertEquals(lines[6], "B2B: R$ 90.000,00 · C2B: R$ 85.000,00");
 });
 
+Deno.test("AJUSTES-04/11.1 — cache antigo sem FIPE loga motivo curto", async () => {
+  const logs: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    const quote = await lookupFipeForMolicarResult({
+      fipe_omit_motivo: "cache_antigo",
+      fipe_codigo: null,
+      dados: { ano_modelo: 2022, combustivel: "Flex" },
+      precos: { referencia: 88_500 },
+    });
+    assertEquals(quote, null);
+    assertEquals(logs.some((line) => line.includes("motivo=cache_antigo")), true);
+  } finally {
+    console.warn = original;
+  }
+});
+
+Deno.test("AJUSTES-04/11.1 — consulta placa com cache sem fipe_codigo repassa refresh", async () => {
+  let consultCalls = 0;
+  let lookupCalls = 0;
+  await tryProcessVeiculoProcedenciaInbound(baseInput({
+    text: "QAY6I38",
+    dependencies: {
+      runConsulta: async () => {
+        consultCalls += 1;
+        return {
+          cache: false,
+          fipe_codigo: "001234-5",
+          dados: {
+            marca: "Toyota",
+            modelo: "Corolla",
+            ano_modelo: 2022,
+            combustivel: "flex",
+          },
+          precos: { referencia: 88_500, b2b: 80_000, c2b: 75_000 },
+          not_found: false,
+        };
+      },
+      lookupFipe: async (result) => {
+        lookupCalls += 1;
+        assertEquals(result.fipe_codigo, "001234-5");
+        return {
+          price: "R$ 112.000,00",
+          referenceMonth: "novembro de 2026",
+          source: "fipe_publica",
+        };
+      },
+    },
+  }) as never);
+  assertEquals(consultCalls, 1);
+  assertEquals(lookupCalls, 1);
+});
+
 Deno.test("AJUSTES-04/11 — FIPE insegura ou indisponível é omitida", async () => {
   const invalid = await lookupFipeForMolicarResult({
     fipe_codigo: "001234-5",

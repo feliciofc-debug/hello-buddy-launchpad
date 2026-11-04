@@ -5,12 +5,60 @@ import {
 import {
   assertMolicarDailyLimit,
   assertMolicarQuota,
+  hasMolicarFipeCodigo,
   isMolicarNotFoundCacheFresh,
   isMolicarPriceCacheFresh,
   MOLICAR_DAILY_LIMIT,
   MolicarDailyLimitError,
+  molicarFipeRefreshAlreadyAttempted,
+  shouldRefetchMolicarForMissingFipe,
   shouldRefundMolicarQuota,
+  shouldReuseMolicarPriceCache,
 } from "./molicar-service.ts";
+
+Deno.test("AJUSTES-04/11.1 — cache sem fipe_codigo dispara refresh único", () => {
+  const cached = {
+    id: "row-1",
+    consultado_em: "2026-11-03T21:47:00.000Z",
+    precos: { referencia: 88_500, b2b: 80_000 },
+    fipe_codigo: null,
+    dados: { marca: "Toyota", modelo: "Corolla" },
+  };
+  assertEquals(hasMolicarFipeCodigo(cached), false);
+  assertEquals(
+    shouldReuseMolicarPriceCache(cached, true, false),
+    false,
+  );
+  assertEquals(
+    shouldRefetchMolicarForMissingFipe(cached, true, false),
+    true,
+  );
+  assertEquals(
+    shouldReuseMolicarPriceCache(
+      { ...cached, fipe_codigo: "001234-5" },
+      true,
+      false,
+    ),
+    true,
+  );
+  assertEquals(
+    shouldReuseMolicarPriceCache(
+      {
+        ...cached,
+        dados: { ...cached.dados, _fipe_refresh_attempted: true },
+      },
+      true,
+      false,
+    ),
+    true,
+  );
+  assertEquals(
+    molicarFipeRefreshAlreadyAttempted({
+      dados: { _fipe_refresh_attempted: true },
+    }),
+    true,
+  );
+});
 
 Deno.test("MOLICAR-1 cache de preço respeita os dias configurados", () => {
   const now = Date.parse("2026-10-26T12:00:00Z");
