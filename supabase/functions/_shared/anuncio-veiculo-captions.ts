@@ -4,6 +4,15 @@ import {
   normalizeBrazilianWhatsappNumber,
   normalizeCaptionText,
 } from "./anuncio-caption-common.ts";
+import {
+  filterVehicleHashtagToken,
+  isMotorcycleVehicle,
+  isVehicleAdNarrativeLeak,
+  isVisionSceneDescription,
+  vehicleBrandHashtags,
+  vehicleLeadEmoji,
+  vehicleModelHashtag,
+} from "./vehicle-social-identity.ts";
 
 const VEHICLE_CAPTION_LIMIT = 900;
 
@@ -11,10 +20,15 @@ const FORBIDDEN_INFERENCE =
   /\b(u[nú]nico\s+dono|revisad[oa]|garantia|laudo|sem\s+detalhes|baixa\s+km|impec[aá]vel|zero\s+defeitos)\b/i;
 
 const LONE_EMOJI_LINE =
-  /^[\s📲📱🚗🛣️🎨💰📅⛽⚙️👉]+$/u;
+  /^[\s📲📱🚗🏍️🛣️🎨💰📅⛽⚙️👉]+$/u;
 
 export function cleanVehicleTitle(data: Record<string, unknown>): string {
   let title = String(data.titulo || "").trim();
+  if (isVisionSceneDescription(title)) {
+    const marca = String(data.marca || "").trim();
+    const modelo = String(data.modelo || "").trim();
+    title = [marca, modelo].filter(Boolean).join(" ").trim() || "Veículo";
+  }
   title = title
     .replace(/\s*[\/|]\s*\d[\d.,]*\s*km[^.]*\.?\s*.*$/i, "")
     .replace(/\s*[\/|]\s*[A-Za-zÀ-ú]+\s*\.?\s*$/i, "")
@@ -65,24 +79,27 @@ export function vehicleDataLine(data: Record<string, unknown>): string {
 }
 
 function buildHashtags(data: Record<string, unknown>): string {
+  const motorcycle = isMotorcycleVehicle(data);
+  const tags = new Set<string>(
+    motorcycle ? ["seminovas", "motos"] : ["seminovos", "carros"],
+  );
+  const marca = String(data.marca || "").trim();
+  const modelo = String(data.modelo || "").trim();
+  for (const tag of vehicleBrandHashtags(marca, motorcycle)) tags.add(tag);
+  const modelTag = vehicleModelHashtag(modelo);
+  if (modelTag) tags.add(modelTag);
+
   const title = normalizeCaptionText(cleanVehicleTitle(data)).replace(
     /[^a-z0-9 ]/g,
     " ",
   );
-  const kind = normalizeCaptionText(
-    String(data.tipo_veiculo || data.tipo || data.carroceria || ""),
-  );
-  const motorcycle = /\bmoto|motocic/.test(kind);
-  const tags = new Set<string>(
-    motorcycle ? ["seminovas", "motos"] : ["seminovos", "carros"],
-  );
-  for (const word of title.split(/\s+/).filter((w) => w.length >= 3).slice(0, 4)) {
-    tags.add(word);
+  for (const word of title.split(/\s+/).filter(filterVehicleHashtagToken).slice(0, 3)) {
+    tags.add(word.replace(/[^a-z0-9]/g, ""));
   }
   const cidade = String(data.cidade || data.cidade_loja || "").trim();
   if (cidade) {
     const cityTag = normalizeCaptionText(cidade).replace(/[^a-z0-9]/g, "");
-    if (cityTag.length >= 3) tags.add(cityTag);
+    if (cityTag.length >= 3 && filterVehicleHashtagToken(cityTag)) tags.add(cityTag);
   }
   return [...tags].slice(0, 8).map((tag) => `#${tag}`).join(" ");
 }
@@ -127,7 +144,9 @@ export function stripDuplicateVehicleFacts(
     .filter((line) => {
       const norm = normalizeFact(line);
       if (!norm) return false;
-      if (norm === title || norm.includes(`🚗 ${title}`)) return false;
+      if (norm === title || norm.includes(`🚗 ${title}`) || norm.includes(`🏍️ ${title}`)) {
+        return false;
+      }
       const kmHits = km && norm.includes(km) &&
         /km|quilometragem|🛣️/i.test(line);
       const corHits = cor && norm.includes(cor) &&
@@ -196,13 +215,20 @@ export function vehicleAnuncioAiBriefing(data: Record<string, unknown>): string 
 
 function styleCta(style: "A" | "B" | "C", data: Record<string, unknown>): string {
   const title = cleanVehicleTitle(data);
+  const motorcycle = isMotorcycleVehicle(data);
   if (style === "A") {
-    return `👉 Quer ver o ${title} de perto? Chame no WhatsApp e agende sua visita.`;
+    return motorcycle
+      ? `👉 Quer sentir a pegada do ${title}? Chame no WhatsApp e agende um test ride.`
+      : `👉 Quer ver o ${title} de perto? Chame no WhatsApp e agende sua visita.`;
   }
   if (style === "B") {
-    return `☕ Vem conhecer o ${title} pessoalmente — a experiência ao vivo faz diferença.`;
+    return motorcycle
+      ? `🛣️ Vem conhecer o ${title} pessoalmente — a estrada começa na loja.`
+      : `☕ Vem conhecer o ${title} pessoalmente — a experiência ao vivo faz diferença.`;
   }
-  return `💬 Curioso para sentir o ${title}? Me chama no WhatsApp e marcamos um horário.`;
+  return motorcycle
+    ? `💬 Curioso para pilotar o ${title}? Me chama no WhatsApp e marcamos um horário.`
+    : `💬 Curioso para sentir o ${title}? Me chama no WhatsApp e marcamos um horário.`;
 }
 
 function fallbackSalesParagraphs(
@@ -211,32 +237,54 @@ function fallbackSalesParagraphs(
 ): string {
   const title = cleanVehicleTitle(data);
   const km = String(data.quilometragem || data.km || "").trim();
+  const motorcycle = isMotorcycleVehicle(data);
   const items = informedItems(data).slice(0, 2);
   const itemHint = items.length
     ? ` Destaque informado: ${items.join(" e ")}.`
     : "";
   if (style === "A") {
-    return [
-      `O ${title} aparece com presença forte — ideal para quem busca um veículo com visual de vitrine.`,
-      km
-        ? `É uma escolha objetiva para sair do papo e ir direto à visita.${itemHint}`
-        : `Uma oportunidade clara para conhecer o carro antes de decidir.${itemHint}`,
-    ].join(" ");
+    return motorcycle
+      ? [
+        `${title} com postura esportiva e presença de vitrine — pronta para despertar vontade de pilotar.`,
+        km
+          ? `Km informado na ficha: dá para ir direto ao ponto e marcar um test ride.${itemHint}`
+          : `Uma escolha direta para quem quer sentir liberdade sobre duas rodas.${itemHint}`,
+      ].join(" ")
+      : [
+        `O ${title} aparece com presença forte — ideal para quem busca estilo e conforto no volante.`,
+        km
+          ? `É uma escolha objetiva para sair do papo e ir direto à visita.${itemHint}`
+          : `Uma oportunidade clara para conhecer o veículo antes de decidir.${itemHint}`,
+      ].join(" ");
   }
   if (style === "B") {
-    return [
-      `Imagine receber visitas na loja e ver o ${title} como protagonista na vitrine.`,
-      km
-        ? `História rodada com transparência — pronta para o próximo capítulo.${itemHint}`
-        : `Cada detalhe conta quando você escolhe com calma e vê o veículo ao vivo.${itemHint}`,
-    ].join(" ");
+    return motorcycle
+      ? [
+        `Imagine acelerar na estrada com o ${title} — vento na cara e sensação de liberdade.`,
+        km
+          ? `Cada km conta uma história; o próximo trecho pode ser seu.${itemHint}`
+          : `Duas rodas, estilo marcante e aquele clima de conquista a cada curva.${itemHint}`,
+      ].join(" ")
+      : [
+        `Imagine receber visitas na loja e ver o ${title} como protagonista na vitrine.`,
+        km
+          ? `História rodada com transparência — pronta para o próximo capítulo.${itemHint}`
+          : `Cada detalhe conta quando você escolhe com calma e vê o veículo ao vivo.${itemHint}`,
+      ].join(" ");
   }
-  return [
-    `Procura um ${title} que combine estilo e praticidade para o dia a dia?`,
-    km
-      ? `Dá para comparar com tranquilidade: o que importa é sentir o carro pessoalmente.${itemHint}`
-      : `O próximo passo é simples: conhecer de perto e tirar suas dúvidas na hora.${itemHint}`,
-  ].join(" ");
+  return motorcycle
+    ? [
+      `Procura uma moto como o ${title} para transformar o trajeto em prazer?`,
+      km
+        ? `Compare com calma: o que importa é sentir a pegada e a postura na pilotagem.${itemHint}`
+        : `O próximo passo é simples: conhecer de perto e sentir se combina com seu estilo.${itemHint}`,
+    ].join(" ")
+    : [
+      `Procura um ${title} que combine estilo e praticidade para o dia a dia?`,
+      km
+        ? `Dá para comparar com tranquilidade: o que importa é sentir o carro pessoalmente.${itemHint}`
+        : `O próximo passo é simples: conhecer de perto e tirar suas dúvidas na hora.${itemHint}`,
+    ].join(" ");
 }
 
 function assemble(blocks: string[]): string {
@@ -254,11 +302,11 @@ export function composeVehicleAdVariant(
     sanitizeVehicleAdLines(rawCopy),
     data,
   );
-  narrative = narrative.replace(/^🚗\s*/u, "").trim();
-  if (narrative.length < 40) {
+  narrative = narrative.replace(/^[🚗🏍️]\s*/u, "").trim();
+  if (narrative.length < 40 || isVehicleAdNarrativeLeak(narrative)) {
     narrative = fallbackSalesParagraphs(style, data);
   }
-  const title = `🚗 ${cleanVehicleTitle(data)}`;
+  const title = `${vehicleLeadEmoji(data)} ${cleanVehicleTitle(data)}`;
   const dataLine = vehicleDataLine(data);
   const cta = styleCta(style, data);
   const tags = buildHashtags(data);

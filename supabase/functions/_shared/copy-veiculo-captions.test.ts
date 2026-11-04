@@ -163,6 +163,45 @@ Deno.test("COPY-VEICULO — gate km/preço", () => {
   assertEquals(missing.includes("preco"), true);
 });
 
+const BMW_G310R_VISION =
+  'Esta foto real de produto em uma concessionária destaca uma motocicleta naked com o logotipo da "BMW" posicionado lateralmente. A BMW G 310 R vermelha aparece com visual esportivo ideal para vitrine.';
+
+Deno.test("AJUSTES-04/11.1 — descrição da foto não vaza para legenda nem hashtags", () => {
+  const nome = BMW_G310R_VISION.slice(0, 120);
+  const data = vehicleCaptionDataFromSources({
+    nome,
+    descricao: `Conteúdo da imagem: ${BMW_G310R_VISION}`,
+    briefing: "",
+  });
+  const captions = generateVehicleAdCaptions(data, 0);
+  const joined = Object.values(captions).join("\n").toLowerCase();
+  for (const forbidden of [
+    "foto real",
+    "concessionária destaca",
+    "concessionaria destaca",
+    "logotipo",
+    "conteúdo da imagem",
+    " carro",
+  ]) {
+    assert(!joined.includes(forbidden), `vazou: ${forbidden}`);
+  }
+  for (const tag of ["#esta", "#foto", "#real", "#produto"]) {
+    assert(!joined.includes(tag), `hashtag proibida: ${tag}`);
+  }
+  for (const caption of Object.values(captions)) {
+    assertStringIncludes(caption, "🏍️");
+    assertStringIncludes(caption, "BMW");
+    assertStringIncludes(caption, "#motos");
+    assertStringIncludes(caption, "#bmw");
+  }
+  assert(
+    /(pilotar|liberdade|estrada|duas rodas|pegada|motocicleta|moto)/i.test(joined),
+    "copy de moto ausente",
+  );
+  assertNotEquals(captions.A, captions.B);
+  assertNotEquals(captions.B, captions.C);
+});
+
 Deno.test("AJUSTES-04/11 — foto original sem km/preço gera A/B/C e não aciona gate", async () => {
   const data = vehicleCaptionDataFromSources({
     nome: "BMW G 310 R",
@@ -250,7 +289,7 @@ Deno.test("COPY-VEICULO-1.2 — km + preço e outros assuntos", () => {
   }
 });
 
-const LONE_EMOJI = /^[\s📲📱🚗🛣️🎨💰📅⛽⚙️👉]+$/u;
+const LONE_EMOJI = /^[\s📲📱🚗🏍️🛣️🎨💰📅⛽⚙️👉]+$/u;
 
 function countOccurrences(haystack: string, needle: string): number {
   let count = 0;

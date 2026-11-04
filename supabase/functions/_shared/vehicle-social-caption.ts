@@ -1,5 +1,11 @@
 import { parseVehicleCarouselData, type VehicleCarouselData } from "./vehicle-carousel.ts";
 import { generateVehicleAdCaptions } from "./anuncio-veiculo-captions.ts";
+import {
+  extractVehicleIdentityFromVision,
+  resolveVehicleSocialTitle,
+  stripLibraryVisionWrapper,
+  visionTextForVehicleIdentity,
+} from "./vehicle-social-identity.ts";
 import { sanitizeLinkedInApprovalCopy } from "./linkedin-approval.ts";
 import {
   getOwnerMediaRoute,
@@ -21,15 +27,29 @@ export type VehicleSocialCaptionSources = {
 export function vehicleCaptionDataFromSources(
   input: VehicleSocialCaptionSources,
 ): Record<string, unknown> {
-  const blob = [
-    input.nome,
-    input.descricao || "",
+  const ownerBlob = [
     input.briefing || "",
-  ].join("\n");
-  const parsed = parseVehicleCarouselData(blob);
+    stripLibraryVisionWrapper(String(input.descricao || "")),
+  ].filter(Boolean).join("\n");
+  const parsed = parseVehicleCarouselData(ownerBlob);
+  const visionBlob = visionTextForVehicleIdentity({
+    nome: input.nome,
+    descricao: input.descricao,
+  });
+  const identity = extractVehicleIdentityFromVision(visionBlob);
+  const titulo = resolveVehicleSocialTitle({
+    nome: input.nome,
+    descricao: input.descricao,
+    briefing: input.briefing,
+    parsedTitulo: parsed.titulo,
+  });
   const data: Record<string, unknown> = {
-    titulo: parsed.titulo || input.nome.trim(),
+    titulo,
     ...parsed,
+    ...(identity.marca ? { marca: identity.marca } : {}),
+    ...(identity.modelo ? { modelo: identity.modelo } : {}),
+    ...(identity.cor && !parsed.cor ? { cor: identity.cor } : {}),
+    _vision_blob: visionBlob,
   };
   if (input.precoNum && !Number.isNaN(input.precoNum) && !data.preco) {
     data.preco = `R$ ${
@@ -45,7 +65,8 @@ export function vehicleCaptionDataFromSources(
   if (parsed.motor && !data.combustivel) {
     data.combustivel = parsed.motor;
   }
-  if (/\b(moto|motocicleta|motociclo)\b/i.test(blob)) {
+  const typeBlob = `${visionBlob}\n${ownerBlob}`;
+  if (identity.tipo_veiculo === "moto" || /\b(moto|motocicleta|motociclo)\b/i.test(typeBlob)) {
     data.tipo_veiculo = "moto";
   }
   return data;
