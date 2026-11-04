@@ -71,6 +71,7 @@ Deno.test("MOLICAR-1 parser defensivo aceita o contrato Decoder v3 completo", ()
   });
   assertEquals(parsed.placa, "ABC1D23");
   assertEquals(parsed.molicarId, "123");
+  assertEquals(parsed.fipeCodigo, "001234-5");
   assertEquals(parsed.dados.marca, "Honda");
   assertEquals(parsed.precos, {
     fipe: null,

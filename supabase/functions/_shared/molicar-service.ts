@@ -13,6 +13,7 @@ import {
   restrictedAmzCredentials,
 } from "./molicar-client.ts";
 import {
+  molicarDecoderResponseKeyShape,
   normalizeMolicarIdentity,
   parseMolicarResponse,
 } from "./molicar-parser.ts";
@@ -192,7 +193,10 @@ export type MolicarFipeOmitMotivo =
   | "sem_codigo"
   | "cache_antigo"
   | "api_falhou"
-  | "divergente";
+  | "divergente"
+  | "ambiguo"
+  | "sem_match"
+  | "timeout";
 
 function publicSnapshot(
   row: Record<string, unknown>,
@@ -449,6 +453,10 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
     }
     throw error;
   }
+  console.warn(
+    "[molicar][decoder] chaves",
+    JSON.stringify(molicarDecoderResponseKeyShape(result.body)),
+  );
   const parsed = parseMolicarResponse(result.body);
   const notFound = semanticNotFound(result.body);
   const placa = identity.placa ?? parsed.placa;

@@ -115,6 +115,7 @@ Deno.test("VEIC-WPP-1 — placa pura consulta Molicar e oferece três ações", 
           not_found: false,
         };
       },
+      lookupFipe: async () => null,
     },
   }) as never);
   assertEquals(calls, 1);

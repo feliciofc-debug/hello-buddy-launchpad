@@ -34,6 +34,73 @@ function text(value: unknown, max = 200): string | null {
   return out ? out.slice(0, max) : null;
 }
 
+const FIPE_CODE_PATTERN = /^\d{6}-?\d$/;
+
+function normalizeFipeCode(value: string): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length !== 7) return null;
+  return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+}
+
+export function molicarDecoderResponseKeyShape(payload: unknown): {
+  nivel1: string[];
+  nivel2: Record<string, string[]>;
+} {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { nivel1: [], nivel2: {} };
+  }
+  const root = payload as Record<string, unknown>;
+  const nivel1 = Object.keys(root).sort();
+  const nivel2: Record<string, string[]> = {};
+  for (const key of nivel1) {
+    const child = root[key];
+    if (child && typeof child === "object" && !Array.isArray(child)) {
+      nivel2[key] = Object.keys(child as Record<string, unknown>).sort();
+    }
+  }
+  return { nivel1, nivel2 };
+}
+
+export function extractFipeCodigoFromPayload(payload: unknown): string | null {
+  const seen = new Set<unknown>();
+  function walk(node: unknown, path: string): string | null {
+    if (node == null) return null;
+    if (typeof node === "string" || typeof node === "number") {
+      const normalized = normalizeFipeCode(String(node));
+      if (!normalized) return null;
+      if (/fipe|codigo|code/i.test(path)) return normalized;
+      return null;
+    }
+    if (typeof node !== "object") return null;
+    if (seen.has(node)) return null;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (let index = 0; index < node.length; index++) {
+        const hit = walk(node[index], `${path}[${index}]`);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+      const childPath = path ? `${path}.${key}` : key;
+      if (
+        typeof child === "string" || typeof child === "number"
+      ) {
+        const normalized = normalizeFipeCode(String(child));
+        if (normalized && FIPE_CODE_PATTERN.test(normalized.replace("-", ""))) {
+          if (/fipe|codigo|code/i.test(childPath)) return normalized;
+        }
+      }
+      const nested = walk(child, childPath);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  return walk(payload, "");
+}
+
 function price(value: unknown): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) && value > 0 ? value : null;
@@ -210,24 +277,30 @@ export function parseMolicarResponse(payload: unknown): MolicarParsed {
       32,
     )?.replace(/\s/g, "").toUpperCase() ?? null,
     renavam: text(first(root, ["Renavam", "renavam"]), 20),
-    fipeCodigo: text(
-      first(fipeData, [
-        "Code",
-        "code",
-        "Codigo",
-        "codigo",
-        "fipeCodigo",
-        "codigoFipe",
-      ]) ??
-        (Object.keys(fipeData).length ? null : rawFipe) ??
-        first(root, [
+    fipeCodigo: (() => {
+      const direct = text(
+        first(fipeData, [
+          "Code",
+          "code",
+          "Codigo",
+          "codigo",
           "fipeCodigo",
           "codigoFipe",
-          "fipe_code",
-          "fipeCode",
-        ]),
-      20,
-    ),
+        ]) ??
+          (Object.keys(fipeData).length ? null : rawFipe) ??
+          first(root, [
+            "fipeCodigo",
+            "codigoFipe",
+            "fipe_code",
+            "fipeCode",
+          ]),
+        20,
+      );
+      const normalized = direct ? normalizeFipeCode(direct) : null;
+      if (normalized) return normalized;
+      return extractFipeCodigoFromPayload(root) ??
+        extractFipeCodigoFromPayload(outer);
+    })(),
     dados,
     procedencia: Object.keys(procedencia).length ? procedencia : null,
     precos: {
