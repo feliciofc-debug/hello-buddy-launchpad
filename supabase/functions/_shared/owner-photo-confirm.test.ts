@@ -35,7 +35,7 @@ Deno.test("DOC-SEG-2 — loja automotiva nunca oferece produto em foto", () => {
 Deno.test("incerto — descreve antes de perguntar veículo ou produto", () => {
   const msg = ownerUncertainVisionConfirmMessage("objetos sobre uma mesa");
   assertStringIncludes(msg, "Não tenho certeza");
-  assertStringIncludes(msg, "Vi objetos sobre uma mesa");
+  assertStringIncludes(msg, "Vi objetos");
 });
 
 Deno.test("foto repetida — repete descrição salva", () => {

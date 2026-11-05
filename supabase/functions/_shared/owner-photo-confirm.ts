@@ -6,14 +6,46 @@ export function normalizeOwnerPhotoDescription(value: unknown): string {
   return cleanReceivedMediaDescription(value).replace(/\s+/g, " ").trim();
 }
 
+export function ownerPhotoItemSummary(description: string): string {
+  const cleaned = normalizeOwnerPhotoDescription(description)
+    .replace(
+      /^(?:esta\s+[eé]\s+|trata-se\s+de\s+)?(?:uma?\s+)?foto\s+real\s+de\s+produto\s*(?:apresentando|que\s+mostra|mostrando)?\s*/i,
+      "",
+    )
+    .replace(
+      /^(?:esta\s+[eé]\s+)?(?:uma?\s+)?(?:foto|imagem)\s+(?:que\s+)?(?:mostra|apresenta|exibe)\s*/i,
+      "",
+    )
+    .replace(/^(?:um|uma|o|a)\s+/i, "")
+    .split(
+      /[.;]|\s+(?:sobre|posicionad[oa]|em frente|ao fundo|com fundo)\b/i,
+    )[0]
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  return cleaned.split(/\s+/).slice(0, 6).join(" ");
+}
+
+export function ownerProductPhotoReceivedMessage(description: string): string {
+  const item = ownerPhotoItemSummary(description) || "item principal";
+  const feminine =
+    /^(x[ií]cara|caneca|garrafa|comida|pessoa|camisa|moto|motocicleta|embalagem|roupa)\b/i
+      .test(item);
+  return `Recebi a foto ${
+    feminine ? "da" : "do"
+  } ${item}. O que você quer fazer?`;
+}
+
 export function ownerProductVisionConfirmMessage(description: string): string {
-  const seen = normalizeOwnerPhotoDescription(description);
+  const seen = ownerPhotoItemSummary(description);
   const body = seen || "itens nesta imagem";
   return `Vi ${body}. É isso?`;
 }
 
-export function ownerUncertainVisionConfirmMessage(description: string): string {
-  const seen = normalizeOwnerPhotoDescription(description) ||
+export function ownerUncertainVisionConfirmMessage(
+  description: string,
+): string {
+  const seen = ownerPhotoItemSummary(description) ||
     "alguns itens nesta foto";
   return `Não tenho certeza do que é. Vi ${seen}. É um veículo ou outro produto?`;
 }
@@ -76,7 +108,7 @@ export function ownerPhotoConfirmedProductTitle(
 ): string {
   const corrected = String(correction || "").replace(/\s+/g, " ").trim();
   if (corrected) return corrected.slice(0, 120);
-  const seen = normalizeOwnerPhotoDescription(description);
+  const seen = ownerPhotoItemSummary(description);
   return seen.slice(0, 120);
 }
 

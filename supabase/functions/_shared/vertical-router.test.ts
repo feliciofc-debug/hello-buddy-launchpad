@@ -10,8 +10,8 @@ import {
   demoSegmentConfirmationButtons,
   explicitVerticalIntent,
   isAutomotiveTenant,
-  ownerMediaAutomotiveContext,
   migrateVerticalState,
+  ownerMediaAutomotiveContext,
   parseDemoSegmentCommand,
   parseVerticalVisionResult,
   resolveVertical,
@@ -199,6 +199,41 @@ Deno.test("parser de visão aceita somente classificação factual", () => {
     { route: "geral", confidence: 0.97, reason: "garrafa termica" },
   );
   assertEquals(parseVerticalVisionResult("uma foto de carro"), null);
+});
+
+Deno.test("FOTO-PRODUTO — visão decide veículo, produto ou dúvida real", () => {
+  const tenantSegment = "Revenda de veículos";
+  const pcx = resolveVertical({
+    tenantSegment,
+    vision: {
+      route: "veiculo",
+      confidence: 0.98,
+      reason: "Honda PCX scooter",
+    },
+  });
+  assertEquals(pcx.route, "veiculo");
+  assertEquals(pcx.needsConfirmation, false);
+
+  const cup = resolveVertical({
+    tenantSegment,
+    vision: {
+      route: "geral",
+      confidence: 0.99,
+      reason: "xícara branca",
+    },
+  });
+  assertEquals(cup.route, "geral");
+  assertEquals(cup.needsConfirmation, false);
+
+  const ambiguous = resolveVertical({
+    tenantSegment,
+    vision: {
+      route: "geral",
+      confidence: 0.45,
+      reason: "objeto parcialmente visível",
+    },
+  });
+  assertEquals(ambiguous.needsConfirmation, true);
 });
 
 Deno.test("migração separa pendentes legados por vertical", () => {

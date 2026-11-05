@@ -1,8 +1,7 @@
 import { ownerPhotoReceivedReply } from "./media-received-copy.ts";
 import {
-  ownerPhotoConfirmButtons,
-  ownerProductVisionConfirmMessage,
-  ownerRepeatedVisionConfirmMessage,
+  ownerPhotoItemSummary,
+  ownerProductPhotoReceivedMessage,
 } from "./owner-photo-confirm.ts";
 import { singlePhotoActionButtons } from "./single-photo-flow.ts";
 
@@ -14,21 +13,34 @@ export function traditionalGeneralSinglePhotoSnapshot(description: string) {
     stage: TRADITIONAL_GENERAL_SINGLE_PHOTO_STAGE,
     text: ownerPhotoReceivedReply(description),
     buttonIds: singlePhotoActionButtons().buttons.map((button) => button.id),
-    buttonTitles: singlePhotoActionButtons().buttons.map((button) => button.title),
+    buttonTitles: singlePhotoActionButtons().buttons.map((button) =>
+      button.title
+    ),
   };
 }
 
-/** Revenda automotiva — produto com confirmação (FIX-PUB-1.2). */
+export function automotiveProductPhotoButtons() {
+  return {
+    body: "Escolha o que fazer com esta foto.",
+    buttons: [
+      { id: "single_photo:post", title: "Postar nas redes" },
+      { id: "single_photo:edit", title: "Editar foto" },
+      { id: "single_photo:ad", title: "Criar anúncio" },
+    ],
+  };
+}
+
+/** Revenda automotiva — visão clara de produto segue direto para ações. */
 export function automotiveProductSinglePhotoSnapshot(
   description: string,
-  repeated: boolean,
+  _repeated: boolean,
 ) {
+  const buttons = automotiveProductPhotoButtons();
   return {
-    stage: "confirm_vision" as const,
-    text: repeated
-      ? ownerRepeatedVisionConfirmMessage(description, "produto")
-      : ownerProductVisionConfirmMessage(description),
-    buttonIds: ownerPhotoConfirmButtons().buttons.map((button) => button.id),
-    buttonTitles: ownerPhotoConfirmButtons().buttons.map((button) => button.title),
+    stage: "actions" as const,
+    text: ownerProductPhotoReceivedMessage(description),
+    confirmedProductTitle: ownerPhotoItemSummary(description),
+    buttonIds: buttons.buttons.map((button) => button.id),
+    buttonTitles: buttons.buttons.map((button) => button.title),
   };
 }

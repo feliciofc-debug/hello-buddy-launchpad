@@ -526,6 +526,7 @@ import {
   ownerProductPhotoPendingFromRoute,
 } from "../_shared/owner-media-route-flow.ts";
 import {
+  automotiveProductPhotoButtons,
   automotiveProductSinglePhotoSnapshot,
   traditionalGeneralSinglePhotoSnapshot,
   TRADITIONAL_GENERAL_SINGLE_PHOTO_STAGE,
@@ -27990,8 +27991,9 @@ export async function processOne(queueId: string) {
           );
           const pending = {
             media_id: latest.id,
-            stage: "confirm_vision" as const,
+            stage: automotive.stage,
             vision_description: description,
+            confirmed_product_title: automotive.confirmedProductTitle,
             created_at: now,
           };
           await saveAgentState(
@@ -28026,7 +28028,7 @@ export async function processOne(queueId: string) {
             userId,
             to: row.from_number,
             text: withDemoModeLabel(automotive.text, verticalDecision),
-            buttons: ownerAutomotivePhotoConfirmButtons(),
+            buttons: automotiveProductPhotoButtons(),
           });
         }
         await doneQueue(row.id);
@@ -28281,18 +28283,24 @@ export async function processOne(queueId: string) {
                   },
                   automotiveTenant: !!automotiveTenant,
                   routeOverride: batchMediaRoute,
+                  confirmed: batchMediaRoute === "geral"
+                    ? true
+                    : undefined,
                 },
               );
               if (batchMediaRoute === "geral") {
                 const description = repeatedVision ||
                   storedBatchRoute?.vision_description || "";
-                const alreadyConfirmed = storedBatchRoute?.confirmed === true;
+                const automotive = automotiveProductSinglePhotoSnapshot(
+                  description,
+                  repeated,
+                );
                 const now = new Date().toISOString();
                 const pending = ownerProductPhotoPendingFromRoute({
                   mediaId: singlePhoto.id,
                   visionDescription: description,
-                  stage: alreadyConfirmed ? "actions" : "confirm_vision",
-                  confirmed: alreadyConfirmed,
+                  stage: automotive.stage,
+                  confirmed: true,
                   nowIso: now,
                 });
                 await saveAgentState(
@@ -28308,22 +28316,12 @@ export async function processOne(queueId: string) {
                   },
                   vehicleFlowCtx.agentState ?? refreshedState,
                 );
-                const confirmText = repeated || alreadyConfirmed
-                  ? ownerRepeatedVisionConfirmMessage(description, "produto")
-                  : ownerProductVisionConfirmMessage(description);
                 await sendVehicleFlowReply({
                   conversationId: conv.id,
                   userId,
                   to: row.from_number,
-                  text: withDemoModeLabel(
-                    alreadyConfirmed
-                      ? "Perfeito. O que quer fazer com esta foto?"
-                      : confirmText,
-                    verticalDecision,
-                  ),
-                  buttons: alreadyConfirmed
-                    ? generalSpecialistPhotoButtons()
-                    : ownerAutomotivePhotoConfirmButtons(),
+                  text: withDemoModeLabel(automotive.text, verticalDecision),
+                  buttons: automotiveProductPhotoButtons(),
                 });
               } else if (batchMediaRoute === "incerto") {
                 const description = repeatedVision ||
