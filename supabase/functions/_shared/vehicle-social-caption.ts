@@ -12,12 +12,70 @@ import {
 import { sanitizeLinkedInApprovalCopy } from "./linkedin-approval.ts";
 import {
   getOwnerMediaRoute,
+  ownerMediaRoutesFromRouter,
   type VerticalRouterMediaState,
 } from "./owner-media-route.ts";
 import type { InboundVertical } from "./vertical-router.ts";
 import type { VehicleIdentification } from "./vehicle-identification.ts";
 
 export const VEHICLE_SOCIAL_COPY_PENDING_TTL_MS = 30 * 60 * 1000;
+
+type VehicleIdentityContext = {
+  identification: VehicleIdentification;
+  media_ids?: string[] | null;
+  created_at?: string | null;
+};
+
+export function resolveVehicleSocialIdentification(input: {
+  ownIdentification?: VehicleIdentification | null;
+  postedMediaId: string;
+  ancestorMediaIds?: string[];
+  contexts?: Array<VehicleIdentityContext | null | undefined>;
+  verticalRouter?: VerticalRouterMediaState | null;
+  nowMs?: number;
+}): VehicleIdentification | null {
+  if (input.ownIdentification) return input.ownIdentification;
+
+  const lineage = new Set(
+    [input.postedMediaId, ...(input.ancestorMediaIds ?? [])]
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
+  const routes = ownerMediaRoutesFromRouter(input.verticalRouter);
+  const nowMs = input.nowMs ?? Date.now();
+
+  for (const context of input.contexts ?? []) {
+    if (!context?.identification) continue;
+    const contextIds = (context.media_ids ?? [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    if (contextIds.some((id) => lineage.has(id))) {
+      return context.identification;
+    }
+
+    const createdAtMs = Date.parse(String(context.created_at || ""));
+    const recent = Number.isFinite(createdAtMs) &&
+      createdAtMs <= nowMs &&
+      nowMs - createdAtMs <= VEHICLE_SOCIAL_COPY_PENDING_TTL_MS;
+    if (!recent) continue;
+
+    const hasNewerDifferentVehicle = Object.entries(routes).some(
+      ([mediaId, route]) => {
+        if (
+          route.route !== "veiculo" ||
+          lineage.has(mediaId) ||
+          contextIds.includes(mediaId)
+        ) {
+          return false;
+        }
+        const updatedAtMs = Date.parse(String(route.updated_at || ""));
+        return Number.isFinite(updatedAtMs) && updatedAtMs > createdAtMs;
+      },
+    );
+    if (!hasNewerDifferentVehicle) return context.identification;
+  }
+  return null;
+}
 
 export type VehicleSocialCaptionSources = {
   nome: string;

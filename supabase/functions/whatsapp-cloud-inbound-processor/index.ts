@@ -86,6 +86,7 @@ import {
 import {
   generateVehicleSocialPostVariants,
   looksLikeVehicleKmPrecoReply,
+  resolveVehicleSocialIdentification,
   shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
   vehicleSocialCopyCancelRequest,
@@ -11253,6 +11254,18 @@ async function toolPostarMidiaBiblioteca(
           briefing: `${briefing} ${legendaDono}`.trim(),
         },
       });
+    const vehicleSocialRoot = vehicleSocialPost
+      ? await resolveMediaEditChainRoot(
+        midia,
+        async (parentId) => {
+          const parent = await resolverMidiaBibliotecaPorId(
+            ctx.userId,
+            parentId,
+          );
+          return parent.midia;
+        },
+      )
+      : null;
     let pendingVehicleCopy = ctx.agentState?.pending_vehicle_social_copy;
     if (
       pendingVehicleCopy &&
@@ -11325,13 +11338,22 @@ async function toolPostarMidiaBiblioteca(
     const gerarOpcoes = async (redeGeracao: "facebook" | "instagram" | "linkedin") => {
       if (vehicleSocialPost && !isVideo) {
         const telLoja = await buscarTelefoneAgenteTenant(ctx.userId);
-        const storedVehicleIdentity = getOwnerMediaRoute(
-          ctx.agentState?.vertical_router,
-          String(midia.id),
-        )?.vehicle_identification ??
-          ctx.agentState?.pending_vehicle_identification?.identification ??
-          ctx.agentState?.last_vehicle_photo_context?.identification ??
-          null;
+        const storedVehicleIdentity = resolveVehicleSocialIdentification({
+          ownIdentification: getOwnerMediaRoute(
+            ctx.agentState?.vertical_router,
+            String(midia.id),
+          )?.vehicle_identification,
+          postedMediaId: String(midia.id),
+          ancestorMediaIds: [
+            String(midia.midia_pai_id || ""),
+            String(vehicleSocialRoot?.id || ""),
+          ],
+          contexts: [
+            ctx.agentState?.pending_vehicle_identification,
+            ctx.agentState?.last_vehicle_photo_context,
+          ],
+          verticalRouter: ctx.agentState?.vertical_router,
+        });
         let mergedBriefing = briefing;
         if (pendingVehicleCopy?.stage === "awaiting_fields_text") {
           mergedBriefing = [

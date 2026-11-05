@@ -20,6 +20,7 @@ import {
 import {
   generateVehicleSocialPostVariants,
   looksLikeVehicleKmPrecoReply,
+  resolveVehicleSocialIdentification,
   shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
   vehicleCaptionMissingKmOrPreco,
@@ -180,6 +181,16 @@ const BMW_G310R_VISION =
 const HONDA_PCX_VISION =
   "Foto tirada em uma loja, com logotipo da marca Honda. Honda PCX azul, 3ª/4ª Geração, scooter, emblema PCX.";
 
+const ONIX_IDENTITY = {
+  marca: "Chevrolet",
+  modelo: "Onix",
+  geracao_ou_faixa_de_anos: null,
+  cor: "Prata",
+  carroceria: "Hatch",
+  confianca: "alta" as const,
+  pistas_visuais: ["Emblema Onix"],
+};
+
 Deno.test("COPY-URGENTE — 'logotipo da marca Honda' nunca identifica Marca", () => {
   const identity = extractVehicleIdentityFromVision(HONDA_PCX_VISION);
   assertEquals(identity.marca, "Honda");
@@ -260,6 +271,87 @@ Deno.test("COPY-URGENTE — editar → Postar nas redes escolhe a última foto",
     block.indexOf("latestPhoto.midia?.id") <
       block.indexOf("vehiclePhotoAdMediaId"),
     "a última foto deve vencer o contexto antigo do veículo",
+  );
+});
+
+Deno.test("COPY-URGENTE.1 — contexto de outro carro com 2 dias não é usado", () => {
+  const nowMs = Date.now();
+  assertEquals(
+    resolveVehicleSocialIdentification({
+      postedMediaId: "foto-atual",
+      contexts: [{
+        identification: ONIX_IDENTITY,
+        media_ids: ["foto-onix-antiga"],
+        created_at: new Date(nowMs - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      }],
+      nowMs,
+    }),
+    null,
+  );
+});
+
+Deno.test("COPY-URGENTE.1 — foto editada herda identificação da foto raiz", () => {
+  const nowMs = Date.now();
+  assertEquals(
+    resolveVehicleSocialIdentification({
+      postedMediaId: "foto-editada",
+      ancestorMediaIds: ["foto-pcx-original"],
+      contexts: [{
+        identification: {
+          ...ONIX_IDENTITY,
+          marca: "Honda",
+          modelo: "PCX",
+          carroceria: "Scooter",
+        },
+        media_ids: ["foto-pcx-original"],
+        created_at: new Date(nowMs - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      }],
+      nowMs,
+    })?.modelo,
+    "PCX",
+  );
+});
+
+Deno.test("COPY-URGENTE.1 — contexto de 10 min da mesma sessão é usado", () => {
+  const nowMs = Date.now();
+  assertEquals(
+    resolveVehicleSocialIdentification({
+      postedMediaId: "foto-da-sessao",
+      contexts: [{
+        identification: ONIX_IDENTITY,
+        media_ids: ["foto-sem-vinculo-explicito"],
+        created_at: new Date(nowMs - 10 * 60 * 1000).toISOString(),
+      }],
+      nowMs,
+    })?.modelo,
+    "Onix",
+  );
+});
+
+Deno.test("COPY-URGENTE.1 — veículo mais novo bloqueia contexto recente antigo", () => {
+  const nowMs = Date.now();
+  const createdAt = new Date(nowMs - 10 * 60 * 1000).toISOString();
+  const routes = mergeOwnerMediaRoute(
+    {},
+    "foto-veiculo-mais-novo",
+    {
+      route: "veiculo",
+      origin: "visao",
+    },
+    new Date(nowMs - 5 * 60 * 1000).toISOString(),
+  );
+  assertEquals(
+    resolveVehicleSocialIdentification({
+      postedMediaId: "foto-atual",
+      contexts: [{
+        identification: ONIX_IDENTITY,
+        media_ids: ["foto-onix"],
+        created_at: createdAt,
+      }],
+      verticalRouter: { media_routes: routes },
+      nowMs,
+    }),
+    null,
   );
 });
 
