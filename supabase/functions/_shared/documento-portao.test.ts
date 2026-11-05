@@ -287,7 +287,11 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   assertEquals(fullOcr.includes("_resize_max(rgb, 1600)"), true);
   assertEquals(source.includes("_resize(image, 1400)"), true);
   assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
-  assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);
+  assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 7"), true);
+  assertEquals(
+    source.includes("DETECT_INTERNAL_DEADLINE_SECONDS = 6.5"),
+    true,
+  );
   assertEquals(source.includes("image_to_osd"), true);
   assertEquals(source.includes("oriented.rotate(90"), true);
   assertEquals(source.includes("ImageOps.autocontrast"), true);

@@ -132,7 +132,7 @@ export async function detectarDocumentoLocal(
       "X-OCR-Token": token,
     },
     body: new Uint8Array(bytes),
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) {
     throw new Error(`Detector local indisponível (${response.status})`);

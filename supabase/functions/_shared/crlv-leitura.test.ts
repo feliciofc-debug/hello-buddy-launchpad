@@ -201,6 +201,7 @@ Deno.test("OCR-FIX-2 — cliente dá margem sobre o timeout do serviço", async 
     new URL("./crlv-leitura.ts", import.meta.url),
   );
   assertEquals(source.includes("AbortSignal.timeout(45_000)"), true);
+  assertEquals(source.includes("AbortSignal.timeout(12_000)"), true);
 });
 
 Deno.test({

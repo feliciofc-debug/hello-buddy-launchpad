@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import re
 import time
 from typing import Annotated
 
@@ -23,7 +24,8 @@ from vehicle_detector import VehicleDetection, detect_vehicle
 MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 40
 OCR_INTERNAL_DEADLINE_SECONDS = 38
-DETECT_TIMEOUT_SECONDS = 8
+DETECT_TIMEOUT_SECONDS = 7
+DETECT_INTERNAL_DEADLINE_SECONDS = 6.5
 STRONG_DOCUMENT_BUDGET_SECONDS = 3
 register_heif_opener()
 
@@ -154,9 +156,9 @@ def _detect_strong_document(
 def _detect_text(
     image: Image.Image,
     deadline: float,
-) -> tuple[bool, str | None, bool]:
+) -> tuple[bool, str | None, bool, str]:
     if time.monotonic() >= deadline:
-        return False, None, True
+        return False, None, True, ""
     try:
         text = pytesseract.image_to_string(
             _preprocess(image),
@@ -166,7 +168,7 @@ def _detect_text(
         )
     except RuntimeError as exc:
         if "timeout" in str(exc).lower():
-            return False, None, True
+            return False, None, True, ""
         raise
     documento, tipo = classify_document(text)
     possivel = not documento and possible_document_text(
@@ -174,14 +176,20 @@ def _detect_text(
         _possible_document_background(image),
     )
     if not documento and not possivel and time.monotonic() >= deadline:
-        return False, None, True
-    return documento, tipo, possivel
+        return False, None, True, text
+    return documento, tipo, possivel, text
+
+
+def _has_meaningful_text(text: str) -> bool:
+    alphanumeric = re.sub(r"[^0-9A-Za-zÀ-ÿ]", "", text)
+    words = re.findall(r"[0-9A-Za-zÀ-ÿ]+", text)
+    return len(alphanumeric) >= 20 or len(words) >= 4
 
 
 def _detect_image(
     image: Image.Image,
 ) -> tuple[bool, str | None, bool, VehicleDetection]:
-    deadline = time.monotonic() + DETECT_TIMEOUT_SECONDS
+    deadline = time.monotonic() + DETECT_INTERNAL_DEADLINE_SECONDS
     image = _resize(image, 1400)
     vehicle = detect_vehicle(image)
     if vehicle.vehicle_detected:
@@ -205,7 +213,9 @@ def _detect_image(
     oriented = _osd_rotate(image) or image
     result = _detect_text(oriented, deadline)
     if result[0] or result[2]:
-        return (*result, vehicle)
+        return (*result[:3], vehicle)
+    if not _has_meaningful_text(result[3]):
+        return False, None, False, vehicle
 
     # O portão privilegia sensibilidade: se a primeira passada não encontra
     # sinal, tenta as orientações de celular e uma variante de alto contraste.
@@ -218,7 +228,7 @@ def _detect_image(
     ):
         result = _detect_text(candidate, deadline)
         if result[0] or result[2]:
-            return (*result, vehicle)
+            return (*result[:3], vehicle)
         if time.monotonic() >= deadline:
             return False, None, True, vehicle
     return False, None, False, vehicle
@@ -334,7 +344,7 @@ async def detectar(
             timeout=DETECT_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="detecção excedeu 8 segundos") from exc
+        raise HTTPException(status_code=504, detail="detecção excedeu 7 segundos") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail="não foi possível verificar o arquivo") from exc
     elapsed_ms = round((time.monotonic() - started) * 1000)

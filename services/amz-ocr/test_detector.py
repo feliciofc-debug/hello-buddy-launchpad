@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import io
+import os
+import shutil
+import time
 import unittest
 import unittest.mock
 
@@ -11,6 +15,7 @@ from detector import (
 
 try:
     from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+    from fastapi.testclient import TestClient
 
     import app as detector_app
     from vehicle_detector import VehicleDetection
@@ -258,6 +263,67 @@ class PossibleDocumentTest(unittest.TestCase):
                 detector_app._detect_image(image),
                 (False, None, True, VehicleDetection(False, 0.0)),
             )
+
+    @unittest.skipUnless(shutil.which("tesseract"), "tesseract não instalado")
+    def test_no_text_endpoint_returns_in_under_three_seconds(self) -> None:
+        image = Image.new("RGB", (900, 600), "#8b5e3c")
+        payload = io.BytesIO()
+        image.save(payload, format="JPEG")
+        with (
+            unittest.mock.patch.dict(
+                os.environ,
+                {"AMZ_OCR_TOKEN": "token-sintetico"},
+            ),
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(False, 0.0),
+            ),
+        ):
+            started = time.monotonic()
+            response = TestClient(detector_app.app).post(
+                "/detectar",
+                content=payload.getvalue(),
+                headers={
+                    "Content-Type": "image/jpeg",
+                    "X-OCR-Token": "token-sintetico",
+                },
+            )
+            elapsed = time.monotonic() - started
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["documento"])
+        self.assertFalse(response.json()["possivel_documento"])
+        self.assertLess(elapsed, 3)
+
+    def test_rotated_crlv_still_uses_orientation_fallback(self) -> None:
+        image = Image.new("RGB", (900, 600), "white")
+        with (
+            unittest.mock.patch.object(
+                detector_app,
+                "_osd_rotate",
+                return_value=image,
+            ),
+            unittest.mock.patch.object(
+                detector_app.pytesseract,
+                "image_to_string",
+                side_effect=[
+                    "texto preliminar com quatro palavras",
+                    "CERTIFICADO DE REGISTRO E LICENCIAMENTO DE VEICULO",
+                ],
+            ) as ocr,
+            unittest.mock.patch.object(
+                detector_app,
+                "detect_vehicle",
+                return_value=VehicleDetection(False, 0.0),
+            ),
+        ):
+            documento, tipo, possivel, _vehicle = detector_app._detect_image(
+                image,
+            )
+        self.assertTrue(documento)
+        self.assertEqual(tipo, "crlv")
+        self.assertFalse(possivel)
+        self.assertEqual(ocr.call_count, 2)
 
     def test_cars_under_blue_sky_and_in_dealership_yard_are_not_documents(
         self,
