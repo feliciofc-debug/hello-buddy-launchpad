@@ -18,6 +18,7 @@ import {
   generateVehicleAdCaptions as routeVehicleCaptions,
 } from "./anuncio-social-flow.ts";
 import {
+  generateVehicleSocialPostVariants,
   looksLikeVehicleKmPrecoReply,
   shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
@@ -26,6 +27,7 @@ import {
   vehicleSocialCopyPendingExpired,
 } from "./vehicle-social-caption.ts";
 import { mergeOwnerMediaRoute } from "./owner-media-route.ts";
+import { extractVehicleIdentityFromVision } from "./vehicle-social-identity.ts";
 
 const fullVehicle = {
   titulo: "JEEP RENEGADE Longitude T270 1.3 Flex",
@@ -88,7 +90,8 @@ Deno.test("COPY-ANUNCIO — fallback A/B/C traz frase de venda e dados uma vez",
 });
 
 Deno.test("COPY-ANUNCIO — compose mescla IA e remove linha só emoji", () => {
-  const raw = "🔥 SUV pronto para a estrada.\n📲\n🛣️ 15.000 km · 🎨 Preto\nMais uma linha.";
+  const raw =
+    "🔥 SUV pronto para a estrada.\n📲\n🛣️ 15.000 km · 🎨 Preto\nMais uma linha.";
   const composed = composeVehicleAdVariant(raw, rav4Like, "A");
   assertEquals(sanitizeVehicleAdLines(composed).includes("\n📲\n"), false);
   assertEquals(countOccurrences(composed, "15.000 km"), 1);
@@ -113,7 +116,10 @@ Deno.test("COPY-VEICULO — opções A/B/C trazem km, preço e contato", () => {
   for (const text of Object.values(captions)) {
     assertStringIncludes(text, "45.000 km");
     assertStringIncludes(text, "R$ 118.900");
-    assertStringIncludes(text, "📲 Chame no WhatsApp: https://wa.me/5521999998888");
+    assertStringIncludes(
+      text,
+      "📲 Chame no WhatsApp: https://wa.me/5521999998888",
+    );
     assert(text.length <= 900);
     assert(!/\bgarantia\b/i.test(text));
     assert(!/\búnico dono\b/i.test(text));
@@ -137,7 +143,9 @@ Deno.test("COPY-VEICULO — sem itens não inventa revisão/garantia/laudo", () 
     cambio: "Manual",
   }, 0);
   const text = Object.values(captions).join(" ").toLowerCase();
-  for (const term of ["garantia", "laudo", "único dono", "revisado", "baixa km"]) {
+  for (
+    const term of ["garantia", "laudo", "único dono", "revisado", "baixa km"]
+  ) {
     assert(!text.includes(term));
   }
 });
@@ -149,7 +157,10 @@ Deno.test("COPY-VEICULO — produto AMZ permanece idêntico ao gerador de produt
     preco: "R$ 49,90",
     telefone: "5592999999999",
   };
-  assertEquals(routeVehicleCaptions(data, 0, "produto"), generateProductAdCaptions(data));
+  assertEquals(
+    routeVehicleCaptions(data, 0, "produto"),
+    generateProductAdCaptions(data),
+  );
 });
 
 Deno.test("COPY-VEICULO — gate km/preço", () => {
@@ -166,6 +177,92 @@ Deno.test("COPY-VEICULO — gate km/preço", () => {
 const BMW_G310R_VISION =
   'Esta foto real de produto em uma concessionária destaca uma motocicleta naked com o logotipo da "BMW" posicionado lateralmente. A BMW G 310 R vermelha aparece com visual esportivo ideal para vitrine.';
 
+const HONDA_PCX_VISION =
+  "Foto tirada em uma loja, com logotipo da marca Honda. Honda PCX azul, 3ª/4ª Geração, scooter, emblema PCX.";
+
+Deno.test("COPY-URGENTE — 'logotipo da marca Honda' nunca identifica Marca", () => {
+  const identity = extractVehicleIdentityFromVision(HONDA_PCX_VISION);
+  assertEquals(identity.marca, "Honda");
+  assertEquals(identity.modelo, "PCX");
+  assertEquals(identity.titulo, "Honda PCX");
+  assertNotEquals(identity.marca, "Marca");
+});
+
+Deno.test("COPY-URGENTE — identificação estruturada da PCX manda na copy", () => {
+  const data = vehicleCaptionDataFromSources({
+    nome: "Conteúdo da imagem: veículo em loja",
+    descricao: HONDA_PCX_VISION,
+    vehicleIdentification: {
+      marca: "Honda",
+      modelo: "PCX",
+      geracao_ou_faixa_de_anos: "3ª/4ª Geração",
+      cor: "Azul",
+      carroceria: "Scooter",
+      confianca: "alta",
+      pistas_visuais: ["Emblema PCX"],
+    },
+  });
+  assertEquals(data.titulo, "Honda PCX");
+  assertEquals(data.tipo_veiculo, "moto");
+  const captions = generateVehicleSocialPostVariants(data, "instagram");
+  const joined = Object.values(captions).join("\n");
+  for (const caption of Object.values(captions)) {
+    assertStringIncludes(caption, "🏍️");
+    assertStringIncludes(caption, "Honda PCX");
+    assertStringIncludes(caption, "#honda");
+    assertStringIncludes(caption, "#pcx");
+    assertStringIncludes(caption, "#scooter");
+    assertEquals(caption.includes("#carros"), false);
+    assertEquals(/^\s*🎨\s*Azul\s*$/im.test(caption), false);
+  }
+  for (const forbidden of ["Marca", "presença forte", "oportunidade clara"]) {
+    assertEquals(joined.includes(forbidden), false, `copy contém ${forbidden}`);
+  }
+});
+
+Deno.test("COPY-URGENTE — foto avulsa usa IA e registra ia|fallback", async () => {
+  const processor = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const start = processor.indexOf("if (vehicleSocialPost && !isVideo)");
+  const end = processor.indexOf(
+    "let options = await gerarTresOpcoesRedeSocial",
+    start,
+  );
+  const block = processor.slice(start, end);
+  assertStringIncludes(block, "vehicleIdentification");
+  assertStringIncludes(block, "gerarTresOpcoesRedeSocial");
+  assertStringIncludes(block, "composeVehicleSocialVariant");
+  assertStringIncludes(block, "[vehicle_social_copy] path=");
+});
+
+Deno.test("COPY-URGENTE — publicação implícita não fixa ID antigo do estado", async () => {
+  const processor = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const start = processor.indexOf("async function resolverMidiaParaPublicacao");
+  const end = processor.indexOf("async function", start + 20);
+  const block = processor.slice(start, end);
+  assertStringIncludes(block, "resolveUltimaMidia");
+  assertEquals(block.includes("String(input.midiaId"), false);
+});
+
+Deno.test("COPY-URGENTE — editar → Postar nas redes escolhe a última foto", async () => {
+  const processor = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const start = processor.indexOf('if (vehiclePhotoAction === "post")');
+  const end = processor.indexOf('if (vehiclePhotoAction === "fipe")', start);
+  const block = processor.slice(start, end);
+  assertStringIncludes(block, "resolveUltimaMidia");
+  assertStringIncludes(block, '"foto_conversa"');
+  assert(
+    block.indexOf("latestPhoto.midia?.id") <
+      block.indexOf("vehiclePhotoAdMediaId"),
+    "a última foto deve vencer o contexto antigo do veículo",
+  );
+});
+
 Deno.test("AJUSTES-04/11.1 — descrição da foto não vaza para legenda nem hashtags", () => {
   const nome = BMW_G310R_VISION.slice(0, 120);
   const data = vehicleCaptionDataFromSources({
@@ -175,14 +272,16 @@ Deno.test("AJUSTES-04/11.1 — descrição da foto não vaza para legenda nem ha
   });
   const captions = generateVehicleAdCaptions(data, 0);
   const joined = Object.values(captions).join("\n").toLowerCase();
-  for (const forbidden of [
-    "foto real",
-    "concessionária destaca",
-    "concessionaria destaca",
-    "logotipo",
-    "conteúdo da imagem",
-    " carro",
-  ]) {
+  for (
+    const forbidden of [
+      "foto real",
+      "concessionária destaca",
+      "concessionaria destaca",
+      "logotipo",
+      "conteúdo da imagem",
+      " carro",
+    ]
+  ) {
     assert(!joined.includes(forbidden), `vazou: ${forbidden}`);
   }
   for (const tag of ["#esta", "#foto", "#real", "#produto"]) {
@@ -195,7 +294,9 @@ Deno.test("AJUSTES-04/11.1 — descrição da foto não vaza para legenda nem ha
     assertStringIncludes(caption, "#bmw");
   }
   assert(
-    /(pilotar|liberdade|estrada|duas rodas|pegada|motocicleta|moto)/i.test(joined),
+    /(pilotar|liberdade|estrada|duas rodas|pegada|motocicleta|moto)/i.test(
+      joined,
+    ),
     "copy de moto ausente",
   );
   assertNotEquals(captions.A, captions.B);
@@ -228,7 +329,10 @@ Deno.test("AJUSTES-04/11 — foto original sem km/preço gera A/B/C e não acion
   const originalPhotoFlow = processor.slice(start, end);
   assert(start >= 0 && end > start);
   assertEquals(originalPhotoFlow.includes("vehicle_social_copy_gate"), false);
-  assertEquals(originalPhotoFlow.includes("vehicleCaptionMissingKmOrPreco"), false);
+  assertEquals(
+    originalPhotoFlow.includes("vehicleCaptionMissingKmOrPreco"),
+    false,
+  );
 });
 
 Deno.test("COPY-VEICULO-1.1 — tapete confirmado geral ignora palavra carro na descrição", () => {

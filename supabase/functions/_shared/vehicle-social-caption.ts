@@ -1,5 +1,8 @@
-import { parseVehicleCarouselData, type VehicleCarouselData } from "./vehicle-carousel.ts";
-import { generateVehicleAdCaptions } from "./anuncio-veiculo-captions.ts";
+import {
+  parseVehicleCarouselData,
+  type VehicleCarouselData,
+} from "./vehicle-carousel.ts";
+import { composeVehicleSocialVariant } from "./anuncio-veiculo-captions.ts";
 import {
   extractVehicleIdentityFromVision,
   resolveVehicleSocialTitle,
@@ -12,6 +15,7 @@ import {
   type VerticalRouterMediaState,
 } from "./owner-media-route.ts";
 import type { InboundVertical } from "./vertical-router.ts";
+import type { VehicleIdentification } from "./vehicle-identification.ts";
 
 export const VEHICLE_SOCIAL_COPY_PENDING_TTL_MS = 30 * 60 * 1000;
 
@@ -22,6 +26,7 @@ export type VehicleSocialCaptionSources = {
   precoNum?: number | null;
   telefone?: string | null;
   cidade?: string | null;
+  vehicleIdentification?: VehicleIdentification | null;
 };
 
 export function vehicleCaptionDataFromSources(
@@ -37,24 +42,59 @@ export function vehicleCaptionDataFromSources(
     descricao: input.descricao,
   });
   const identity = extractVehicleIdentityFromVision(visionBlob);
+  const structured = input.vehicleIdentification?.confianca !== "baixa"
+    ? input.vehicleIdentification
+    : null;
+  const structuredBrand = structured?.marca &&
+      !/^(marca|modelo|ve[ií]culo|carro|moto|logotipo|emblema)$/i.test(
+        structured.marca,
+      )
+    ? structured.marca
+    : null;
+  const structuredModel = structured?.modelo &&
+      !/^(marca|modelo|ve[ií]culo|carro|moto|logotipo|emblema)$/i.test(
+        structured.modelo,
+      )
+    ? structured.modelo
+    : null;
+  const structuredKind = /\bscooter\b/i.test(structured?.carroceria || "")
+    ? "Scooter"
+    : /\b(moto|motocic)/i.test(structured?.carroceria || "")
+    ? "Moto"
+    : "Carro";
+  const structuredTitle = structuredBrand && structuredModel
+    ? `${structuredBrand} ${structuredModel}`
+    : structuredBrand
+    ? `${structuredKind} ${structuredBrand}`
+    : structured
+    ? structuredKind
+    : "";
   const titulo = resolveVehicleSocialTitle({
     nome: input.nome,
     descricao: input.descricao,
     briefing: input.briefing,
-    parsedTitulo: parsed.titulo,
+    parsedTitulo: structuredTitle || parsed.titulo,
   });
   const data: Record<string, unknown> = {
-    titulo,
     ...parsed,
-    ...(identity.marca ? { marca: identity.marca } : {}),
-    ...(identity.modelo ? { modelo: identity.modelo } : {}),
-    ...(identity.cor && !parsed.cor ? { cor: identity.cor } : {}),
+    titulo,
+    ...((structuredBrand || identity.marca)
+      ? { marca: structuredBrand || identity.marca }
+      : {}),
+    ...((structuredModel || identity.modelo)
+      ? { modelo: structuredModel || identity.modelo }
+      : {}),
+    ...((structured?.geracao_ou_faixa_de_anos)
+      ? { geracao_ou_faixa_de_anos: structured.geracao_ou_faixa_de_anos }
+      : {}),
+    ...((structured?.carroceria) ? { carroceria: structured.carroceria } : {}),
+    ...((structured?.cor || identity.cor) && !parsed.cor
+      ? { cor: structured?.cor || identity.cor }
+      : {}),
     _vision_blob: visionBlob,
   };
   if (input.precoNum && !Number.isNaN(input.precoNum) && !data.preco) {
-    data.preco = `R$ ${
-      Number(input.precoNum).toFixed(2).replace(".", ",")
-    }`;
+    data.preco = `R$ ${Number(input.precoNum).toFixed(2).replace(".", ",")}`;
   }
   if (input.telefone) {
     data.telefone = input.telefone;
@@ -66,7 +106,12 @@ export function vehicleCaptionDataFromSources(
     data.combustivel = parsed.motor;
   }
   const typeBlob = `${visionBlob}\n${ownerBlob}`;
-  if (identity.tipo_veiculo === "moto" || /\b(moto|motocicleta|motociclo)\b/i.test(typeBlob)) {
+  if (
+    identity.tipo_veiculo === "moto" ||
+    /\b(moto|motocicleta|motociclo|scooter)\b/i.test(
+      `${structured?.carroceria || ""}\n${typeBlob}`,
+    )
+  ) {
     data.tipo_veiculo = "moto";
   }
   return data;
@@ -88,7 +133,14 @@ export function generateVehicleSocialPostVariants(
   rede: "facebook" | "instagram" | "linkedin",
   variation = 0,
 ): { A: string; B: string; C: string } {
-  const captions = generateVehicleAdCaptions(data, variation);
+  const offset = Math.abs(variation) % 3;
+  const styles: Array<"A" | "B" | "C"> = ["A", "B", "C"];
+  const rotated = [...styles.slice(offset), ...styles.slice(0, offset)];
+  const captions = {
+    A: composeVehicleSocialVariant("", data, rotated[0]),
+    B: composeVehicleSocialVariant("", data, rotated[1]),
+    C: composeVehicleSocialVariant("", data, rotated[2]),
+  };
   if (rede !== "linkedin") return captions;
   return {
     A: sanitizeLinkedInApprovalCopy(captions.A),
@@ -112,7 +164,7 @@ export function isVehicleSocialLibraryContext(input: {
   briefing: string;
 }): boolean {
   const combined = `${input.nome} ${input.descricaoVisual} ${input.briefing}`;
-  return /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|suv|hatch|sedan|c[aâ]mbio|jeep|renegade|corolla|civic|onix|hb20|compass|tracker|hilux|km\b|quilometragem)\b/i
+  return /\b(ve[ií]culo|carro|autom[oó]vel|moto|motocicleta|scooter|seminovo|suv|hatch|sedan|c[aâ]mbio|jeep|honda|yamaha|renegade|corolla|civic|onix|hb20|compass|tracker|hilux|pcx|biz|pop|nmax|xmax|burgman|lead|km\b|quilometragem)\b/i
     .test(combined);
 }
 
@@ -155,7 +207,9 @@ function normalizePendingText(text: string): string {
 export function vehicleSocialCopyCancelRequest(text: string): boolean {
   const n = normalizePendingText(text);
   if (!n) return false;
-  return /^(cancelar|cancela|deixa|deixar|esquece|para|parar|cancel)$/.test(n) ||
+  return /^(cancelar|cancela|deixa|deixar|esquece|para|parar|cancel)$/.test(
+    n,
+  ) ||
     /\b(cancelar|deixa pra l[aá]|esquece isso)\b/.test(n);
 }
 

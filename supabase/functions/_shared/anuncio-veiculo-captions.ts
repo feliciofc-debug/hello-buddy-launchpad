@@ -19,8 +19,7 @@ const VEHICLE_CAPTION_LIMIT = 900;
 const FORBIDDEN_INFERENCE =
   /\b(u[nú]nico\s+dono|revisad[oa]|garantia|laudo|sem\s+detalhes|baixa\s+km|impec[aá]vel|zero\s+defeitos)\b/i;
 
-const LONE_EMOJI_LINE =
-  /^[\s📲📱🚗🏍️🛣️🎨💰📅⛽⚙️👉]+$/u;
+const LONE_EMOJI_LINE = /^[\s📲📱🚗🏍️🛣️🎨💰📅⛽⚙️👉]+$/u;
 
 export function cleanVehicleTitle(data: Record<string, unknown>): string {
   let title = String(data.titulo || "").trim();
@@ -75,6 +74,8 @@ export function vehicleDataLine(data: Record<string, unknown>): string {
   if (km) bits.push(`🛣️ ${km}`);
   if (cor) bits.push(`🎨 ${cor}`);
   if (price) bits.push(`💰 ${price}`);
+  // Cor deve aparecer integrada à narrativa, nunca sozinha como "🎨 Azul".
+  if (bits.length === 1 && cor) return "";
   return bits.join(" · ");
 }
 
@@ -83,6 +84,14 @@ function buildHashtags(data: Record<string, unknown>): string {
   const tags = new Set<string>(
     motorcycle ? ["seminovas", "motos"] : ["seminovos", "carros"],
   );
+  if (
+    motorcycle &&
+    /\bscooter\b/i.test(
+      `${data.carroceria || ""} ${data.tipo || ""} ${data.tipo_veiculo || ""}`,
+    )
+  ) {
+    tags.add("scooter");
+  }
   const marca = String(data.marca || "").trim();
   const modelo = String(data.modelo || "").trim();
   for (const tag of vehicleBrandHashtags(marca, motorcycle)) tags.add(tag);
@@ -93,13 +102,20 @@ function buildHashtags(data: Record<string, unknown>): string {
     /[^a-z0-9 ]/g,
     " ",
   );
-  for (const word of title.split(/\s+/).filter(filterVehicleHashtagToken).slice(0, 3)) {
+  for (
+    const word of title.split(/\s+/).filter(filterVehicleHashtagToken).slice(
+      0,
+      3,
+    )
+  ) {
     tags.add(word.replace(/[^a-z0-9]/g, ""));
   }
   const cidade = String(data.cidade || data.cidade_loja || "").trim();
   if (cidade) {
     const cityTag = normalizeCaptionText(cidade).replace(/[^a-z0-9]/g, "");
-    if (cityTag.length >= 3 && filterVehicleHashtagToken(cityTag)) tags.add(cityTag);
+    if (cityTag.length >= 3 && filterVehicleHashtagToken(cityTag)) {
+      tags.add(cityTag);
+    }
   }
   return [...tags].slice(0, 8).map((tag) => `#${tag}`).join(" ");
 }
@@ -144,7 +160,10 @@ export function stripDuplicateVehicleFacts(
     .filter((line) => {
       const norm = normalizeFact(line);
       if (!norm) return false;
-      if (norm === title || norm.includes(`🚗 ${title}`) || norm.includes(`🏍️ ${title}`)) {
+      if (
+        norm === title || norm.includes(`🚗 ${title}`) ||
+        norm.includes(`🏍️ ${title}`)
+      ) {
         return false;
       }
       const kmHits = km && norm.includes(km) &&
@@ -202,33 +221,37 @@ export function vehicleAnuncioFactsForAi(
   return out;
 }
 
-export function vehicleAnuncioAiBriefing(data: Record<string, unknown>): string {
+export function vehicleAnuncioAiBriefing(
+  data: Record<string, unknown>,
+): string {
   const facts = vehicleAnuncioFactsForAi(data);
   return [
     "Use SOMENTE os dados JSON abaixo sobre o veículo.",
     "Não invente opcionais, revisão, garantia, laudo, financiamento ou preço.",
-    "Não escreva telefone, wa.me, link de WhatsApp nem bloco de hashtags — o servidor adiciona.",
+    "Não escreva CTA, telefone, wa.me, link de WhatsApp nem bloco de hashtags — o servidor adiciona.",
     "Escreva só o corpo persuasivo (2 a 3 frases) no estilo pedido; sem repetir km, cor e preço em linha separada.",
     `Dados: ${JSON.stringify(facts)}`,
   ].join(" ");
 }
 
-function styleCta(style: "A" | "B" | "C", data: Record<string, unknown>): string {
+function styleCta(
+  style: "A" | "B" | "C",
+  data: Record<string, unknown>,
+): string {
   const title = cleanVehicleTitle(data);
   const motorcycle = isMotorcycleVehicle(data);
+  const reference = motorcycle ? `a ${title}` : `o ${title}`;
   if (style === "A") {
-    return motorcycle
-      ? `👉 Quer sentir a pegada do ${title}? Chame no WhatsApp e agende um test ride.`
-      : `👉 Quer ver o ${title} de perto? Chame no WhatsApp e agende sua visita.`;
+    return `👉 Quer ver ${reference} de perto? Vem conhecer e sentir a diferença.`;
   }
   if (style === "B") {
     return motorcycle
-      ? `🛣️ Vem conhecer o ${title} pessoalmente — a estrada começa na loja.`
-      : `☕ Vem conhecer o ${title} pessoalmente — a experiência ao vivo faz diferença.`;
+      ? `Vem conhecer a ${title} pessoalmente e imaginar seu próximo caminho.`
+      : `Vem conhecer o ${title} pessoalmente — a experiência ao vivo faz diferença.`;
   }
   return motorcycle
-    ? `💬 Curioso para pilotar o ${title}? Me chama no WhatsApp e marcamos um horário.`
-    : `💬 Curioso para sentir o ${title}? Me chama no WhatsApp e marcamos um horário.`;
+    ? `💬 Curioso para pilotar a ${title}? Vem conhecer e marcamos um horário.`
+    : `💬 Curioso para sentir o ${title}? Vem conhecer e marcamos um horário.`;
 }
 
 function fallbackSalesParagraphs(
@@ -236,8 +259,19 @@ function fallbackSalesParagraphs(
   data: Record<string, unknown>,
 ): string {
   const title = cleanVehicleTitle(data);
-  const km = String(data.quilometragem || data.km || "").trim();
   const motorcycle = isMotorcycleVehicle(data);
+  const scooter = /\bscooter\b|\b(pcx|biz|pop|nmax|xmax|burgman|lead|elite)\b/i
+    .test(
+      `${data.carroceria || ""} ${data.tipo || ""} ${
+        data.modelo || ""
+      } ${title}`,
+    );
+  const color = String(data.cor || "").trim();
+  const colorPhrase = color
+    ? motorcycle
+      ? ` De ${color.toLowerCase()}, ela chama atenção em cada esquina.`
+      : ` Em ${color.toLowerCase()}, ele ganha ainda mais personalidade.`
+    : "";
   const items = informedItems(data).slice(0, 2);
   const itemHint = items.length
     ? ` Destaque informado: ${items.join(" e ")}.`
@@ -245,45 +279,47 @@ function fallbackSalesParagraphs(
   if (style === "A") {
     return motorcycle
       ? [
-        `${title} com postura esportiva e presença de vitrine — pronta para despertar vontade de pilotar.`,
-        km
-          ? `Km informado na ficha: dá para ir direto ao ponto e marcar um test ride.${itemHint}`
-          : `Uma escolha direta para quem quer sentir liberdade sobre duas rodas.${itemHint}`,
+        scooter
+          ? `Trânsito parado? A ${title} transforma a rotina em movimento. 🏍️`
+          : `A vontade de pilotar começa antes mesmo de ligar a ${title}. 🏍️`,
+        `${
+          scooter
+            ? "Praticidade urbana e estilo para deixar o caminho mais leve."
+            : "Liberdade e estilo para aproveitar cada caminho."
+        }${colorPhrase}${itemHint}`,
       ].join(" ")
       : [
-        `O ${title} aparece com presença forte — ideal para quem busca estilo e conforto no volante.`,
-        km
-          ? `É uma escolha objetiva para sair do papo e ir direto à visita.${itemHint}`
-          : `Uma oportunidade clara para conhecer o veículo antes de decidir.${itemHint}`,
+        `Já imaginou o ${title} fazendo parte da sua rotina? 🚗`,
+        `Estilo e uma experiência ao volante que convidam a seguir caminho.${colorPhrase}${itemHint}`,
       ].join(" ");
   }
   if (style === "B") {
     return motorcycle
       ? [
-        `Imagine acelerar na estrada com o ${title} — vento na cara e sensação de liberdade.`,
-        km
-          ? `Cada km conta uma história; o próximo trecho pode ser seu.${itemHint}`
-          : `Duas rodas, estilo marcante e aquele clima de conquista a cada curva.${itemHint}`,
+        `Você sai de casa, encontra a ${title} e o trajeto já parece outro. 🏍️`,
+        `${
+          scooter
+            ? "A cidade vira parte do passeio, com praticidade e liberdade para seguir no seu ritmo."
+            : "Cada curva traz liberdade e aquela sensação que só duas rodas entregam."
+        }${colorPhrase}${itemHint}`,
       ].join(" ")
       : [
-        `Imagine receber visitas na loja e ver o ${title} como protagonista na vitrine.`,
-        km
-          ? `História rodada com transparência — pronta para o próximo capítulo.${itemHint}`
-          : `Cada detalhe conta quando você escolhe com calma e vê o veículo ao vivo.${itemHint}`,
+        `Você abre a porta, assume o volante do ${title} e o destino ganha outro clima. 🚗`,
+        `Conforto, estilo e vontade de aproveitar o caminho.${colorPhrase}${itemHint}`,
       ].join(" ");
   }
   return motorcycle
     ? [
-      `Procura uma moto como o ${title} para transformar o trajeto em prazer?`,
-      km
-        ? `Compare com calma: o que importa é sentir a pegada e a postura na pilotagem.${itemHint}`
-        : `O próximo passo é simples: conhecer de perto e sentir se combina com seu estilo.${itemHint}`,
+      `Qual caminho você faria primeiro com a ${title}? 🏍️`,
+      `${
+        scooter
+          ? "Ela combina praticidade para a rotina com liberdade para mudar de rota."
+          : "Ela convida a sentir a estrada, as curvas e a liberdade de pilotar."
+      }${colorPhrase}${itemHint}`,
     ].join(" ")
     : [
-      `Procura um ${title} que combine estilo e praticidade para o dia a dia?`,
-      km
-        ? `Dá para comparar com tranquilidade: o que importa é sentir o carro pessoalmente.${itemHint}`
-        : `O próximo passo é simples: conhecer de perto e tirar suas dúvidas na hora.${itemHint}`,
+      `Para onde você iria primeiro com o ${title}? 🚗`,
+      `Uma combinação de estilo e praticidade para viver o caminho do seu jeito.${colorPhrase}${itemHint}`,
     ].join(" ");
 }
 
@@ -297,6 +333,7 @@ export function composeVehicleAdVariant(
   rawCopy: string,
   data: Record<string, unknown>,
   style: "A" | "B" | "C",
+  options: { hookFirst?: boolean } = {},
 ): string {
   let narrative = stripDuplicateVehicleFacts(
     sanitizeVehicleAdLines(rawCopy),
@@ -306,12 +343,25 @@ export function composeVehicleAdVariant(
   if (narrative.length < 40 || isVehicleAdNarrativeLeak(narrative)) {
     narrative = fallbackSalesParagraphs(style, data);
   }
-  const title = `${vehicleLeadEmoji(data)} ${cleanVehicleTitle(data)}`;
-  const dataLine = vehicleDataLine(data);
+  const title = options.hookFirst
+    ? ""
+    : `${vehicleLeadEmoji(data)} ${cleanVehicleTitle(data)}`;
+  // A cor pertence à frase de desejo; a ficha compacta fica só com fatos
+  // objetivos para não repetir nem criar a linha isolada "🎨 Azul".
+  const dataLine = vehicleDataLine({ ...data, cor: "" });
   const cta = styleCta(style, data);
   const tags = buildHashtags(data);
   const contact = vehicleContactLine(data);
   return assemble([title, narrative, dataLine, cta, tags, contact]);
+}
+
+/** Copy de foto avulsa: a primeira linha é o gancho, não uma ficha/título. */
+export function composeVehicleSocialVariant(
+  rawCopy: string,
+  data: Record<string, unknown>,
+  style: "A" | "B" | "C",
+): string {
+  return composeVehicleAdVariant(rawCopy, data, style, { hookFirst: true });
 }
 
 export function generateVehicleAdCaptions(

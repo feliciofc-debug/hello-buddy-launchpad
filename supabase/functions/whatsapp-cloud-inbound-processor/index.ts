@@ -731,6 +731,7 @@ import {
 import {
   cleanVehicleTitle,
   composeVehicleAdVariant,
+  composeVehicleSocialVariant,
   vehicleAnuncioAiBriefing,
   vehicleAnuncioFactsForAi,
 } from "../_shared/anuncio-veiculo-captions.ts";
@@ -6815,6 +6816,7 @@ async function gerarTresOpcoesRedeSocial(
   brandContext?: string,
   briefing?: string,
   niche: ContentNiche = "produto",
+  onPath?: (path: "ia" | "fallback") => void,
 ): Promise<{ A: string; B: string; C: string }> {
   const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
@@ -6829,7 +6831,9 @@ async function gerarTresOpcoesRedeSocial(
   const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
   const limite = 600; // ← curto e engajador, como a plataforma
   const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
-  const ctaBase = rede === "linkedin"
+  const ctaBase = niche === "veiculo"
+    ? "Não escreva CTA, telefone, link ou hashtags; o servidor acrescenta o convite pessoal e as hashtags."
+    : rede === "linkedin"
     ? temLink
       ? `Coloque o link "${produto.link}" no fim, imediatamente antes das hashtags.`
       : "Conclua o raciocínio de forma profissional, sem inventar link nem pedir comentário artificial."
@@ -6855,14 +6859,15 @@ async function gerarTresOpcoesRedeSocial(
   const ehVeiculo = niche === "veiculo"
     ? `
 ========================================
-🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
-- O PROTAGONISTA É O CARRO. Nunca o dono da loja, nunca o cliente, nunca a AMZ.
-- PROIBIDO citar nome de pessoa (ex: "Felicio", "João"), tratar o leitor pelo nome ou escrever "seu Honda Civic", "seu carro" como se ele já fosse dele. O carro está À VENDA para um novo dono.
-- GLAMOUR: descreva o veículo com desejo e sofisticação — design, presença, conservação, procedência, conforto, performance, detalhes (rodas, iluminação, acabamento, interior impecável).
-- PERSUASÃO: crie desejo real e sensação de oportunidade honesta ("carro assim não fica parado", "raridade nesse estado") — sem inventar estoque ou prazo.
-- Use os dados técnicos informados (ano/modelo, km, câmbio, único dono, chaves, revisões, preço se houver) como PROVA de qualidade, em bullets curtos.
-- CTA OBRIGATÓRIO EM CONVITE PRESENCIAL: convide para conhecer de perto — test-drive, visita à loja, "vem tomar um café com a gente e conhecer esse carro de perto", agendar horário pelo WhatsApp/direct.
-- Linguagem de vitrine automotiva premium, frases curtas, sem clichê batido ("imperdível!!!").
+🏍️🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
+- O protagonista é o veículo identificado. Moto/scooter usa feminino ("a Honda PCX"); carro usa masculino.
+- Primeira linha: gancho forte, com pergunta, provocação ou imagem mental. A, B e C devem começar de formas diferentes.
+- Depois do gancho, escreva 2 ou 3 frases sensoriais e de desejo sobre praticidade, liberdade, estilo e a sensação de pilotar/dirigir.
+- A = direta; B = história em segunda pessoa; C = interativa, com pergunta ao leitor.
+- Integre a cor em uma frase. Nunca crie uma linha solta como "🎨 Azul".
+- Não invente preço, km, ano, opcionais, conservação, procedência, economia ou dados técnicos.
+- Não escreva o convite final; o servidor acrescenta um CTA pessoal. Use no máximo 3 emojis no corpo.
+- Use 🏍️ para moto/scooter e 🚗 para carro. Não escreva hashtags; o servidor adiciona marca/modelo/tipo.
 ========================================\n`
     : "";
 
@@ -6980,12 +6985,16 @@ Responda APENAS com JSON válido nesta forma exata:
   for (let i = 0; i < 2; i++) {
     try {
       const r = await tentativa();
-      if (r) return r;
+      if (r) {
+        onPath?.("ia");
+        return r;
+      }
       console.warn(`[postar_redes] tentativa ${i + 1} sem copy válida`);
     } catch (e) {
       console.error(`[postar_redes] tentativa ${i + 1} falhou:`, e);
     }
   }
+  onPath?.("fallback");
   return fallback();
 }
 
@@ -10793,9 +10802,10 @@ async function resolverMidiaParaPublicacao(
       ? midia?.tipo === "foto"
       : midia?.tipo === "foto" || midia?.tipo === "video";
 
-  const explicitId = extrairIdentificadorMidia(pedidoOriginal) ||
-    String(input.midiaId || "").trim() ||
-    null;
+  // IDs carregados por botões/estado podem apontar para a foto anterior à edição.
+  // Só um ID escrito pelo próprio dono fixa uma mídia; nos demais casos vale a
+  // última foto/vídeo da conversa.
+  const explicitId = extrairIdentificadorMidia(pedidoOriginal) || null;
   const selectedExplicitId = selectPublicationMediaId({ explicitId });
   if (selectedExplicitId) {
     return await resolverMidiaBibliotecaPorId(ctx.userId, selectedExplicitId);
@@ -11315,6 +11325,13 @@ async function toolPostarMidiaBiblioteca(
     const gerarOpcoes = async (redeGeracao: "facebook" | "instagram" | "linkedin") => {
       if (vehicleSocialPost && !isVideo) {
         const telLoja = await buscarTelefoneAgenteTenant(ctx.userId);
+        const storedVehicleIdentity = getOwnerMediaRoute(
+          ctx.agentState?.vertical_router,
+          String(midia.id),
+        )?.vehicle_identification ??
+          ctx.agentState?.pending_vehicle_identification?.identification ??
+          ctx.agentState?.last_vehicle_photo_context?.identification ??
+          null;
         let mergedBriefing = briefing;
         if (pendingVehicleCopy?.stage === "awaiting_fields_text") {
           mergedBriefing = [
@@ -11328,8 +11345,45 @@ async function toolPostarMidiaBiblioteca(
           briefing: mergedBriefing,
           precoNum: precoNum && !isNaN(precoNum) ? precoNum : null,
           telefone: telLoja || undefined,
+          vehicleIdentification: storedVehicleIdentity,
         });
-        return generateVehicleSocialPostVariants(captionData, redeGeracao, 0);
+        let copyPath: "ia" | "fallback" = "fallback";
+        const generated = await gerarTresOpcoesRedeSocial(
+          {
+            nome: cleanVehicleTitle(captionData),
+            descricao: JSON.stringify(vehicleAnuncioFactsForAi(captionData)),
+            source: "vehicle_social_library",
+          },
+          "beneficio",
+          redeGeracao,
+          undefined,
+          undefined,
+          vehicleAnuncioAiBriefing(captionData),
+          "veiculo",
+          (path) => {
+            copyPath = path;
+          },
+        );
+        console.log(`[vehicle_social_copy] path=${copyPath}`);
+        if (copyPath === "fallback") {
+          return generateVehicleSocialPostVariants(
+            captionData,
+            redeGeracao,
+            0,
+          );
+        }
+        const composed = {
+          A: composeVehicleSocialVariant(generated.A, captionData, "A"),
+          B: composeVehicleSocialVariant(generated.B, captionData, "B"),
+          C: composeVehicleSocialVariant(generated.C, captionData, "C"),
+        };
+        return redeGeracao === "linkedin"
+          ? {
+            A: sanitizeLinkedInApprovalCopy(composed.A),
+            B: sanitizeLinkedInApprovalCopy(composed.B),
+            C: sanitizeLinkedInApprovalCopy(composed.C),
+          }
+          : composed;
       }
       let options = await gerarTresOpcoesRedeSocial(
         produtoLike,
@@ -16583,7 +16637,7 @@ async function toolCriarAnuncio(
     ).trim();
     const latestCreateMedia = explicitAnuncioMediaId
       ? await resolverMidiaBibliotecaPorId(ctx.userId, explicitAnuncioMediaId)
-      : await resolveUltimaMidia(ctx, "foto_usuario");
+      : await resolveUltimaMidia(ctx, "foto_conversa");
     const anuncioMediaId = String(
       explicitAnuncioMediaId || latestCreateMedia.midia?.id || "",
     ).trim();
@@ -18148,14 +18202,6 @@ async function callGemini(
       const patch: AgentConvState = {
         pending_vehicle_identification: next,
         ...(next ? { last_vehicle_photo_context: next } : {}),
-        ...(next?.media_ids?.[0]
-          ? {
-            last_media_interaction: {
-              media_id: next.media_ids[0],
-              at: next.created_at,
-            },
-          }
-          : {}),
       };
       if (next && toolCtx.agentState) {
         let routes = ownerMediaRoutesFromRouter(
@@ -18387,7 +18433,7 @@ async function callGemini(
       userContent,
     );
     if (remetenteEhDono && vehicleBrandPositionAction) {
-      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_usuario");
+      const latestPhoto = await resolveUltimaMidia(toolCtx, "foto_conversa");
       const mediaId = String(latestPhoto.midia?.id || "");
       if (!mediaId) {
         return { text: vehicleInteractiveMissingPhotoReply() };
@@ -19023,8 +19069,12 @@ async function callGemini(
       const pendingAfter = toolCtx.agentState?.pending_vehicle_identification ??
         pendingVehicleIdentification;
       if (vehiclePhotoAction === "post") {
+        const latestPhoto = await resolveUltimaMidia(
+          toolCtx,
+          "foto_conversa",
+        );
         const mediaId = String(
-          pendingAfter.media_ids?.[0] ||
+          latestPhoto.midia?.id ||
             vehiclePhotoAdMediaId(toolCtx.agentState),
         ).trim();
         if (!mediaId) {
@@ -19105,7 +19155,13 @@ async function callGemini(
       if (syntheticPostFipe) {
         const pendingId = pendingAfter;
         if (syntheticPostFipe === "ad") {
-          const mediaId = String(pendingId.media_ids?.[0] || "").trim();
+          const latestPhoto = await resolveUltimaMidia(
+            toolCtx,
+            "foto_conversa",
+          );
+          const mediaId = String(
+            latestPhoto.midia?.id || pendingId.media_ids?.[0] || "",
+          ).trim();
           const data = pendingId?.data ?? {};
           const titulo = String(
             pendingId?.confirmed_title || data.titulo || "",
@@ -19790,15 +19846,58 @@ async function callGemini(
         if (parsed?.midia_id) {
           await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
         }
+        const sourceRoute = isVehicleMedia
+          ? getOwnerMediaRoute(
+            toolCtx.agentState?.vertical_router,
+            String(resolved.midia.id),
+          ) ?? getOwnerMediaRoute(
+            toolCtx.agentState?.vertical_router,
+            String(originalRoot.id),
+          )
+          : null;
+        const nextVerticalRouter = parsed?.midia_id && sourceRoute
+          ? {
+            ...(toolCtx.agentState?.vertical_router ?? {}),
+            media_routes: mergeOwnerMediaRoute(
+              ownerMediaRoutesFromRouter(
+                toolCtx.agentState?.vertical_router,
+              ),
+              String(parsed.midia_id),
+              {
+                route: "veiculo",
+                origin: sourceRoute.origin,
+                vision_description: sourceRoute.vision_description,
+                vehicle_identification: sourceRoute.vehicle_identification,
+                vehicle_media_ids: [
+                  ...new Set([
+                    ...(sourceRoute.vehicle_media_ids ?? []),
+                    String(originalRoot.id),
+                    String(parsed.midia_id),
+                  ]),
+                ],
+                confirmed: sourceRoute.confirmed,
+              },
+            ),
+            updated_at: new Date().toISOString(),
+          }
+          : null;
         if (toolCtx.convId) {
           await saveAgentState(sb, {
             id: toolCtx.convId,
             userId: toolCtx.userId,
             contactNumber: toolCtx.fromNumber,
-          }, { pending_image_adjustment: null }, toolCtx.agentState ?? {});
+          }, {
+            pending_image_adjustment: null,
+            ...(nextVerticalRouter
+              ? { vertical_router: nextVerticalRouter }
+              : {}),
+          }, toolCtx.agentState ?? {});
         }
         if (toolCtx.agentState) {
           toolCtx.agentState.pending_image_adjustment = null;
+          if (nextVerticalRouter) {
+            toolCtx.agentState.vertical_router = nextVerticalRouter;
+          }
         }
         const notice = editPlan.logoMode === "object"
           ? ` ${LOGO_PRODUCT_SIMULATION_NOTICE}`
@@ -19845,7 +19944,7 @@ async function callGemini(
       ) {
         const latestPhoto = await resolveUltimaMidia(
           toolCtx,
-          "foto_usuario",
+          "foto_conversa",
         );
         const brandMediaId = String(
           latestPhoto.midia?.id || readyMediaAction.mediaId,
