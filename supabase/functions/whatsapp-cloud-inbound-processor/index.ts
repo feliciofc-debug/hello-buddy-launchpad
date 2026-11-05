@@ -196,6 +196,15 @@ function getTenantOwnersForCtx(userId: string): string[] {
   return _tenantOwners.get(userId) ?? [];
 }
 
+function warnDocumentGateFailure(etapa: string, error: unknown): void {
+  const cause = error as { name?: unknown; message?: unknown } | null;
+  console.warn("[portao] falha", {
+    etapa,
+    erro: String(cause?.name || "Error"),
+    msg: String(cause?.message ?? error).slice(0, 160),
+  });
+}
+
 import { downloadAllMediaDetailed, type MediaExtract, type MediaRejection } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 import {
@@ -26549,9 +26558,14 @@ export async function processOne(queueId: string) {
           fromIsOwner: false,
           media,
           isProtectedDocument: async (candidate) => {
-            const checked = await verificarDocumentoNoPortao(candidate);
-            partnerChecks[0] = checked;
-            return deveBloquearDocumentoParceiro(checked);
+            try {
+              const checked = await verificarDocumentoNoPortao(candidate);
+              partnerChecks[0] = checked;
+              return deveBloquearDocumentoParceiro(checked);
+            } catch (error) {
+              warnDocumentGateFailure("detector_parceiro", error);
+              throw error;
+            }
           },
         });
         partnerOcrProtected = osParceiroMedia.protectedDocument === true;
@@ -26565,6 +26579,7 @@ export async function processOne(queueId: string) {
           };
         }
       } catch (e) {
+        warnDocumentGateFailure("fluxo_parceiro", e);
         console.error("[os-cotacao-wa][media]", (e as Error).message);
       }
     }
@@ -26583,10 +26598,18 @@ export async function processOne(queueId: string) {
       | null = null;
     let ownerDocumentGateState: AgentConvState | null = null;
     if (fromIsOwner && gateCandidates.length > 0) {
+      const loadedGateState = await loadAgentState(sb, convStateIdentity);
+      const safeGateState = loadedGateState &&
+          typeof loadedGateState === "object" &&
+          !Array.isArray(loadedGateState)
+        ? loadedGateState
+        : {};
       ownerDocumentGateState = migrateVerticalState(
-        await loadAgentState(sb, convStateIdentity),
+        safeGateState,
       ).state as AgentConvState;
     }
+    const ownerPossibleDocumentIsVehicle = fromIsOwner &&
+      ownerTreatPossibleDocumentAsVehiclePhoto(ownerDocumentGateState);
     for (const candidate of gateCandidates) {
       if (detectedDocument || possibleDocument) break;
       // O callback do parceiro só roda quando há cotação ativa. Se a mídia não
@@ -26600,16 +26623,14 @@ export async function processOne(queueId: string) {
           break;
         }
         if (checked.possivel_documento) {
-          if (
-            fromIsOwner &&
-            ownerTreatPossibleDocumentAsVehiclePhoto(ownerDocumentGateState)
-          ) {
+          if (ownerPossibleDocumentIsVehicle) {
             continue;
           }
           possibleDocument = checked;
           break;
         }
-      } catch {
+      } catch (error) {
+        warnDocumentGateFailure("detector_geral", error);
         const gestaoAuth = await loadGestaoAuthContext(sb, userId);
         const senderIsGestao = fromIsOwner ||
           isGestaoAuthorizedPhone(row.from_number, gestaoAuth);

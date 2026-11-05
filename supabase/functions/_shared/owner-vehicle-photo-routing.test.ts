@@ -41,6 +41,24 @@ Deno.test("FOTO-CARRO.1 — marketing trata possível como carro, não pula dete
   );
 });
 
+Deno.test("GATE-LOG — estado antigo ou malformado não derruba o portão", () => {
+  for (
+    const malformed of [
+      null,
+      "estado-legado",
+      [],
+      { pending_marketing_vehicle_photo: "invalido" },
+      { pending_anuncio_photo: 42 },
+      { pending_anuncio_photo: [] },
+    ]
+  ) {
+    assertEquals(
+      ownerTreatPossibleDocumentAsVehiclePhoto(malformed),
+      false,
+    );
+  }
+});
+
 Deno.test("FOTO-CARRO.1 — processor sempre chama verificarDocumentoNoPortao", async () => {
   const source = await Deno.readTextFile(
     new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
@@ -55,7 +73,7 @@ Deno.test("FOTO-CARRO.1 — processor sempre chama verificarDocumentoNoPortao", 
   const gateSection = source.slice(gateLoop, gateLoop + 2500);
   assertEquals(gateSection.includes("verificarDocumentoNoPortao"), true);
   assertEquals(
-    gateSection.includes("ownerTreatPossibleDocumentAsVehiclePhoto"),
+    gateSection.includes("ownerPossibleDocumentIsVehicle"),
     true,
   );
 });
@@ -95,7 +113,7 @@ Deno.test("FOTO-CARRO — processor desvia em freshLibrary quando contexto não 
     new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
   );
   const vehicleGate = source.indexOf(
-    "ownerMediaRoute === \"veiculo\" &&\n        incomingPhotos.length > 0 &&\n        !contexto",
+    'ownerMediaRoute === "veiculo" &&\n        incomingPhotos.length > 0 &&\n        !contexto',
   );
   assertEquals(vehicleGate >= 0, true);
   assertEquals(source.includes("ownerPhotoRoutingCaption"), true);

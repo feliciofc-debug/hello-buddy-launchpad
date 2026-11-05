@@ -50,6 +50,32 @@ Deno.test("DOC-0 — detector indisponível falha fechado", async () => {
   );
 });
 
+Deno.test("GATE-LOG — falha do detector registra etapa antes da indisponibilidade", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const gateStart = source.indexOf("for (const candidate of gateCandidates)");
+  const gateEnd = source.indexOf(
+    "if (fromIsOwner && (detectedDocument || possibleDocument))",
+    gateStart,
+  );
+  const gate = source.slice(gateStart, gateEnd);
+  assertEquals(
+    gate.includes('warnDocumentGateFailure("detector_geral", error)'),
+    true,
+  );
+  assertEquals(gate.includes("DOCUMENTO_DETECTOR_INDISPONIVEL"), true);
+  assertEquals(gate.includes("catch (error)"), true);
+
+  const partnerStart = source.indexOf("isProtectedDocument: async");
+  const partnerEnd = source.indexOf("partnerOcrProtected =", partnerStart);
+  const partner = source.slice(partnerStart, partnerEnd);
+  assertEquals(
+    partner.includes('warnDocumentGateFailure("detector_parceiro", error)'),
+    true,
+  );
+});
+
 Deno.test("DOC-0.1 — PDF com texto é classificado localmente sem OCR", async () => {
   const pdf = {
     kind: "document" as const,
@@ -300,7 +326,12 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
     true,
   );
   assertEquals(dockerfile.includes("download_vehicle_model.py"), true);
-  assertEquals(dockerfile.includes("09fc88131be8ad224f13739a5cf8fc838600d76a77539af7f0400fa90506c5f3"), true);
+  assertEquals(
+    dockerfile.includes(
+      "09fc88131be8ad224f13739a5cf8fc838600d76a77539af7f0400fa90506c5f3",
+    ),
+    true,
+  );
   assertEquals(dockerfile.includes("curl -fsSL"), false);
 });
 

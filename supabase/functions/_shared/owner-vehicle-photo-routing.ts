@@ -8,8 +8,7 @@ export type PendingMarketingVehiclePhoto = {
   source: string;
 };
 
-const DOCUMENT_GATE_NEGATIVE_RE =
-  /^n[aã]o\s+[eé]\s+documento(?:\s|$|[.!?])/i;
+const DOCUMENT_GATE_NEGATIVE_RE = /^n[aã]o\s+[eé]\s+documento(?:\s|$|[.!?])/i;
 
 export function isDocumentGateNegativeReply(text: string): boolean {
   return DOCUMENT_GATE_NEGATIVE_RE.test(String(text || "").trim());
@@ -54,13 +53,18 @@ export function jarvisMenuSetsVehiclePhotoExpectation(menuId: string): boolean {
 }
 
 export function ownerExpectsMarketingVehiclePhoto(
-  state: VehicleBatchFlowState | null | undefined,
+  state: unknown,
   nowMs = Date.now(),
 ): boolean {
-  const pending = state?.pending_marketing_vehicle_photo as
+  if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+  const safeState = state as Partial<VehicleBatchFlowState>;
+  const pending = safeState.pending_marketing_vehicle_photo as
     | PendingMarketingVehiclePhoto
     | null
     | undefined;
+  if (!pending || typeof pending !== "object" || Array.isArray(pending)) {
+    return false;
+  }
   return isRecentMediaContext(
     pending,
     nowMs,
@@ -70,14 +74,23 @@ export function ownerExpectsMarketingVehiclePhoto(
 
 /** Marketing/anúncio: só `possivel_documento` vira foto de carro; nunca pula /detectar. */
 export function ownerTreatPossibleDocumentAsVehiclePhoto(
-  state: VehicleBatchFlowState | null | undefined,
+  state: unknown,
   nowMs = Date.now(),
 ): boolean {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return false;
   if (ownerExpectsMarketingVehiclePhoto(state, nowMs)) return true;
-  const pendingPhoto = state?.pending_anuncio_photo as
-    | { stage?: string; created_at?: string }
-    | null
-    | undefined;
+  const pendingPhoto = (state as Partial<VehicleBatchFlowState>)
+    .pending_anuncio_photo as
+      | { stage?: string; created_at?: string }
+      | null
+      | undefined;
+  if (
+    !pendingPhoto ||
+    typeof pendingPhoto !== "object" ||
+    Array.isArray(pendingPhoto)
+  ) {
+    return false;
+  }
   return pendingPhoto?.stage === "awaiting_photo" &&
     isRecentMediaContext(pendingPhoto, nowMs, MARKETING_VEHICLE_PHOTO_TTL_MS);
 }
@@ -96,7 +109,11 @@ export function respostaMidiaSalvaSemCodigos(
     tipos.video ? `${tipos.video} vídeo${tipos.video > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
   if (descricaoVisual?.trim()) {
-    return `Salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
+    return `Salvei ${
+      partes || "a mídia"
+    } na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
   }
-  return `Salvei ${partes || "a mídia"} na biblioteca /midias. O que você quer que eu faça com ela?`;
+  return `Salvei ${
+    partes || "a mídia"
+  } na biblioteca /midias. O que você quer que eu faça com ela?`;
 }
