@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildOperationPath,
+  responseLimitForOperation,
   selectSerproResponseBody,
 } from "../src/serpro.js";
 
@@ -70,4 +71,12 @@ test("path params recusam placa, renavam e estoque inválidos", () => {
       ),
     /path inválido/,
   );
+});
+
+test("respostas de documentos comportam base64 de PDF até 15 MB", () => {
+  assert.equal(responseLimitForOperation("consultarEstoques"), 5 * 1024 * 1024);
+  assert.equal(responseLimitForOperation("pdfAtpv"), 22 * 1024 * 1024);
+  assert.equal(responseLimitForOperation("termoEntrada"), 22 * 1024 * 1024);
+  assert.equal(responseLimitForOperation("termoSaida"), 22 * 1024 * 1024);
+  assert.equal(responseLimitForOperation("crlve"), 22 * 1024 * 1024);
 });

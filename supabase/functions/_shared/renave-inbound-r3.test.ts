@@ -101,6 +101,27 @@ Deno.test("RENAVE-3 — parser e dados de saída validam sem expor documento", (
   assertEquals(parsed?.dataVenda, "2026-11-06");
   assertEquals(
     parseExitDetails(
+      `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Rua Um, número 10, bairro Centro, cidade Rio de Janeiro/RJ, valor 60.000, data hoje`,
+      NOW,
+    )?.valorVenda,
+    60000,
+  );
+  assertEquals(
+    parseExitDetails(
+      `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Rua Um, número 10, bairro Centro, cidade Rio de Janeiro/RJ, valor 60.000,50, data hoje`,
+      NOW,
+    )?.valorVenda,
+    60000.5,
+  );
+  assertEquals(
+    parseExitDetails(
+      `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Rua Um, número 10, bairro Centro, cidade Rio de Janeiro/RJ, valor 60000.50, data hoje`,
+      NOW,
+    )?.valorVenda,
+    60000.5,
+  );
+  assertEquals(
+    parseExitDetails(
       "CPF 11111111111, nome X, CEP 1, rua X, número 1, bairro X, cidade X/RJ, valor 1, data hoje",
       NOW,
     ),
@@ -240,7 +261,8 @@ Deno.test("RENAVE-3 — bloqueia estoque não confirmado e resolve município am
           status: 200,
           body: [
             { id: 1, nome: "Bom Jesus", uf: "PI" },
-            { id: 2, nome: "Bom Jesus", uf: "RS" },
+            { id: 2, nome: "Bom Jesus", uf: "PI" },
+            { id: 3, nome: "Outra Cidade", uf: "PI" },
           ],
         };
     await tryProcessRenaveInbound(
@@ -254,6 +276,7 @@ Deno.test("RENAVE-3 — bloqueia estoque não confirmado e resolve município am
       ) as never,
     );
     assertStringIncludes(ambiguous.reply ?? "", "mais de um município");
+    assertEquals((ambiguous.reply ?? "").includes("Outra Cidade"), false);
     const selected = await tryProcessRenaveInbound(
       input(state, "1", caller) as never,
     );
@@ -348,31 +371,51 @@ Deno.test("RENAVE-3 — simulação Detran guarda CRV cifrado e registra movimen
 });
 
 Deno.test("RENAVE-3 — processor preserva áudio e entrega documentos fora da IA", async () => {
-  const [gestao, processor, migration] = await Promise.all([
-    Deno.readTextFile(new URL("./gestao-inbound.ts", import.meta.url)),
-    Deno.readTextFile(
-      new URL(
-        "../whatsapp-cloud-inbound-processor/index.ts",
-        import.meta.url,
+  const [gestao, processor, operationMigration, movementMigration] =
+    await Promise.all([
+      Deno.readTextFile(new URL("./gestao-inbound.ts", import.meta.url)),
+      Deno.readTextFile(
+        new URL(
+          "../whatsapp-cloud-inbound-processor/index.ts",
+          import.meta.url,
+        ),
       ),
-    ),
-    Deno.readTextFile(
-      new URL(
-        "../../migrations/20261106133000_renave_movimentos.sql",
-        import.meta.url,
+      Deno.readTextFile(
+        new URL(
+          "../../migrations/20261106132500_renave_operacoes_r3.sql",
+          import.meta.url,
+        ),
       ),
-    ),
-  ]);
+      Deno.readTextFile(
+        new URL(
+          "../../migrations/20261106133000_renave_movimentos.sql",
+          import.meta.url,
+        ),
+      ),
+    ]);
   assertStringIncludes(gestao, "origem: input.origem");
   assertStringIncludes(gestao, "mensagemId: input.mensagemId");
   assertStringIncludes(processor, 'origem: "audio"');
   assertStringIncludes(processor, "deliverRenaveDocuments({");
   assertStringIncludes(processor, "sendWhatsAppDocument(");
+  assertStringIncludes(processor, ".remove([path])");
   assertStringIncludes(processor, "pending_renave_saida");
-  assertStringIncludes(migration, "CREATE TABLE public.renave_movimentos");
-  assertStringIncludes(migration, "mensagem_origem_id text");
-  assertStringIncludes(migration, "ENABLE ROW LEVEL SECURITY");
-  assertStringIncludes(migration, "user_id = auth.uid()");
-  assertEquals(migration.includes("documento_proprietario"), false);
-  assertEquals(migration.includes("codigo_seguranca"), false);
+  assertStringIncludes(
+    operationMigration,
+    "DROP CONSTRAINT IF EXISTS renave_operacoes_operacao_check",
+  );
+  assertStringIncludes(operationMigration, "'solicitarSaidaEstoque'");
+  assertStringIncludes(
+    movementMigration,
+    "CREATE TABLE public.renave_movimentos",
+  );
+  assertStringIncludes(movementMigration, "mensagem_origem_id text");
+  assertStringIncludes(
+    movementMigration,
+    "renave_movimentos_message_type_uidx",
+  );
+  assertStringIncludes(movementMigration, "ENABLE ROW LEVEL SECURITY");
+  assertStringIncludes(movementMigration, "user_id = auth.uid()");
+  assertEquals(movementMigration.includes("documento_proprietario"), false);
+  assertEquals(movementMigration.includes("codigo_seguranca"), false);
 });

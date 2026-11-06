@@ -28,16 +28,9 @@ CREATE TABLE public.renave_operacoes (
     'aptidaoVeiculo',
     'consultarVeiculos',
     'consultarEstoques',
-    'consultarEstoquePorId',
     'solicitarEntradaEstoque',
-    'solicitarSaidaEstoque',
-    'pdfAtpv',
-    'termoEntrada',
-    'termoSaida',
-    'crlve',
     'municipios',
-    'mockVeiculoUsado',
-    'mockTransferenciaDetran'
+    'mockVeiculoUsado'
   )),
   ambiente text NOT NULL CHECK (ambiente IN ('hom', 'prod')),
   status_http integer NOT NULL CHECK (status_http BETWEEN 100 AND 599),

@@ -11,7 +11,22 @@ const BASE_URLS: Record<RenaveEnvironment, string> = {
   prod: "https://renave.estaleiro.serpro.gov.br/renave-ws",
 };
 const TIMEOUT_MS = 30_000;
-const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const DOCUMENT_MAX_RESPONSE_BYTES = 22 * 1024 * 1024;
+const DOCUMENT_OPERATIONS = new Set<RenaveOperation>([
+  "pdfAtpv",
+  "termoEntrada",
+  "termoSaida",
+  "crlve",
+]);
+
+export function responseLimitForOperation(
+  operation: RenaveOperation,
+): number {
+  return DOCUMENT_OPERATIONS.has(operation)
+    ? DOCUMENT_MAX_RESPONSE_BYTES
+    : DEFAULT_MAX_RESPONSE_BYTES;
+}
 
 export type SerproCall = {
   ambiente: RenaveEnvironment;
@@ -119,6 +134,7 @@ export function selectSerproResponseBody(status: number, body: unknown): unknown
 
 export async function callSerpro(input: SerproCall): Promise<SerproResponse> {
   const operation = RENAVE_OPERATIONS[input.operacao];
+  const maxResponseBytes = responseLimitForOperation(input.operacao);
   const builtPath = buildOperationPath(
     operation.path,
     input.params,
@@ -164,7 +180,7 @@ export async function callSerpro(input: SerproCall): Promise<SerproResponse> {
         let size = 0;
         response.on("data", (chunk: Buffer) => {
           size += chunk.length;
-          if (size > MAX_RESPONSE_BYTES) {
+          if (size > maxResponseBytes) {
             request.destroy(new Error("Resposta do Serpro excedeu o limite"));
             return;
           }

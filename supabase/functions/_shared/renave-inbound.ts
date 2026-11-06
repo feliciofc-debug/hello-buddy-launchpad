@@ -297,11 +297,32 @@ export function parseAptitudeIdentifiers(text: string): {
 }
 
 function parseMoney(value: string): number | null {
-  const clean = value.replace(/[^\d,.-]/g, "");
-  if (!clean) return null;
-  const normalized = clean.includes(",")
-    ? clean.replace(/\./g, "").replace(",", ".")
-    : clean;
+  const clean = value.replace(/[^\d,.-]/g, "").replace(/[.,]+$/, "");
+  if (!clean || clean.startsWith("-")) return null;
+  let normalized = clean;
+  if (clean.includes(",")) {
+    if ((clean.match(/,/g) ?? []).length !== 1) return null;
+    const [integer, decimal] = clean.split(",");
+    if (!/^\d{1,3}(?:\.\d{3})*$|^\d+$/.test(integer)) return null;
+    if (!/^\d{1,2}$/.test(decimal)) return null;
+    normalized = `${integer.replace(/\./g, "")}.${decimal}`;
+  } else if (clean.includes(".")) {
+    const groups = clean.split(".");
+    if (
+      groups.length === 2 &&
+      /^\d+$/.test(groups[0]) &&
+      /^\d{1,2}$/.test(groups[1])
+    ) {
+      normalized = clean;
+    } else if (
+      /^\d{1,3}$/.test(groups[0]) &&
+      groups.slice(1).every((group) => /^\d{3}$/.test(group))
+    ) {
+      normalized = groups.join("");
+    } else {
+      return null;
+    }
+  }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 99_999_999.99
     ? Math.round(parsed * 100) / 100
@@ -737,14 +758,23 @@ export function parseExitDetails(
   };
 }
 
-function municipalityOptions(body: unknown): MunicipioOption[] {
+function municipalityOptions(
+  body: unknown,
+  requestedCity: string,
+  requestedUf: string,
+): MunicipioOption[] {
   if (!Array.isArray(body)) return [];
+  const normalizedCity = normalizeText(requestedCity).trim();
+  const normalizedUf = requestedUf.trim().toUpperCase();
   return body.flatMap((item) => {
     const row = record(item);
     const id = Number(row.id);
     const nome = stringValue(row.nome).trim();
     const uf = stringValue(row.uf).toUpperCase();
-    return Number.isSafeInteger(id) && id > 0 && nome && /^[A-Z]{2}$/.test(uf)
+    return Number.isSafeInteger(id) &&
+        id > 0 &&
+        normalizeText(nome).trim() === normalizedCity &&
+        uf === normalizedUf
       ? [{ id, nome, uf }]
       : [];
   });
@@ -1001,7 +1031,11 @@ export async function tryProcessRenaveInbound(input: {
       if (cities.status < 200 || cities.status >= 300) {
         return { handled: true, reply: errorMessage(cities) };
       }
-      const options = municipalityOptions(cities.body);
+      const options = municipalityOptions(
+        cities.body,
+        details.cidade,
+        details.uf,
+      );
       if (!options.length) {
         return {
           handled: true,

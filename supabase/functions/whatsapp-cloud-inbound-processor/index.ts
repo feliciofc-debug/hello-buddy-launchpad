@@ -24365,24 +24365,43 @@ async function deliverRenaveDocuments(input: {
     } finally {
       bytes.fill(0);
     }
+    const removeTemporaryDocument = async () => {
+      const started = performance.now();
+      try {
+        const { error } = await sb.storage.from("gestao-os-documentos")
+          .remove([path]);
+        if (error) throw error;
+      } catch {
+        console.warn("[renave-documento] falha", {
+          operacao: "removerDocumentoTemporario",
+          status: 500,
+          duracaoMs: Math.round(performance.now() - started),
+        });
+      }
+    };
     if (uploadError) {
+      await removeTemporaryDocument();
       throw new Error(`renave_documento_upload: ${uploadError.message}`);
     }
-    const { data, error: signedError } = await sb.storage.from(
-      "gestao-os-documentos",
-    ).createSignedUrl(path, 3600);
-    if (signedError || !data?.signedUrl) {
-      throw new Error(
-        `renave_documento_url: ${signedError?.message || "ausente"}`,
+    try {
+      const { data, error: signedError } = await sb.storage.from(
+        "gestao-os-documentos",
+      ).createSignedUrl(path, 3600);
+      if (signedError || !data?.signedUrl) {
+        throw new Error(
+          `renave_documento_url: ${signedError?.message || "ausente"}`,
+        );
+      }
+      await sendWhatsAppDocument(
+        input.userId,
+        input.to,
+        document.caption,
+        data.signedUrl,
+        filename,
       );
+    } finally {
+      await removeTemporaryDocument();
     }
-    await sendWhatsAppDocument(
-      input.userId,
-      input.to,
-      document.caption,
-      data.signedUrl,
-      filename,
-    );
   }
 }
 

@@ -25,6 +25,9 @@ CREATE INDEX renave_movimentos_user_created_idx
   ON public.renave_movimentos(user_id, created_at DESC);
 CREATE INDEX renave_movimentos_user_placa_idx
   ON public.renave_movimentos(user_id, placa, created_at DESC);
+CREATE UNIQUE INDEX renave_movimentos_message_type_uidx
+  ON public.renave_movimentos(user_id, tipo, mensagem_origem_id)
+  WHERE mensagem_origem_id IS NOT NULL;
 
 ALTER TABLE public.renave_movimentos ENABLE ROW LEVEL SECURITY;
 
