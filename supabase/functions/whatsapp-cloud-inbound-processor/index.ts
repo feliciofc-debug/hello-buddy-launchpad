@@ -24984,7 +24984,9 @@ async function tryProcessGestaoLucroShortcut(input: {
         direction: "outbound",
         sender: "agent",
         content: gestao.reply,
-        message_type: gestao.interactiveButtons ? "interactive" : "text",
+        message_type: gestao.interactiveButtons || gestao.interactiveList
+          ? "interactive"
+          : "text",
       })
       .select("id")
       .single();
@@ -24995,7 +24997,7 @@ async function tryProcessGestaoLucroShortcut(input: {
         input.row.from_number,
         gestao.reply,
         undefined,
-        undefined,
+        gestao.interactiveList,
         gestao.interactiveButtons,
       );
       if (sentId && outMsg?.id) {

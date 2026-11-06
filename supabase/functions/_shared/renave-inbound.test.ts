@@ -246,7 +246,7 @@ Deno.test("RENAVE-2 — fluxo mock, aptidão, entrada e confirmação é complet
     assertStringIncludes(entry.reply ?? "", "IPVA");
     assertEquals(
       (agentState.pending_renave_entrada as Record<string, unknown>).phase,
-      "compra",
+      "km",
     );
     assertEquals(
       (agentState.renave_mock_ultimo as Record<string, unknown>)
@@ -263,7 +263,11 @@ Deno.test("RENAVE-2 — fluxo mock, aptidão, entrada e confirmação é complet
     );
     assertEquals(
       purchase.interactiveButtons?.buttons.map((button) => button.id),
-      ["renave_wa:entrada_confirmar", "renave_wa:entrada_cancelar"],
+      [
+        "renave_wa:entrada_confirmar:ABC1A23",
+        "renave_wa:entrada_corrigir:ABC1A23",
+        "renave_wa:entrada_cancelar:ABC1A23",
+      ],
     );
     const serializedPending = JSON.stringify(
       agentState.pending_renave_entrada,
@@ -273,12 +277,20 @@ Deno.test("RENAVE-2 — fluxo mock, aptidão, entrada e confirmação é complet
 
     const confirmed = await tryProcessRenaveInbound(
       baseInput(agentState, "Confirmar", {
-        interactiveId: "renave_wa:entrada_confirmar",
+        interactiveId: "renave_wa:entrada_confirmar:ABC1A23",
         dependencies,
       }) as never,
     );
     assertStringIncludes(confirmed.reply ?? "", "Estoque: 42");
     assertStringIncludes(confirmed.reply ?? "", "enviar NF-e");
+    assertEquals(
+      confirmed.interactiveButtons?.buttons.map((button) => button.id),
+      [
+        "renave_wa:detran:ABC1A23",
+        "renave_wa:documentos:ABC1A23",
+        "renave_wa:estoque",
+      ],
+    );
     assertEquals(agentState.pending_renave_entrada, null);
     assertEquals(
       (agentState.renave_mock_ultimo as Record<string, unknown>)
@@ -377,7 +389,7 @@ Deno.test("RENAVE-2 — erro 422 mostra só mensagem final e limpa sensíveis", 
     };
     const result = await tryProcessRenaveInbound(
       baseInput(agentState, "Confirmar", {
-        interactiveId: "renave_wa:entrada_confirmar",
+        interactiveId: "renave_wa:entrada_confirmar:ABC1A23",
         dependencies: {
           now: () => NOW,
           callRenave: async () => ({

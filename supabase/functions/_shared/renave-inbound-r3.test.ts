@@ -209,7 +209,7 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
     );
     assertEquals(
       details.interactiveButtons?.buttons[0].id,
-      "renave_wa:saida_confirmar",
+      "renave_wa:saida_confirmar:ABC1D23",
     );
     assertEquals(JSON.stringify(state).includes(CPF), false);
     assertEquals(JSON.stringify(state).includes("98765432101"), false);
@@ -218,7 +218,7 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
 
     const confirmed = await tryProcessRenaveInbound(
       input(state, "Confirmar", callRenave, {
-        interactiveId: "renave_wa:saida_confirmar",
+        interactiveId: "renave_wa:saida_confirmar:ABC1D23",
         origem: "texto",
         mensagemId: "wamid-botao-confirmar",
         sb: movementDb(movements),
@@ -226,6 +226,10 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
     );
     assertStringIncludes(confirmed.reply ?? "", "Saída solicitada");
     assertEquals(confirmed.documents?.length, 4);
+    assertEquals(
+      confirmed.interactiveButtons?.buttons.map((button) => button.id),
+      ["renave_wa:documentos:ABC1D23", "renave_wa:estoque"],
+    );
     assertEquals(state.pending_renave_saida, null);
     assertEquals(
       (state.renave_veiculos as Record<string, Record<string, unknown>>)

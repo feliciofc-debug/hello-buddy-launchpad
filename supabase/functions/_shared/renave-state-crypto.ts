@@ -7,11 +7,13 @@ export type RenaveSensitiveState = {
   documentoProprietario: string;
   codigoSegurancaCrv: string;
   comprador?: {
-    nome: string;
-    cep: string;
-    logradouro: string;
-    numero: string;
-    bairro: string;
+    nome?: string;
+    cep?: string;
+    logradouro?: string;
+    numero?: string;
+    bairro?: string;
+    cidade?: string;
+    uf?: string;
   };
 };
 
@@ -34,11 +36,9 @@ export async function decryptRenaveSensitiveState(
       (
         !parsed.comprador ||
         typeof parsed.comprador !== "object" ||
-        typeof parsed.comprador.nome !== "string" ||
-        typeof parsed.comprador.cep !== "string" ||
-        typeof parsed.comprador.logradouro !== "string" ||
-        typeof parsed.comprador.numero !== "string" ||
-        typeof parsed.comprador.bairro !== "string"
+        Object.values(parsed.comprador).some((value) =>
+          value !== undefined && typeof value !== "string"
+        )
       ))
   ) {
     throw new Error("Estado sensível RENAVE inválido");

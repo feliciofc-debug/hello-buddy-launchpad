@@ -29,6 +29,7 @@ import type { VeiculoProcedenciaInteractiveButtons } from "./veiculo-procedencia
 import {
   hasPendingRenaveEntry,
   type RenaveDocument,
+  type RenaveInteractiveList,
   tryProcessRenaveInbound,
 } from "./renave-inbound.ts";
 import {
@@ -894,6 +895,7 @@ export async function tryProcessGestaoLucroInbound(input: {
   reply?: string;
   clearPending?: boolean;
   interactiveButtons?: VeiculoProcedenciaInteractiveButtons;
+  interactiveList?: RenaveInteractiveList;
   documents?: RenaveDocument[];
 }> {
   if (input.hasInboundMedia) return { handled: false };
