@@ -28,6 +28,8 @@ import { tryProcessVeiculoProcedenciaInbound } from "./veiculo-procedencia-inbou
 import type { VeiculoProcedenciaInteractiveButtons } from "./veiculo-procedencia-inbound.ts";
 import {
   hasPendingRenaveEntry,
+  type RenaveDocument,
+  type RenaveInteractiveList,
   tryProcessRenaveInbound,
 } from "./renave-inbound.ts";
 import {
@@ -886,11 +888,15 @@ export async function tryProcessGestaoLucroInbound(input: {
     patch: Record<string, unknown>,
     current: Record<string, unknown>,
   ) => Promise<boolean>;
+  origem?: "texto" | "audio";
+  mensagemId?: string | null;
 }): Promise<{
   handled: boolean;
   reply?: string;
   clearPending?: boolean;
   interactiveButtons?: VeiculoProcedenciaInteractiveButtons;
+  interactiveList?: RenaveInteractiveList;
+  documents?: RenaveDocument[];
 }> {
   if (input.hasInboundMedia) return { handled: false };
   if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) return { handled: false };
@@ -916,6 +922,7 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
 
   const renaveEarly = await tryProcessRenaveInbound({
+    sb: input.sb,
     userId: input.userId,
     fromNumber: input.fromNumber,
     userText: text,
@@ -924,6 +931,8 @@ export async function tryProcessGestaoLucroInbound(input: {
     auth: input.auth,
     agentState: input.agentState,
     saveAgentStatePatch: input.saveAgentStatePatch,
+    origem: input.origem,
+    mensagemId: input.mensagemId,
   });
   if (renaveEarly.handled) return renaveEarly;
 

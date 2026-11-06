@@ -43,7 +43,7 @@ function randomIndex(length) {
 
 function mockSuffix() {
   const digits = "0123456789";
-  const letters = "ABCDEFGHJ";
+  const letters = "ABCDEFGHIJ";
   return `${digits[randomIndex(10)]}${letters[randomIndex(letters.length)]}${
     digits[randomIndex(10)]
   }${digits[randomIndex(10)]}`;
@@ -75,13 +75,19 @@ const client = await request("/renave/chamar", {
   params: {},
 });
 console.log({ etapa: "clienteAutenticado", status: client.status });
+const clientUf = String(
+  client.body?.endereco?.municipio?.uf ??
+    client.body?.endereco?.uf ??
+    client.body?.uf ??
+    "SP",
+).toUpperCase();
 
 const mock = await request("/renave/chamar", {
   ambiente: "hom",
   operacao: "mockVeiculoUsado",
   params: {},
   body: {
-    ufJurisdicaoVeiculo: "RJ",
+    ufJurisdicaoVeiculo: /^[A-Z]{2}$/.test(clientUf) ? clientUf : "SP",
     sufixoPlaca: mockSuffix(),
     comRouboFurto: false,
     jaBaixado: false,

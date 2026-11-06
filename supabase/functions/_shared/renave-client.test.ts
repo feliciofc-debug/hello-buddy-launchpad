@@ -134,7 +134,10 @@ Deno.test({
           operacao: "solicitarEntradaEstoque",
           params: {},
           body: {
+            cpfOperadorResponsavel: "52998224725",
             dataCompra: "2026-11-06",
+            emailEstabelecimento: "loja@exemplo.com.br",
+            emailVendedor: "vendedor@exemplo.com.br",
             valorCompra: 50000,
             veiculo: {
               placa: "ABC1D23",
@@ -165,6 +168,69 @@ Deno.test({
       );
       assertEquals(sentOperation, "solicitarEntradaEstoque");
       assertEquals(result.status, 201);
+    }),
+});
+
+Deno.test({
+  name: "RENAVE-3 — cliente tipa path e solicitação de saída",
+  permissions: { env: true },
+  fn: () =>
+    withRenaveEnv(async () => {
+      const calls: Record<string, unknown>[] = [];
+      const fetchMock = ((_input, init) => {
+        calls.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 200, body: {} })),
+        );
+      }) as typeof fetch;
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "pdfAtpv",
+        params: { placa: "ABC1D23", renavam: "12345678901" },
+      }, fetchMock);
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "solicitarSaidaEstoque",
+        params: {},
+        body: {
+          cpfOperadorResponsavel: "52998224725",
+          dataVenda: "2026-11-06",
+          emailEstabelecimento: "loja@exemplo.com.br",
+          valorVenda: 60000,
+          comprador: {
+            numeroDocumento: "52998224725",
+            tipoDocumento: "CPF",
+            nome: "JOAO SILVA",
+            endereco: {
+              cep: "20040020",
+              codigoMunicipio: 3304557,
+              logradouro: "Avenida Rio Branco",
+              numero: "10",
+              bairro: "Centro",
+            },
+          },
+          veiculo: {
+            placa: "ABC1D23",
+            renavam: "12345678901",
+            codigoSegurancaCrv: "98765432101",
+          },
+        },
+      }, fetchMock);
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "enviarNotaFiscal",
+        params: {},
+        body: {
+          chaveNotaFiscal: "35261185106037000585550010000000011000000007",
+          evento: "COMPRA",
+          idEstoque: 42,
+        },
+      }, fetchMock);
+      assertEquals(calls[0].operacao, "pdfAtpv");
+      assertEquals(calls[1].operacao, "solicitarSaidaEstoque");
+      assertEquals(calls[2].operacao, "enviarNotaFiscal");
     }),
 });
 
