@@ -9,6 +9,12 @@ import {
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import {
+  cleanupStaleRenaveDocuments,
+  removeRenaveDocument,
+  scheduleRenaveDocumentRemoval,
+  type RenaveDocumentStorage,
+} from "../_shared/renave-document-storage.ts";
+import {
   AGENT_PHONE,
   buildAmzContext,
   isAmzOwnerAltPhone,
@@ -24332,6 +24338,8 @@ async function deliverRenaveDocuments(input: {
   to: string;
   documents: Array<{ filename: string; caption: string; base64: string }>;
 }): Promise<void> {
+  const renaveStorage = sb.storage as unknown as RenaveDocumentStorage;
+  await cleanupStaleRenaveDocuments(renaveStorage, input.userId);
   for (const document of input.documents) {
     if (
       document.base64.length > 20_000_000 ||
@@ -24365,22 +24373,8 @@ async function deliverRenaveDocuments(input: {
     } finally {
       bytes.fill(0);
     }
-    const removeTemporaryDocument = async () => {
-      const started = performance.now();
-      try {
-        const { error } = await sb.storage.from("gestao-os-documentos")
-          .remove([path]);
-        if (error) throw error;
-      } catch {
-        console.warn("[renave-documento] falha", {
-          operacao: "removerDocumentoTemporario",
-          status: 500,
-          duracaoMs: Math.round(performance.now() - started),
-        });
-      }
-    };
     if (uploadError) {
-      await removeTemporaryDocument();
+      await removeRenaveDocument(renaveStorage, path);
       throw new Error(`renave_documento_upload: ${uploadError.message}`);
     }
     try {
@@ -24399,9 +24393,11 @@ async function deliverRenaveDocuments(input: {
         data.signedUrl,
         filename,
       );
-    } finally {
-      await removeTemporaryDocument();
+    } catch (error) {
+      await removeRenaveDocument(renaveStorage, path);
+      throw error;
     }
+    scheduleRenaveDocumentRemoval(renaveStorage, path);
   }
 }
 

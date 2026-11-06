@@ -38,6 +38,8 @@ export type RenaveMockState = {
 export type PendingRenaveEntry = {
   phase: "crv" | "compra" | "confirm";
   placa: string;
+  origem_pedido?: RenaveOrigin;
+  mensagem_pedido_id?: string | null;
   renavam?: string;
   numeroCrv?: string;
   tipoCrv?: CrvType;
@@ -63,6 +65,8 @@ type MunicipioOption = {
 export type PendingRenaveExit = {
   phase: "dados" | "municipio" | "confirm";
   placa: string;
+  origem_pedido?: RenaveOrigin;
+  mensagem_pedido_id?: string | null;
   idEstoque: number;
   renavam: string;
   numeroCrv?: string;
@@ -596,6 +600,7 @@ async function recordRenaveMovement(input: {
   fromNumber: string;
   origem: RenaveOrigin;
   mensagemId?: string | null;
+  mensagemConfirmacaoId?: string | null;
   tipo: RenaveMovementType;
   placa: string;
   statusHttp: number;
@@ -626,6 +631,7 @@ async function recordRenaveMovement(input: {
       solicitado_por: maskedRequester(input.fromNumber),
       origem: input.origem,
       mensagem_origem_id: input.mensagemId ?? null,
+      mensagem_confirmacao_id: input.mensagemConfirmacaoId ?? null,
       status_http: input.statusHttp,
     });
     if (error) throw new Error(error.message || "insert falhou");
@@ -986,8 +992,9 @@ export async function tryProcessRenaveInbound(input: {
         sb: input.sb,
         userId: input.userId,
         fromNumber: input.fromNumber,
-        origem,
-        mensagemId: input.mensagemId,
+        origem: pendingExit.origem_pedido ?? origem,
+        mensagemId: pendingExit.mensagem_pedido_id ?? input.mensagemId,
+        mensagemConfirmacaoId: input.mensagemId,
         tipo: "cancelamento",
         placa: pendingExit.placa,
         statusHttp: 200,
@@ -1224,8 +1231,9 @@ export async function tryProcessRenaveInbound(input: {
         sb: input.sb,
         userId: input.userId,
         fromNumber: input.fromNumber,
-        origem,
-        mensagemId: input.mensagemId,
+        origem: pendingExit.origem_pedido ?? origem,
+        mensagemId: pendingExit.mensagem_pedido_id ?? input.mensagemId,
+        mensagemConfirmacaoId: input.mensagemId,
         tipo: "saida",
         placa: pendingExit.placa,
         statusHttp: 0,
@@ -1244,8 +1252,9 @@ export async function tryProcessRenaveInbound(input: {
       sb: input.sb,
       userId: input.userId,
       fromNumber: input.fromNumber,
-      origem,
-      mensagemId: input.mensagemId,
+      origem: pendingExit.origem_pedido ?? origem,
+      mensagemId: pendingExit.mensagem_pedido_id ?? input.mensagemId,
+      mensagemConfirmacaoId: input.mensagemId,
       tipo: "saida",
       placa: pendingExit.placa,
       statusHttp: result.status,
@@ -1297,8 +1306,9 @@ export async function tryProcessRenaveInbound(input: {
         sb: input.sb,
         userId: input.userId,
         fromNumber: input.fromNumber,
-        origem,
-        mensagemId: input.mensagemId,
+        origem: pending.origem_pedido ?? origem,
+        mensagemId: pending.mensagem_pedido_id ?? input.mensagemId,
+        mensagemConfirmacaoId: input.mensagemId,
         tipo: "cancelamento",
         placa: pending.placa,
         statusHttp: 200,
@@ -1327,6 +1337,8 @@ export async function tryProcessRenaveInbound(input: {
       const next: PendingRenaveEntry = {
         phase: "compra",
         placa: pending.placa,
+        origem_pedido: pending.origem_pedido,
+        mensagem_pedido_id: pending.mensagem_pedido_id,
         renavam: crv.renavam,
         numeroCrv: crv.numeroCrv,
         tipoCrv: crv.tipoCrv,
@@ -1472,8 +1484,9 @@ export async function tryProcessRenaveInbound(input: {
         sb: input.sb,
         userId: input.userId,
         fromNumber: input.fromNumber,
-        origem,
-        mensagemId: input.mensagemId,
+        origem: pending.origem_pedido ?? origem,
+        mensagemId: pending.mensagem_pedido_id ?? input.mensagemId,
+        mensagemConfirmacaoId: input.mensagemId,
         tipo: "entrada",
         placa: pending.placa,
         statusHttp: 0,
@@ -1501,8 +1514,9 @@ export async function tryProcessRenaveInbound(input: {
       sb: input.sb,
       userId: input.userId,
       fromNumber: input.fromNumber,
-      origem,
-      mensagemId: input.mensagemId,
+      origem: pending.origem_pedido ?? origem,
+      mensagemId: pending.mensagem_pedido_id ?? input.mensagemId,
+      mensagemConfirmacaoId: input.mensagemId,
       tipo: "entrada",
       placa: pending.placa,
       statusHttp: result.status,
@@ -1787,6 +1801,8 @@ export async function tryProcessRenaveInbound(input: {
     const pending: PendingRenaveExit = {
       phase: "dados",
       placa: command.placa,
+      origem_pedido: origem,
+      mensagem_pedido_id: input.mensagemId,
       idEstoque,
       renavam,
       numeroCrv: stringValue(lookup.stock.numeroCrv) || undefined,
@@ -1891,6 +1907,8 @@ export async function tryProcessRenaveInbound(input: {
     const next: PendingRenaveEntry = {
       phase: "compra",
       placa: mock.placa,
+      origem_pedido: origem,
+      mensagem_pedido_id: input.mensagemId,
       renavam: mock.renavam,
       numeroCrv: mock.numeroCrv,
       tipoCrv: mock.tipoCrv,
@@ -1913,6 +1931,8 @@ export async function tryProcessRenaveInbound(input: {
   const next: PendingRenaveEntry = {
     phase: "crv",
     placa: command.placa,
+    origem_pedido: origem,
+    mensagem_pedido_id: input.mensagemId,
     expires_at: nextExpiry(now),
   };
   await input.saveAgentStatePatch(

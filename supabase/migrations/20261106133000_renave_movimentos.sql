@@ -17,6 +17,7 @@ CREATE TABLE public.renave_movimentos (
   solicitado_por text NOT NULL CHECK (solicitado_por ~ '^\*{3}[0-9]{4}$'),
   origem text NOT NULL CHECK (origem IN ('texto', 'audio')),
   mensagem_origem_id text NULL,
+  mensagem_confirmacao_id text NULL,
   status_http integer NOT NULL CHECK (status_http BETWEEN 0 AND 599),
   created_at timestamptz NOT NULL DEFAULT now()
 );

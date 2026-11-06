@@ -129,6 +129,29 @@ Deno.test("RENAVE-3 — parser e dados de saída validam sem expor documento", (
   );
 });
 
+Deno.test("RENAVE-3.1 — entrada preserva mensagem e origem que abriram o fluxo", async () => {
+  const restore = setEnv();
+  const state: Record<string, unknown> = {};
+  try {
+    await tryProcessRenaveInbound(
+      input(
+        state,
+        "renave entrada ABC1D23",
+        async () => ({ status: 200, body: {} }),
+        {
+          origem: "audio",
+          mensagemId: "wamid-audio-entrada",
+        },
+      ) as never,
+    );
+    const pending = state.pending_renave_entrada as Record<string, unknown>;
+    assertEquals(pending.origem_pedido, "audio");
+    assertEquals(pending.mensagem_pedido_id, "wamid-audio-entrada");
+  } finally {
+    restore();
+  }
+});
+
 Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áudio", async () => {
   const restore = setEnv();
   const state: Record<string, unknown> = {};
@@ -170,7 +193,10 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
       }
     };
     const start = await tryProcessRenaveInbound(
-      input(state, "renave saída ABC1D23", callRenave) as never,
+      input(state, "renave saída ABC1D23", callRenave, {
+        origem: "audio",
+        mensagemId: "wamid-audio-pedido",
+      }) as never,
     );
     assertStringIncludes(start.reply ?? "", "CPF/CNPJ");
 
@@ -193,7 +219,8 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
     const confirmed = await tryProcessRenaveInbound(
       input(state, "Confirmar", callRenave, {
         interactiveId: "renave_wa:saida_confirmar",
-        origem: "audio",
+        origem: "texto",
+        mensagemId: "wamid-botao-confirmar",
         sb: movementDb(movements),
       }) as never,
     );
@@ -206,7 +233,11 @@ Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áu
       null,
     );
     assertEquals(movements[0].origem, "audio");
-    assertEquals(movements[0].mensagem_origem_id, "wamid-test");
+    assertEquals(movements[0].mensagem_origem_id, "wamid-audio-pedido");
+    assertEquals(
+      movements[0].mensagem_confirmacao_id,
+      "wamid-botao-confirmar",
+    );
     assertEquals(movements[0].solicitado_por, "***9999");
     const movementText = JSON.stringify(movements);
     assertEquals(movementText.includes(CPF), false);
@@ -398,7 +429,7 @@ Deno.test("RENAVE-3 — processor preserva áudio e entrega documentos fora da I
   assertStringIncludes(processor, 'origem: "audio"');
   assertStringIncludes(processor, "deliverRenaveDocuments({");
   assertStringIncludes(processor, "sendWhatsAppDocument(");
-  assertStringIncludes(processor, ".remove([path])");
+  assertStringIncludes(processor, "scheduleRenaveDocumentRemoval(");
   assertStringIncludes(processor, "pending_renave_saida");
   assertStringIncludes(
     operationMigration,
@@ -410,6 +441,7 @@ Deno.test("RENAVE-3 — processor preserva áudio e entrega documentos fora da I
     "CREATE TABLE public.renave_movimentos",
   );
   assertStringIncludes(movementMigration, "mensagem_origem_id text");
+  assertStringIncludes(movementMigration, "mensagem_confirmacao_id text");
   assertStringIncludes(
     movementMigration,
     "renave_movimentos_message_type_uidx",
