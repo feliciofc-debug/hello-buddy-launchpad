@@ -46,13 +46,16 @@ Deno.test({
         });
         assertEquals(init?.signal instanceof AbortSignal, true);
         return Promise.resolve(
-          new Response(JSON.stringify({
-            status: 200,
-            body: { apto: true },
-          }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify({
+              status: 200,
+              body: { apto: true },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
         );
       }) as typeof fetch;
 
@@ -76,16 +79,19 @@ Deno.test({
     withRenaveEnv(async () => {
       await assertRejects(
         () =>
-          chamarRenave({
-            ambiente: "hom",
-            operacao: "clienteAutenticado",
-            params: {},
-          }, (() =>
-            Promise.resolve(
-              new Response(JSON.stringify({ segredo: "não repassar" }), {
-                status: 401,
-              }),
-            )) as typeof fetch),
+          chamarRenave(
+            {
+              ambiente: "hom",
+              operacao: "clienteAutenticado",
+              params: {},
+            },
+            (() =>
+              Promise.resolve(
+                new Response(JSON.stringify({ segredo: "não repassar" }), {
+                  status: 401,
+                }),
+              )) as typeof fetch,
+          ),
         Error,
         "amz-renave indisponível (401)",
       );
@@ -99,17 +105,66 @@ Deno.test({
     withRenaveEnv(async () => {
       await assertRejects(
         () =>
-          chamarRenave({
-            ambiente: "hom",
-            operacao: "municipios",
-            params: { uf: "RJ" },
-          }, (() =>
-            Promise.resolve(
-              new Response(JSON.stringify({ status: "200", body: [] })),
-            )) as typeof fetch),
+          chamarRenave(
+            {
+              ambiente: "hom",
+              operacao: "municipios",
+              params: { uf: "RJ" },
+            },
+            (() =>
+              Promise.resolve(
+                new Response(JSON.stringify({ status: "200", body: [] })),
+              )) as typeof fetch,
+          ),
         Error,
         "Resposta inválida",
       );
+    }),
+});
+
+Deno.test({
+  name: "RENAVE-2 — cliente tipa solicitação de entrada em estoque",
+  permissions: { env: true },
+  fn: () =>
+    withRenaveEnv(async () => {
+      let sentOperation = "";
+      const result = await chamarRenave(
+        {
+          ambiente: "hom",
+          operacao: "solicitarEntradaEstoque",
+          params: {},
+          body: {
+            dataCompra: "2026-11-06",
+            valorCompra: 50000,
+            veiculo: {
+              placa: "ABC1D23",
+              renavam: "12345678901",
+              numeroCrv: "123456789012",
+              codigoSegurancaCrv: "12345678901",
+              tipoCrv: "AZUL",
+              quilometragemHodometro: 10000,
+              dataHoraMedicaoHodometro: "2026-11-06T12:00:00",
+              documentoProprietarioAtual: "52998224725",
+              tipoDocumentoProprietarioAtual: "CPF",
+            },
+          },
+        },
+        ((_input, init) => {
+          const sent = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          sentOperation = String(sent.operacao ?? "");
+          return Promise.resolve(
+            new Response(JSON.stringify({
+              status: 201,
+              body: { id: 42, estado: "SOLICITADO" },
+            })),
+          );
+        }) as typeof fetch,
+      );
+      assertEquals(sentOperation, "solicitarEntradaEstoque");
+      assertEquals(result.status, 201);
     }),
 });
 

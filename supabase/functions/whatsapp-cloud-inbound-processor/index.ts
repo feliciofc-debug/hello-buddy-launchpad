@@ -24857,20 +24857,23 @@ async function tryProcessGestaoLucroShortcut(input: {
   interactiveId?: string | null;
   convId: string;
   hasInboundMedia: boolean;
+  agentState?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
+  const baseState = input.agentState ??
+    migrateVerticalState(
+      await loadAgentState(sb, input.convStateIdentity),
+    ).state as AgentConvState;
   if (
     isJarvisPureGreeting(
       input.userText,
       input.row.payload?.profile?.name ??
         input.row.payload?.contacts?.[0]?.profile?.name ??
         null,
-    )
+    ) &&
+    !(baseState as Record<string, unknown>).pending_renave_entrada
   ) {
     return { handled: false };
   }
-  const baseState = migrateVerticalState(
-    await loadAgentState(sb, input.convStateIdentity),
-  ).state as AgentConvState;
   const auth = await loadGestaoAuthContext(sb, input.userId);
   const gestao = await tryProcessGestaoLucroInbound({
     sb,
@@ -26259,6 +26262,47 @@ export async function processOne(queueId: string) {
     }
 
 
+    // Estado RENAVE contém dados regulados: enquanto estiver ativo, qualquer
+    // texto do dono passa pelo handler determinístico antes de outros atalhos.
+    let ownerGestaoState: AgentConvState | undefined;
+    if (
+      fromIsOwner &&
+      (Deno.env.get("AMZ_RENAVE_HOM_USER_IDS") ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .includes(userId) &&
+      (row.message_type === "text" || row.message_type === "interactive") &&
+      userText.trim()
+    ) {
+      ownerGestaoState = migrateVerticalState(
+        await loadAgentState(sb, convStateIdentity),
+      ).state as AgentConvState;
+      if (
+        (ownerGestaoState as Record<string, unknown>).pending_renave_entrada
+      ) {
+        const renavePendingEarly = await tryProcessGestaoLucroShortcut({
+          row,
+          convStateIdentity,
+          userId,
+          userText: stripWhatsAppInteractiveMarkers(userText),
+          interactiveId,
+          convId: conv.id,
+          hasInboundMedia: false,
+          agentState: ownerGestaoState,
+        });
+        if (renavePendingEarly.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            gestao_lucro: true,
+            renave_pending: true,
+            preview: renavePendingEarly.preview,
+          };
+        }
+      }
+    }
+
     // "answerOwnerCommercialStatus" é uma feature Jarvis específica pra Felicio
     // consultar contatos comerciais dele — só faz sentido no tenant AMZ.
     if (isAmzTenant && fromIsOwner && row.message_type === "text" && userText.trim()) {
@@ -26311,6 +26355,7 @@ export async function processOne(queueId: string) {
           interactiveId,
           convId: conv.id,
           hasInboundMedia: false,
+          agentState: ownerGestaoState,
         });
         if (gestaoEarly.handled) {
           stopTypingHeartbeat();

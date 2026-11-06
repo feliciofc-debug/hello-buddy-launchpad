@@ -27,6 +27,10 @@ import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
 import { tryProcessVeiculoProcedenciaInbound } from "./veiculo-procedencia-inbound.ts";
 import type { VeiculoProcedenciaInteractiveButtons } from "./veiculo-procedencia-inbound.ts";
 import {
+  hasPendingRenaveEntry,
+  tryProcessRenaveInbound,
+} from "./renave-inbound.ts";
+import {
   calcGestaoComissao,
   DEFAULT_COMISSAO_REGRA,
   normalizeComissaoRegra,
@@ -896,8 +900,22 @@ export async function tryProcessGestaoLucroInbound(input: {
   const text = stripWhatsAppInteractiveMarkers(input.userText);
   if (!text) return { handled: false };
 
-  const procedenciaEarly = await tryProcessVeiculoProcedenciaInbound({
-    sb: input.sb,
+  if (!hasPendingRenaveEntry(input.agentState)) {
+    const procedenciaEarly = await tryProcessVeiculoProcedenciaInbound({
+      sb: input.sb,
+      userId: input.userId,
+      fromNumber: input.fromNumber,
+      userText: text,
+      interactiveId: input.interactiveId,
+      hasInboundMedia: input.hasInboundMedia,
+      auth: input.auth,
+      agentState: input.agentState,
+      saveAgentStatePatch: input.saveAgentStatePatch,
+    });
+    if (procedenciaEarly.handled) return procedenciaEarly;
+  }
+
+  const renaveEarly = await tryProcessRenaveInbound({
     userId: input.userId,
     fromNumber: input.fromNumber,
     userText: text,
@@ -907,7 +925,7 @@ export async function tryProcessGestaoLucroInbound(input: {
     agentState: input.agentState,
     saveAgentStatePatch: input.saveAgentStatePatch,
   });
-  if (procedenciaEarly.handled) return procedenciaEarly;
+  if (renaveEarly.handled) return renaveEarly;
 
   const gate = await loadTenantVehicleStockGate(
     input.sb as Parameters<typeof loadTenantVehicleStockGate>[0],
