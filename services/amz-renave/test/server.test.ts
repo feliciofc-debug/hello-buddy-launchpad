@@ -156,7 +156,10 @@ test("solicitação de entrada usa a nova operação POST da whitelist", async (
   context.mock.method(console, "info", () => undefined);
   let received: SerproCall | undefined;
   const entryBody = {
+    cpfOperadorResponsavel: "52998224725",
     dataCompra: "2026-11-06",
+    emailEstabelecimento: "loja@exemplo.com.br",
+    emailVendedor: "vendedor@exemplo.com.br",
     valorCompra: 50_000,
     veiculo: {
       placa: "ABC1D23",
@@ -187,6 +190,30 @@ test("solicitação de entrada usa a nova operação POST da whitelist", async (
   });
   assert.equal(received?.operacao, "solicitarEntradaEstoque");
   assert.deepEqual(received?.body, entryBody);
+});
+
+test("nota fiscal usa operação POST da whitelist", async (context) => {
+  context.mock.method(console, "info", () => undefined);
+  let received: SerproCall | undefined;
+  const invoiceBody = {
+    chaveNotaFiscal: "35261185106037000585550010000000011000000007",
+    evento: "COMPRA",
+    idEstoque: 42,
+  };
+  await withServer(false, async (input) => {
+    received = input;
+    return { status: 201, body: {} };
+  }, async (url) => {
+    const response = await post(url, "/renave/chamar", {
+      ambiente: "hom",
+      operacao: "enviarNotaFiscal",
+      params: {},
+      body: invoiceBody,
+    });
+    assert.equal(response.status, 200);
+  });
+  assert.equal(received?.operacao, "enviarNotaFiscal");
+  assert.deepEqual(received?.body, invoiceBody);
 });
 
 test("produção abre o certificado só durante a chamada e zera buffers", async (context) => {

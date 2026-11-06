@@ -10,7 +10,10 @@ import {
   parseRenaveMoney,
   tryProcessRenaveInbound,
 } from "./renave-inbound.ts";
-import { encryptRenaveSensitiveState } from "./renave-state-crypto.ts";
+import {
+  encryptRenaveOperatorProfile,
+  encryptRenaveSensitiveState,
+} from "./renave-state-crypto.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER = "5511999999999";
@@ -84,6 +87,10 @@ function input(
 
 async function mockState(): Promise<Record<string, unknown>> {
   return {
+    renave_operador_cifrado: await encryptRenaveOperatorProfile({
+      cpfOperadorResponsavel: CPF,
+      emailEstabelecimento: "loja@exemplo.com.br",
+    }),
     renave_mock_ultimo: {
       ambiente: "hom",
       placa: "ABC1A23",
@@ -93,6 +100,7 @@ async function mockState(): Promise<Record<string, unknown>> {
       sensivel_cifrado: await encryptRenaveSensitiveState({
         documentoProprietario: CPF,
         codigoSegurancaCrv: "98765432101",
+        emailVendedor: "vendedor.teste@amzofertas.com.br",
       }),
       created_at: NOW.toISOString(),
     },
@@ -236,8 +244,14 @@ Deno.test("RENAVE-3.2 — saída preenche endereço por CEP e segue um campo por
   const restore = setEnv();
   try {
     const state: Record<string, unknown> = {
+      renave_operador_cifrado: await encryptRenaveOperatorProfile({
+        cpfOperadorResponsavel: CPF,
+        emailEstabelecimento: "loja@exemplo.com.br",
+      }),
       renave_veiculos: {
         ABC1D23: {
+          nf_entrada_enviada: true,
+          crv_novo_disponivel: true,
           sensivel_cifrado: await encryptRenaveSensitiveState({
             documentoProprietario: "",
             codigoSegurancaCrv: "98765432101",
@@ -288,6 +302,15 @@ Deno.test("RENAVE-3.2 — saída preenche endereço por CEP e segue um campo por
     assertStringIncludes(
       (await tryProcessRenaveInbound(
         input(state, "João Silva", { dependencies }) as never,
+      )).reply ?? "",
+      "e-mail",
+    );
+    assertStringIncludes(
+      (await tryProcessRenaveInbound(
+        input(state, "Pular", {
+          dependencies,
+          interactiveId: "renave_wa:saida_email_pular:ABC1D23",
+        }) as never,
       )).reply ?? "",
       "CEP",
     );

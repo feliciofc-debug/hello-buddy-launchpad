@@ -7,8 +7,11 @@ import {
   type RenaveResponse,
 } from "./renave-client.ts";
 import {
+  decryptRenaveOperatorProfile,
   decryptRenaveSensitiveState,
+  encryptRenaveOperatorProfile,
   encryptRenaveSensitiveState,
+  type RenaveSensitiveState,
 } from "./renave-state-crypto.ts";
 import { fetchViaCep, type ViaCepAddress } from "./viacep-client.ts";
 import { normalizeBrazilianPlate } from "./vehicle-plate.ts";
@@ -46,6 +49,9 @@ export type RenaveMockState = {
 export type PendingRenaveEntry = {
   phase:
     | "crv"
+    | "operador_cpf"
+    | "email_estabelecimento"
+    | "email_vendedor"
     | "compra"
     | "km"
     | "valor"
@@ -85,6 +91,9 @@ export type PendingRenaveExit = {
     | "dados"
     | "documento"
     | "nome"
+    | "operador_cpf"
+    | "email_estabelecimento"
+    | "email_comprador"
     | "cep"
     | "logradouro"
     | "bairro"
@@ -113,7 +122,17 @@ export type PendingRenaveExit = {
 };
 
 type PendingRenavePlateAction = {
-  action: "entrada" | "saida" | "documentos";
+  action: "entrada" | "saida" | "documentos" | "nota";
+  origem_pedido: RenaveOrigin;
+  mensagem_pedido_id?: string | null;
+  expires_at: string;
+};
+
+type PendingRenaveInvoice = {
+  phase: "chave" | "codigo_crv";
+  placa: string;
+  renavam: string;
+  idEstoque: number;
   origem_pedido: RenaveOrigin;
   mensagem_pedido_id?: string | null;
   expires_at: string;
@@ -128,6 +147,7 @@ export type ParsedRenaveCommand =
   | { kind: "aptidao"; placa: string; text: string }
   | { kind: "entrada"; placa: string }
   | { kind: "detran"; placa: string }
+  | { kind: "nota"; placa: string }
   | { kind: "saida"; placa: string }
   | { kind: "documentos"; placa: string }
   | null;
@@ -156,6 +176,9 @@ function activePending(value: unknown, now: Date): PendingRenaveEntry | null {
   if (
     ![
       "crv",
+      "operador_cpf",
+      "email_estabelecimento",
+      "email_vendedor",
       "compra",
       "km",
       "valor",
@@ -184,6 +207,9 @@ function activePendingExit(
       "dados",
       "documento",
       "nome",
+      "operador_cpf",
+      "email_estabelecimento",
+      "email_comprador",
       "cep",
       "logradouro",
       "bairro",
@@ -213,12 +239,32 @@ function activePendingPlateAction(
   now: Date,
 ): PendingRenavePlateAction | null {
   const pending = record(value) as Partial<PendingRenavePlateAction>;
-  return ["entrada", "saida", "documentos"].includes(String(pending.action)) &&
+  return ["entrada", "saida", "documentos", "nota"].includes(
+      String(pending.action),
+    ) &&
       (pending.origem_pedido === "texto" ||
         pending.origem_pedido === "audio") &&
       typeof pending.expires_at === "string" &&
       Date.parse(pending.expires_at) > now.getTime()
     ? pending as PendingRenavePlateAction
+    : null;
+}
+
+function activePendingInvoice(
+  value: unknown,
+  now: Date,
+): PendingRenaveInvoice | null {
+  const pending = record(value) as Partial<PendingRenaveInvoice>;
+  return ["chave", "codigo_crv"].includes(String(pending.phase)) &&
+      Boolean(normalizeBrazilianPlate(pending.placa)) &&
+      /^\d{11}$/.test(String(pending.renavam ?? "")) &&
+      Number.isSafeInteger(Number(pending.idEstoque)) &&
+      Number(pending.idEstoque) > 0 &&
+      (pending.origem_pedido === "texto" ||
+        pending.origem_pedido === "audio") &&
+      typeof pending.expires_at === "string" &&
+      Date.parse(pending.expires_at) > now.getTime()
+    ? pending as PendingRenaveInvoice
     : null;
 }
 
@@ -228,7 +274,8 @@ export function hasPendingRenaveEntry(
   return Boolean(
     agentState.pending_renave_entrada ||
       agentState.pending_renave_saida ||
-      agentState.pending_renave_placa,
+      agentState.pending_renave_placa ||
+      agentState.pending_renave_nota,
   );
 }
 
@@ -249,6 +296,7 @@ export function parseRenaveCommand(text: string): ParsedRenaveCommand {
   }
   if (/\bentrada\b/.test(normalized)) return { kind: "entrada", placa };
   if (/\bdetran\b/.test(normalized)) return { kind: "detran", placa };
+  if (/\bnota\b/.test(normalized)) return { kind: "nota", placa };
   if (/\bsaida\b/.test(normalized)) return { kind: "saida", placa };
   if (/\bdocumentos?\b/.test(normalized)) {
     return { kind: "documentos", placa };
@@ -274,7 +322,7 @@ function commandFromInteractive(
     return { kind: "estoque" };
   }
   const match = interactive.match(
-    /^(aptidao|entrada|detran|saida|documentos):([A-Z]{3}[0-9][A-Z0-9][0-9]{2})$/i,
+    /^(aptidao|entrada|detran|nota|saida|documentos):([A-Z]{3}[0-9][A-Z0-9][0-9]{2})$/i,
   );
   if (!match) return null;
   const placa = normalizeBrazilianPlate(match[2]);
@@ -289,6 +337,7 @@ function commandFromInteractive(
   }
   if (action === "entrada") return { kind: "entrada", placa };
   if (action === "detran") return { kind: "detran", placa };
+  if (action === "nota") return { kind: "nota", placa };
   if (action === "saida") return { kind: "saida", placa };
   return { kind: "documentos", placa };
 }
@@ -319,7 +368,7 @@ function randomIndex(length: number): number {
 
 export function generateRenaveMockSuffix(): string {
   const digits = "0123456789";
-  const letters = "ABCDEFGHJ";
+  const letters = "ABCDEFGHIJ";
   return `${digits[randomIndex(10)]}${letters[randomIndex(letters.length)]}${
     digits[randomIndex(10)]
   }${digits[randomIndex(10)]}`;
@@ -371,6 +420,90 @@ export function validateCpfCnpj(value: string): "CPF" | "CNPJ" | null {
   const digits = String(value || "").replace(/\D/g, "");
   if (validCpf(digits)) return "CPF";
   if (validCnpj(digits)) return "CNPJ";
+  return null;
+}
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) &&
+    value.trim().length <= 254;
+}
+
+export function validateNfeKey(value: string): boolean {
+  const key = String(value ?? "").replace(/\D/g, "");
+  if (!/^\d{44}$/.test(key) || /^(\d)\1{43}$/.test(key)) return false;
+  let sum = 0;
+  let weight = 2;
+  for (let index = 42; index >= 0; index--) {
+    sum += Number(key[index]) * weight;
+    weight = weight === 9 ? 2 : weight + 1;
+  }
+  const remainder = sum % 11;
+  const digit = remainder === 0 || remainder === 1 ? 0 : 11 - remainder;
+  return digit === Number(key[43]);
+}
+
+function findSecurityCode(text: string): string | null {
+  return text.match(/(?<!\d)(\d{11})(?!\d)/)?.[1] ?? null;
+}
+
+export async function extractCrlvSecurityCode(
+  pdfBase64: string,
+): Promise<string | null> {
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.from(atob(pdfBase64), (char) => char.charCodeAt(0));
+  } catch {
+    return null;
+  }
+  const decoder = new TextDecoder("latin1");
+  const raw = decoder.decode(bytes);
+  const direct = findSecurityCode(raw);
+  if (direct) return direct;
+  const marker = new TextEncoder().encode("stream");
+  const endMarker = new TextEncoder().encode("endstream");
+  const indexOf = (needle: Uint8Array, start: number): number => {
+    outer:
+    for (let index = start; index <= bytes.length - needle.length; index++) {
+      for (let offset = 0; offset < needle.length; offset++) {
+        if (bytes[index + offset] !== needle[offset]) continue outer;
+      }
+      return index;
+    }
+    return -1;
+  };
+  let cursor = 0;
+  while (cursor < bytes.length) {
+    const streamAt = indexOf(marker, cursor);
+    if (streamAt < 0) break;
+    const header = decoder.decode(
+      bytes.slice(Math.max(0, streamAt - 200), streamAt),
+    );
+    let start = streamAt + marker.length;
+    if (bytes[start] === 13) start++;
+    if (bytes[start] === 10) start++;
+    const end = indexOf(endMarker, start);
+    if (end < 0) break;
+    cursor = end + endMarker.length;
+    if (!header.includes("FlateDecode")) continue;
+    let streamEnd = end;
+    while (
+      streamEnd > start &&
+      (bytes[streamEnd - 1] === 10 || bytes[streamEnd - 1] === 13)
+    ) {
+      streamEnd--;
+    }
+    try {
+      const decompressed = await new Response(
+        new Blob([bytes.slice(start, streamEnd)]).stream().pipeThrough(
+          new DecompressionStream("deflate"),
+        ),
+      ).arrayBuffer();
+      const code = findSecurityCode(decoder.decode(decompressed));
+      if (code) return code;
+    } catch {
+      // Continue through other PDF streams.
+    }
+  }
   return null;
 }
 
@@ -613,6 +746,43 @@ function retryReply(
   };
 }
 
+function entryNextPhase(
+  pending: PendingRenaveEntry,
+  sensitive: RenaveSensitiveState,
+): PendingRenaveEntry["phase"] {
+  return !validCpf(sensitive.cpfOperadorResponsavel ?? "")
+    ? "operador_cpf"
+    : !validEmail(sensitive.emailEstabelecimento ?? "")
+    ? "email_estabelecimento"
+    : !validEmail(sensitive.emailVendedor ?? "")
+    ? "email_vendedor"
+    : pending.quilometragem == null
+    ? "km"
+    : pending.valorCompra == null
+    ? "valor"
+    : !pending.dataCompra
+    ? "data"
+    : !sensitive.documentoProprietario
+    ? "proprietario"
+    : "confirm";
+}
+
+function entryPhasePrompt(phase: PendingRenaveEntry["phase"]): string {
+  if (phase === "operador_cpf") {
+    return "Qual o seu CPF? Ele vai como operador responsável no RENAVE.";
+  }
+  if (phase === "email_estabelecimento") {
+    return "Qual o e-mail do estabelecimento?";
+  }
+  if (phase === "email_vendedor") return "Qual o e-mail do vendedor?";
+  if (phase === "km") return "Qual a km atual?";
+  if (phase === "valor") return "Qual o valor da compra?";
+  if (phase === "proprietario") {
+    return "Qual o CPF/CNPJ do proprietário atual?";
+  }
+  return "Informe o próximo dado.";
+}
+
 function formatMoney(value: unknown): string {
   const number = Number(value);
   return Number.isFinite(number)
@@ -678,8 +848,101 @@ export function formatAptitude(body: unknown): {
 
 function errorMessage(result: RenaveResponse): string {
   const body = record(result.body);
-  return stringValue(body.mensagemParaUsuarioFinal) ||
+  const finalMessage = stringValue(body.mensagemParaUsuarioFinal);
+  if (result.status === 422 && finalMessage) return finalMessage;
+  const detail = stringValue(body.detalhe);
+  if (result.status === 400 && detail) {
+    const safeDetail = detail.replace(/\d{11,44}/g, "[dado protegido]");
+    return `Serpro (homologação): ${safeDetail.slice(0, 300)}`;
+  }
+  return finalMessage ||
     "Não foi possível concluir a operação RENAVE agora.";
+}
+
+async function operatorProfile(
+  state: Record<string, unknown>,
+): Promise<{
+  cpfOperadorResponsavel?: string;
+  emailEstabelecimento?: string;
+}> {
+  const encrypted = stringValue(state.renave_operador_cifrado);
+  if (!encrypted) return {};
+  try {
+    return await decryptRenaveOperatorProfile(encrypted);
+  } catch {
+    return {};
+  }
+}
+
+async function loadTenantEmail(
+  sb: unknown,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const client = sb as {
+      from: (table: string) => {
+        select: (columns: string) => {
+          eq: (column: string, value: string) => {
+            maybeSingle: () => Promise<{
+              data?: { email?: unknown } | null;
+            }>;
+          };
+        };
+      };
+    };
+    const { data } = await client.from("profiles").select("email").eq(
+      "id",
+      userId,
+    ).maybeSingle();
+    const email = stringValue(data?.email).trim();
+    return validEmail(email) ? email : null;
+  } catch {
+    return null;
+  }
+}
+
+async function applyOperatorProfile(
+  input: {
+    agentState: Record<string, unknown>;
+    userId: string;
+    sb?: unknown;
+    dependencies?: {
+      loadTenantEmail?: () => Promise<string | null>;
+    };
+  },
+  sensitive: Awaited<ReturnType<typeof decryptRenaveSensitiveState>>,
+): Promise<typeof sensitive> {
+  const saved = await operatorProfile(input.agentState);
+  let emailEstabelecimento = saved.emailEstabelecimento ??
+    sensitive.emailEstabelecimento;
+  if (!emailEstabelecimento) {
+    emailEstabelecimento = await (input.dependencies?.loadTenantEmail ??
+      (() => loadTenantEmail(input.sb, input.userId)))() ?? undefined;
+  }
+  return {
+    ...sensitive,
+    cpfOperadorResponsavel: saved.cpfOperadorResponsavel ??
+      sensitive.cpfOperadorResponsavel,
+    emailEstabelecimento,
+  };
+}
+
+async function saveOperatorProfile(
+  input: {
+    agentState: Record<string, unknown>;
+    saveAgentStatePatch: (
+      patch: Record<string, unknown>,
+      current: Record<string, unknown>,
+    ) => Promise<boolean>;
+  },
+  profile: {
+    cpfOperadorResponsavel?: string;
+    emailEstabelecimento?: string;
+  },
+): Promise<void> {
+  await input.saveAgentStatePatch({
+    renave_operador_cifrado: await encryptRenaveOperatorProfile(profile),
+  }, input.agentState);
 }
 
 async function callLogged(
@@ -702,6 +965,16 @@ async function callLogged(
       duracaoMs: Math.round(performance.now() - started),
     });
   }
+}
+
+function authenticatedClientUf(body: unknown): string {
+  const payload = record(body);
+  const endereco = record(payload.endereco);
+  const municipio = record(endereco.municipio);
+  const uf = stringValue(municipio.uf ?? endereco.uf ?? payload.uf)
+    .trim()
+    .toUpperCase();
+  return /^[A-Z]{2}$/.test(uf) ? uf : "SP";
 }
 
 function mockFromState(value: unknown, placa: string): RenaveMockState | null {
@@ -1110,6 +1383,15 @@ function safePdf(value: unknown): string | null {
     : null;
 }
 
+function crlvPdf(body: unknown): string | null {
+  const payload = record(body);
+  return safePdf(
+    payload.pdfCodigoSegurancaCrvBase64 ??
+      payload.pdfBase64 ??
+      payload.crlveBase64,
+  );
+}
+
 async function fetchRenaveDocuments(
   caller: RenaveCaller,
   input: {
@@ -1170,7 +1452,9 @@ async function fetchRenaveDocuments(
   return results.flatMap(({ request, response }) => {
     if (!response) return [];
     if (response.status < 200 || response.status >= 300) return [];
-    const base64 = safePdf(record(response.body)[request.field]);
+    const base64 = request.operation === "crlve"
+      ? crlvPdf(response.body)
+      : safePdf(record(response.body)[request.field]);
     return base64
       ? [{
         filename: request.filename,
@@ -1236,6 +1520,7 @@ export async function tryProcessRenaveInbound(input: {
     mockSuffix?: () => string;
     mockCpf?: () => string;
     fetchViaCep?: (cep: string) => Promise<ViaCepAddress | null>;
+    loadTenantEmail?: () => Promise<string | null>;
   };
 }): Promise<{
   handled: boolean;
@@ -1259,6 +1544,8 @@ export async function tryProcessRenaveInbound(input: {
   const pendingExit = activePendingExit(rawExit, now);
   const rawPlateAction = input.agentState.pending_renave_placa;
   const pendingPlateAction = activePendingPlateAction(rawPlateAction, now);
+  const rawInvoice = input.agentState.pending_renave_nota;
+  const pendingInvoice = activePendingInvoice(rawInvoice, now);
   const interactive = parseInteractiveAction(
     input.interactiveId || input.userText,
   );
@@ -1277,6 +1564,8 @@ export async function tryProcessRenaveInbound(input: {
         ? { kind: "entrada", placa }
         : pendingPlateAction.action === "saida"
         ? { kind: "saida", placa }
+        : pendingPlateAction.action === "nota"
+        ? { kind: "nota", placa }
         : { kind: "documentos", placa };
       commandOrigin = pendingPlateAction.origem_pedido;
       commandMessageId = pendingPlateAction.mensagem_pedido_id;
@@ -1287,18 +1576,20 @@ export async function tryProcessRenaveInbound(input: {
     }
   }
   if (
-    !rawPending && !rawExit && !rawPlateAction && !command && !interactive
+    !rawPending && !rawExit && !rawPlateAction && !rawInvoice && !command &&
+    !interactive
   ) {
     return { handled: false };
   }
 
   if (configuredEnvironment() === "prod") {
-    if (rawPending || rawExit || rawPlateAction) {
+    if (rawPending || rawExit || rawPlateAction || rawInvoice) {
       await input.saveAgentStatePatch(
         {
           ...clearSensitivePatch(input.agentState),
           ...clearExitPatch(),
           pending_renave_placa: null,
+          pending_renave_nota: null,
         },
         input.agentState,
       );
@@ -1336,6 +1627,16 @@ export async function tryProcessRenaveInbound(input: {
       reply: "O pedido de placa expirou. Abra o menu RENAVE novamente.",
     };
   }
+  if (rawInvoice && !pendingInvoice) {
+    await input.saveAgentStatePatch(
+      { pending_renave_nota: null },
+      input.agentState,
+    );
+    return {
+      handled: true,
+      reply: "O envio da nota expirou. Envie o comando novamente.",
+    };
+  }
   if (pendingPlateAction && !command) {
     return {
       handled: true,
@@ -1371,6 +1672,182 @@ export async function tryProcessRenaveInbound(input: {
   }
 
   const caller = input.dependencies?.callRenave ?? chamarRenave as RenaveCaller;
+  if (pendingInvoice) {
+    if (
+      /^cancelar\b/i.test(input.userText.trim()) ||
+      isGestaoNegative(input.userText)
+    ) {
+      await input.saveAgentStatePatch(
+        { pending_renave_nota: null },
+        input.agentState,
+      );
+      return { handled: true, reply: "Envio da NF-e cancelado." };
+    }
+    if (pendingInvoice.phase === "codigo_crv") {
+      const code = input.userText.match(/(?<!\d)(\d{11})(?!\d)/)?.[1];
+      if (!code) {
+        return {
+          handled: true,
+          reply: "Informe o código de segurança do CRV novo com 11 dígitos.",
+        };
+      }
+      const current = record(
+        vehicleContexts(input.agentState)[pendingInvoice.placa],
+      );
+      let sensitive: RenaveSensitiveState = {
+        documentoProprietario: "",
+        codigoSegurancaCrv: code,
+      };
+      const encrypted = stringValue(current.sensivel_cifrado);
+      if (encrypted) {
+        try {
+          sensitive = {
+            ...(await decryptRenaveSensitiveState(encrypted)),
+            codigoSegurancaCrv: code,
+          };
+        } catch {
+          // Replace an invalid stale vehicle secret.
+        }
+      }
+      await input.saveAgentStatePatch({
+        pending_renave_nota: null,
+        renave_veiculos: updatedVehicleContexts(
+          input.agentState,
+          pendingInvoice.placa,
+          {
+            nf_entrada_enviada: true,
+            crv_novo_disponivel: true,
+            sensivel_cifrado: await encryptRenaveSensitiveState(sensitive),
+          },
+        ),
+      }, input.agentState);
+      return {
+        handled: true,
+        reply: "✅ Código do CRV novo guardado. A saída RENAVE está liberada.",
+        interactiveButtons: actionButtons(
+          "✅ Código do CRV novo guardado. A saída RENAVE está liberada.",
+          [{
+            action: "saida",
+            placa: pendingInvoice.placa,
+            title: "📤 Dar saída",
+          }],
+        ),
+      };
+    }
+    const key = input.userText.replace(/\D/g, "");
+    if (!validateNfeKey(key)) {
+      return {
+        handled: true,
+        reply:
+          "A chave da NF-e é inválida. Envie os 44 dígitos com o dígito verificador correto.",
+      };
+    }
+    const invoice = await callLogged(caller, {
+      ambiente: "hom",
+      operacao: "enviarNotaFiscal",
+      params: {},
+      body: {
+        chaveNotaFiscal: key,
+        evento: "COMPRA",
+        idEstoque: pendingInvoice.idEstoque,
+      },
+    });
+    if (invoice.status < 200 || invoice.status >= 300) {
+      return { handled: true, reply: errorMessage(invoice) };
+    }
+    const response = await callLogged(caller, {
+      ambiente: "hom",
+      operacao: "crlve",
+      params: {
+        placaVeiculo: pendingInvoice.placa,
+        renavamVeiculo: pendingInvoice.renavam,
+      },
+    });
+    if (response.status < 200 || response.status >= 300) {
+      await input.saveAgentStatePatch({
+        pending_renave_nota: null,
+        renave_veiculos: updatedVehicleContexts(
+          input.agentState,
+          pendingInvoice.placa,
+          { nf_entrada_enviada: true },
+        ),
+      }, input.agentState);
+      return {
+        handled: true,
+        reply: `✅ NF-e de entrada enviada. O CRLV-e ainda não foi liberado: ${
+          errorMessage(response)
+        }`,
+      };
+    }
+    const pdf = crlvPdf(response.body);
+    if (!pdf) {
+      return {
+        handled: true,
+        reply:
+          "✅ NF-e enviada, mas o Serpro não retornou o PDF do CRLV-e. Tente novamente.",
+      };
+    }
+    const code = await extractCrlvSecurityCode(pdf);
+    const current = record(
+      vehicleContexts(input.agentState)[pendingInvoice.placa],
+    );
+    let sensitive: RenaveSensitiveState = {
+      documentoProprietario: "",
+      codigoSegurancaCrv: code ?? "",
+    };
+    const encrypted = stringValue(current.sensivel_cifrado);
+    if (encrypted) {
+      try {
+        sensitive = {
+          ...(await decryptRenaveSensitiveState(encrypted)),
+          codigoSegurancaCrv: code ?? "",
+        };
+      } catch {
+        // Replace an invalid stale vehicle secret.
+      }
+    }
+    await input.saveAgentStatePatch({
+      pending_renave_nota: code ? null : {
+        ...pendingInvoice,
+        phase: "codigo_crv",
+        expires_at: nextExpiry(now),
+      },
+      renave_veiculos: updatedVehicleContexts(
+        input.agentState,
+        pendingInvoice.placa,
+        {
+          nf_entrada_enviada: true,
+          crv_novo_disponivel: Boolean(code),
+          sensivel_cifrado: await encryptRenaveSensitiveState(sensitive),
+        },
+      ),
+    }, input.agentState);
+    const document: RenaveDocument = {
+      filename: `crlv-e-${pendingInvoice.placa}.pdf`,
+      caption: "CRLV-e",
+      base64: pdf,
+    };
+    if (!code) {
+      return {
+        handled: true,
+        reply:
+          "✅ NF-e enviada e CRLV-e recebido. Não consegui extrair o código: informe os 11 dígitos do CRV novo.",
+        documents: [document],
+      };
+    }
+    const reply =
+      "✅ NF-e enviada, CRLV-e recebido e código do CRV novo guardado.";
+    return {
+      handled: true,
+      reply,
+      documents: [document],
+      interactiveButtons: actionButtons(reply, [{
+        action: "saida",
+        placa: pendingInvoice.placa,
+        title: "📤 Dar saída",
+      }]),
+    };
+  }
   if (pendingExit) {
     if (
       isRenaveAction(interactive, "saida_cancelar", pendingExit.placa) ||
@@ -1476,8 +1953,11 @@ export async function tryProcessRenaveInbound(input: {
 
     if (
       [
+        "operador_cpf",
+        "email_estabelecimento",
         "documento",
         "nome",
+        "email_comprador",
         "cep",
         "logradouro",
         "bairro",
@@ -1504,6 +1984,7 @@ export async function tryProcessRenaveInbound(input: {
       const all = parseExitDetails(input.userText, now);
       if (all) {
         sensitive = {
+          ...sensitive,
           documentoProprietario: all.documento,
           codigoSegurancaCrv: all.codigoSegurancaCrv ||
             sensitive.codigoSegurancaCrv,
@@ -1546,7 +2027,25 @@ export async function tryProcessRenaveInbound(input: {
             reply: "Digite a data. Exemplo: 06/11/2026.",
           };
         }
-        if (
+        if (pendingExit.phase === "operador_cpf") {
+          const cpf = input.userText.replace(/\D/g, "");
+          if (validCpf(cpf)) {
+            sensitive.cpfOperadorResponsavel = cpf;
+            await saveOperatorProfile(input, {
+              ...(await operatorProfile(input.agentState)),
+              cpfOperadorResponsavel: cpf,
+            });
+          }
+        } else if (pendingExit.phase === "email_estabelecimento") {
+          const email = input.userText.trim().toLowerCase();
+          if (validEmail(email)) {
+            sensitive.emailEstabelecimento = email;
+            await saveOperatorProfile(input, {
+              ...(await operatorProfile(input.agentState)),
+              emailEstabelecimento: email,
+            });
+          }
+        } else if (
           pendingExit.phase === "documento" &&
           documentRaw &&
           validateCpfCnpj(documentRaw)
@@ -1554,6 +2053,15 @@ export async function tryProcessRenaveInbound(input: {
           sensitive.documentoProprietario = documentRaw;
         } else if (pendingExit.phase === "nome") {
           buyer.nome = input.userText.trim().slice(0, 80);
+        } else if (pendingExit.phase === "email_comprador") {
+          const skipped = isRenaveAction(
+            interactive,
+            "saida_email_pular",
+            pendingExit.placa,
+          );
+          const email = input.userText.trim().toLowerCase();
+          if (skipped) buyer.email = "";
+          else if (validEmail(email)) buyer.email = email;
         } else if (pendingExit.phase === "cep" && cepRaw) {
           buyer.cep = cepRaw;
           const address =
@@ -1598,8 +2106,14 @@ export async function tryProcessRenaveInbound(input: {
 
       const validCurrent = pendingExit.phase === "documento"
         ? Boolean(validateCpfCnpj(sensitive.documentoProprietario))
+        : pendingExit.phase === "operador_cpf"
+        ? validCpf(sensitive.cpfOperadorResponsavel ?? "")
+        : pendingExit.phase === "email_estabelecimento"
+        ? validEmail(sensitive.emailEstabelecimento ?? "")
         : pendingExit.phase === "nome"
         ? Boolean(sensitive.comprador?.nome)
+        : pendingExit.phase === "email_comprador"
+        ? sensitive.comprador?.email !== undefined
         : pendingExit.phase === "cep"
         ? /^\d{8}$/.test(String(sensitive.comprador?.cep ?? ""))
         : pendingExit.phase === "logradouro"
@@ -1629,8 +2143,20 @@ export async function tryProcessRenaveInbound(input: {
           input.agentState,
         );
         const prompts: Record<string, [string, string]> = {
+          operador_cpf: [
+            "Qual o seu CPF? Ele vai como operador responsável no RENAVE.",
+            "52998224725",
+          ],
+          email_estabelecimento: [
+            "Qual o e-mail do estabelecimento?",
+            "loja@exemplo.com.br",
+          ],
           documento: ["Qual o CPF/CNPJ do comprador?", "CPF 52998224725"],
           nome: ["Qual o nome do comprador?", "João Silva"],
+          email_comprador: [
+            "Qual o e-mail do comprador? Você também pode pular.",
+            "comprador@exemplo.com.br",
+          ],
           cep: ["Qual o CEP do comprador?", "20040020"],
           logradouro: ["Qual a rua do comprador?", "Avenida Rio Branco"],
           bairro: ["Qual o bairro?", "Centro"],
@@ -1668,10 +2194,16 @@ export async function tryProcessRenaveInbound(input: {
 
       next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
       const completeBuyer = sensitive.comprador ?? {};
-      next.phase = !validateCpfCnpj(sensitive.documentoProprietario)
+      next.phase = !validCpf(sensitive.cpfOperadorResponsavel ?? "")
+        ? "operador_cpf"
+        : !validEmail(sensitive.emailEstabelecimento ?? "")
+        ? "email_estabelecimento"
+        : !validateCpfCnpj(sensitive.documentoProprietario)
         ? "documento"
         : !completeBuyer.nome
         ? "nome"
+        : completeBuyer.email === undefined
+        ? "email_comprador"
         : !completeBuyer.cep
         ? "cep"
         : !completeBuyer.logradouro
@@ -1745,6 +2277,9 @@ export async function tryProcessRenaveInbound(input: {
         input.agentState,
       );
       const questions: Partial<Record<PendingRenaveExit["phase"], string>> = {
+        operador_cpf:
+          "Qual o seu CPF? Ele vai como operador responsável no RENAVE.",
+        email_estabelecimento: "Qual o e-mail do estabelecimento?",
         documento: "Qual o CPF/CNPJ do comprador?",
         nome: "Qual o nome do comprador?",
         cep: "Qual o CEP do comprador?",
@@ -1761,6 +2296,18 @@ export async function tryProcessRenaveInbound(input: {
           handled: true,
           reply: buttons.body,
           interactiveButtons: buttons,
+        };
+      }
+      if (next.phase === "email_comprador") {
+        const reply = "Qual o e-mail do comprador?";
+        return {
+          handled: true,
+          reply,
+          interactiveButtons: actionButtons(reply, [{
+            action: "saida_email_pular",
+            placa: next.placa,
+            title: "Pular",
+          }]),
         };
       }
       if (next.phase !== "confirm") {
@@ -1974,6 +2521,8 @@ export async function tryProcessRenaveInbound(input: {
     if (
       !documentType ||
       !/^\d{11}$/.test(sensitive.codigoSegurancaCrv) ||
+      !validCpf(sensitive.cpfOperadorResponsavel ?? "") ||
+      !validEmail(sensitive.emailEstabelecimento ?? "") ||
       !buyer?.nome ||
       !buyer.cep ||
       !buyer.logradouro ||
@@ -1993,12 +2542,15 @@ export async function tryProcessRenaveInbound(input: {
         operacao: "solicitarSaidaEstoque",
         params: {},
         body: {
+          cpfOperadorResponsavel: sensitive.cpfOperadorResponsavel,
           dataVenda: pendingExit.dataVenda,
+          emailEstabelecimento: sensitive.emailEstabelecimento,
           valorVenda: pendingExit.valorVenda,
           comprador: {
             numeroDocumento: sensitive.documentoProprietario,
             tipoDocumento: documentType,
             nome: buyer.nome,
+            ...(buyer.email ? { email: buyer.email } : {}),
             endereco: {
               cep: buyer.cep,
               codigoMunicipio: pendingExit.codigoMunicipio,
@@ -2130,28 +2682,30 @@ export async function tryProcessRenaveInbound(input: {
         );
         return { handled: true, reply: aptitude.reply };
       }
-      const encrypted = await encryptRenaveSensitiveState({
+      const sensitive = await applyOperatorProfile(input, {
         documentoProprietario: "",
         codigoSegurancaCrv: crv.codigoSegurancaCrv,
       });
       const next: PendingRenaveEntry = {
-        phase: "km",
+        phase: "operador_cpf",
         placa: pending.placa,
         origem_pedido: pending.origem_pedido,
         mensagem_pedido_id: pending.mensagem_pedido_id,
         renavam: crv.renavam,
         numeroCrv: crv.numeroCrv,
         tipoCrv: crv.tipoCrv,
-        sensivel_cifrado: encrypted,
+        sensivel_cifrado: "",
         expires_at: nextExpiry(now),
       };
+      next.phase = entryNextPhase(next, sensitive);
+      next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
       await input.saveAgentStatePatch(
         { pending_renave_entrada: next },
         input.agentState,
       );
       return {
         handled: true,
-        reply: `${aptitude.reply}\n\nQual a km atual?`,
+        reply: `${aptitude.reply}\n\n${entryPhasePrompt(next.phase)}`,
       };
     }
 
@@ -2209,6 +2763,9 @@ export async function tryProcessRenaveInbound(input: {
     if (
       [
         "compra",
+        "operador_cpf",
+        "email_estabelecimento",
+        "email_vendedor",
         "km",
         "valor",
         "data",
@@ -2219,10 +2776,47 @@ export async function tryProcessRenaveInbound(input: {
       if (!pending.sensivel_cifrado) {
         return { handled: true, reply: crvPrompt() };
       }
-      const sensitive = await decryptRenaveSensitiveState(
+      let sensitive = await decryptRenaveSensitiveState(
         pending.sensivel_cifrado,
       );
       let next: PendingRenaveEntry = { ...pending };
+      if (pending.phase === "operador_cpf") {
+        const cpf = input.userText.replace(/\D/g, "");
+        if (!validCpf(cpf)) {
+          return {
+            handled: true,
+            reply: "CPF inválido. Informe o CPF do operador responsável.",
+          };
+        }
+        sensitive = { ...sensitive, cpfOperadorResponsavel: cpf };
+        await saveOperatorProfile(input, {
+          ...(await operatorProfile(input.agentState)),
+          cpfOperadorResponsavel: cpf,
+        });
+      } else if (pending.phase === "email_estabelecimento") {
+        const email = input.userText.trim().toLowerCase();
+        if (!validEmail(email)) {
+          return {
+            handled: true,
+            reply: "E-mail inválido. Informe o e-mail do estabelecimento.",
+          };
+        }
+        sensitive = { ...sensitive, emailEstabelecimento: email };
+        await saveOperatorProfile(input, {
+          ...(await operatorProfile(input.agentState)),
+          emailEstabelecimento: email,
+        });
+      } else if (pending.phase === "email_vendedor") {
+        const email = input.userText.trim().toLowerCase();
+        if (!validEmail(email)) {
+          return {
+            handled: true,
+            reply: "E-mail inválido. Informe o e-mail do vendedor.",
+          };
+        }
+        sensitive = { ...sensitive, emailVendedor: email };
+      }
+      next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
       const purchase = parsePurchaseDetails(input.userText, now);
       const km = purchase?.quilometragem ?? labeledKm(input.userText) ??
         (pending.phase === "km" ? parseRenaveKm(input.userText) : null);
@@ -2312,26 +2906,19 @@ export async function tryProcessRenaveInbound(input: {
       const updatedSensitive = await decryptRenaveSensitiveState(
         next.sensivel_cifrado!,
       );
-      next.phase = next.quilometragem == null
-        ? "km"
-        : next.valorCompra == null
-        ? "valor"
-        : !next.dataCompra
-        ? "data"
-        : !updatedSensitive.documentoProprietario
-        ? "proprietario"
-        : "confirm";
+      next.phase = entryNextPhase(next, updatedSensitive);
       next.expires_at = nextExpiry(now);
       await input.saveAgentStatePatch(
         { pending_renave_entrada: next },
         input.agentState,
       );
-      if (next.phase === "km") {
-        return { handled: true, reply: "Qual a km atual?" };
-      }
-      if (next.phase === "valor") {
-        return { handled: true, reply: "Qual o valor da compra?" };
-      }
+      if (
+        next.phase === "operador_cpf" ||
+        next.phase === "email_estabelecimento" ||
+        next.phase === "email_vendedor" ||
+        next.phase === "km" ||
+        next.phase === "valor"
+      ) return { handled: true, reply: entryPhasePrompt(next.phase) };
       if (next.phase === "data") {
         const buttons = dateButtons("entrada", next.placa);
         return {
@@ -2341,10 +2928,7 @@ export async function tryProcessRenaveInbound(input: {
         };
       }
       if (next.phase === "proprietario") {
-        return {
-          handled: true,
-          reply: "Qual o CPF/CNPJ do proprietário atual?",
-        };
+        return { handled: true, reply: entryPhasePrompt(next.phase) };
       }
       const reply = [
         "Confirma a entrada no RENAVE?",
@@ -2404,7 +2988,10 @@ export async function tryProcessRenaveInbound(input: {
     const documentType = validateCpfCnpj(sensitive.documentoProprietario);
     if (
       !documentType ||
-      !/^\d{11}$/.test(sensitive.codigoSegurancaCrv)
+      !/^\d{11}$/.test(sensitive.codigoSegurancaCrv) ||
+      !validCpf(sensitive.cpfOperadorResponsavel ?? "") ||
+      !validEmail(sensitive.emailEstabelecimento ?? "") ||
+      !validEmail(sensitive.emailVendedor ?? "")
     ) {
       await input.saveAgentStatePatch(
         clearSensitivePatch(input.agentState),
@@ -2423,7 +3010,10 @@ export async function tryProcessRenaveInbound(input: {
         operacao: "solicitarEntradaEstoque",
         params: {},
         body: {
+          cpfOperadorResponsavel: sensitive.cpfOperadorResponsavel,
           dataCompra: pending.dataCompra,
+          emailEstabelecimento: sensitive.emailEstabelecimento,
+          emailVendedor: sensitive.emailVendedor,
           valorCompra: pending.valorCompra,
           veiculo: {
             placa: pending.placa,
@@ -2519,6 +3109,8 @@ export async function tryProcessRenaveInbound(input: {
             numeroCrv: pending.numeroCrv,
             idEstoque: validStockId,
             estado: stringValue(responseBody.estado) || "SOLICITADO",
+            nf_entrada_enviada: false,
+            crv_novo_disponivel: false,
           },
         ),
       }, input.agentState);
@@ -2527,7 +3119,7 @@ export async function tryProcessRenaveInbound(input: {
       "✅ Entrada solicitada no RENAVE.",
       `Estoque: ${validStockId ?? "não informado"}`,
       `Estado: ${stringValue(responseBody.estado) || "SOLICITADO"}`,
-      "Próximo passo: enviar NF-e de entrada — ainda não implementado.",
+      "Próximo passo: confirmar a transferência no Detran.",
     ].join("\n");
     return {
       handled: true,
@@ -2553,12 +3145,20 @@ export async function tryProcessRenaveInbound(input: {
 
   if (command.kind === "teste") {
     const documento = input.dependencies?.mockCpf?.() ?? generateValidCpf();
+    const authenticated = await callLogged(caller, {
+      ambiente: "hom",
+      operacao: "clienteAutenticado",
+      params: {},
+    });
+    const uf = authenticated.status >= 200 && authenticated.status < 300
+      ? authenticatedClientUf(authenticated.body)
+      : "SP";
     const result = await callLogged(caller, {
       ambiente: "hom",
       operacao: "mockVeiculoUsado",
       params: {},
       body: {
-        ufJurisdicaoVeiculo: "RJ",
+        ufJurisdicaoVeiculo: uf,
         sufixoPlaca: input.dependencies?.mockSuffix?.() ??
           generateRenaveMockSuffix(),
         comRouboFurto: false,
@@ -2586,10 +3186,13 @@ export async function tryProcessRenaveInbound(input: {
         reply: "O Serpro criou um mock incompleto. Tente novamente.",
       };
     }
-    const encrypted = await encryptRenaveSensitiveState({
-      documentoProprietario: documento,
-      codigoSegurancaCrv,
-    });
+    const encrypted = await encryptRenaveSensitiveState(
+      await applyOperatorProfile(input, {
+        documentoProprietario: documento,
+        codigoSegurancaCrv,
+        emailVendedor: "vendedor.teste@amzofertas.com.br",
+      }),
+    );
     const mock: RenaveMockState = {
       ambiente: "hom",
       placa,
@@ -2677,28 +3280,34 @@ export async function tryProcessRenaveInbound(input: {
       };
     }
     let stock: Record<string, unknown> | null = null;
-    if (result.status >= 200 && result.status < 300) {
-      const lookup = await findStockByPlate(caller, command.placa);
-      stock = lookup.stock;
-    }
     const resultBody = record(result.body);
-    const codigoSegurancaCrv = stringValue(
-      resultBody.codigoSegurancaCrv ??
-        stock?.codigoSegurancaCrv ??
-        record(stock?.veiculo).codigoSegurancaCrv,
+    let idEstoque = Number(
+      resultBody.idEstoque ??
+        resultBody.id ??
+        record(vehicleContexts(input.agentState)[command.placa]).idEstoque,
     );
-    const idEstoque = Number(stock?.id ?? stock?.idEstoque);
+    if (result.status >= 200 && result.status < 300) {
+      if (!Number.isSafeInteger(idEstoque) || idEstoque <= 0) {
+        const lookup = await findStockByPlate(caller, command.placa);
+        stock = lookup.stock;
+        idEstoque = Number(stock?.id ?? stock?.idEstoque);
+      }
+      if (Number.isSafeInteger(idEstoque) && idEstoque > 0) {
+        const detail = await callLogged(caller, {
+          ambiente: "hom",
+          operacao: "consultarEstoquePorId",
+          params: { id: idEstoque },
+        });
+        if (detail.status >= 200 && detail.status < 300) {
+          stock = record(detail.body);
+        }
+      }
+    }
     const validStockId = Number.isSafeInteger(idEstoque) && idEstoque > 0
       ? idEstoque
       : null;
     const estado = stringValue(stock?.estado) || "CONFIRMADO";
     if (result.status >= 200 && result.status < 300) {
-      const sensitive = /^\d{11}$/.test(codigoSegurancaCrv)
-        ? await encryptRenaveSensitiveState({
-          documentoProprietario: "",
-          codigoSegurancaCrv,
-        })
-        : null;
       await input.saveAgentStatePatch({
         renave_veiculos: updatedVehicleContexts(
           input.agentState,
@@ -2709,7 +3318,6 @@ export async function tryProcessRenaveInbound(input: {
             numeroCrv: stringValue(stock?.numeroCrv ?? resultBody.numeroCrv),
             idEstoque: validStockId,
             estado,
-            ...(sensitive ? { sensivel_cifrado: sensitive } : {}),
           },
         ),
       }, input.agentState);
@@ -2730,18 +3338,72 @@ export async function tryProcessRenaveInbound(input: {
       return { handled: true, reply: errorMessage(result) };
     }
     const reply =
-      "✅ Detran confirmou a transferência (simulação de homologação) — carro CONFIRMADO no estoque.";
+      `✅ Detran confirmou a transferência (simulação de homologação).\nEstado: ${estado}`;
     return {
       handled: true,
       reply,
       interactiveButtons: actionButtons(reply, [
-        { action: "saida", placa: command.placa, title: "📤 Dar saída" },
         {
-          action: "documentos",
+          action: "nota",
           placa: command.placa,
-          title: "📄 Documentos",
+          title: "📄 Enviar NF entrada",
         },
+        { action: "estoque", title: "📋 Estoque" },
       ]),
+    };
+  }
+
+  if (command.kind === "nota") {
+    const context = record(vehicleContexts(input.agentState)[command.placa]);
+    let idEstoque = Number(context.idEstoque);
+    let renavam = stringValue(context.renavam);
+    if (
+      !Number.isSafeInteger(idEstoque) ||
+      idEstoque <= 0 ||
+      !/^\d{11}$/.test(renavam)
+    ) {
+      const lookup = await findStockByPlate(caller, command.placa);
+      if (
+        lookup.response.status < 200 ||
+        lookup.response.status >= 300
+      ) {
+        return { handled: true, reply: errorMessage(lookup.response) };
+      }
+      if (!lookup.stock) {
+        return {
+          handled: true,
+          reply: "Esse veículo não está no estoque RENAVE da loja.",
+        };
+      }
+      idEstoque = Number(lookup.stock.id ?? lookup.stock.idEstoque);
+      renavam = stringValue(lookup.stock.renavam);
+    }
+    if (
+      !Number.isSafeInteger(idEstoque) ||
+      idEstoque <= 0 ||
+      !/^\d{11}$/.test(renavam)
+    ) {
+      return {
+        handled: true,
+        reply: "O estoque retornou dados incompletos para enviar a NF-e.",
+      };
+    }
+    const pending: PendingRenaveInvoice = {
+      phase: "chave",
+      placa: command.placa,
+      renavam,
+      idEstoque,
+      origem_pedido: commandOrigin,
+      mensagem_pedido_id: commandMessageId,
+      expires_at: nextExpiry(now),
+    };
+    await input.saveAgentStatePatch(
+      { pending_renave_nota: pending },
+      input.agentState,
+    );
+    return {
+      handled: true,
+      reply: "Informe a chave da NF-e de entrada com 44 dígitos.",
     };
   }
 
@@ -2794,13 +3456,35 @@ export async function tryProcessRenaveInbound(input: {
         codigoSegurancaCrv = "";
       }
     }
-    const sensitive = await encryptRenaveSensitiveState({
+    if (
+      context.nf_entrada_enviada !== true ||
+      context.crv_novo_disponivel !== true ||
+      !/^\d{11}$/.test(codigoSegurancaCrv)
+    ) {
+      const reply =
+        "Antes da saída, envie a NF-e de entrada para obter o CRLV-e e o código do CRV novo.";
+      return {
+        handled: true,
+        reply,
+        interactiveButtons: actionButtons(reply, [{
+          action: "nota",
+          placa: command.placa,
+          title: "📄 Enviar NF entrada",
+        }]),
+      };
+    }
+    const exitSensitive = await applyOperatorProfile(input, {
       documentoProprietario: "",
       codigoSegurancaCrv,
       comprador: {},
     });
+    const sensitive = await encryptRenaveSensitiveState(exitSensitive);
     const pending: PendingRenaveExit = {
-      phase: "documento",
+      phase: !validCpf(exitSensitive.cpfOperadorResponsavel ?? "")
+        ? "operador_cpf"
+        : !validEmail(exitSensitive.emailEstabelecimento ?? "")
+        ? "email_estabelecimento"
+        : "documento",
       placa: command.placa,
       origem_pedido: commandOrigin,
       mensagem_pedido_id: commandMessageId,
@@ -2816,7 +3500,11 @@ export async function tryProcessRenaveInbound(input: {
     );
     return {
       handled: true,
-      reply: "Qual o CPF/CNPJ do comprador?",
+      reply: pending.phase === "operador_cpf"
+        ? "Qual o seu CPF? Ele vai como operador responsável no RENAVE."
+        : pending.phase === "email_estabelecimento"
+        ? "Qual o e-mail do estabelecimento?"
+        : "Qual o CPF/CNPJ do comprador?",
     };
   }
 
@@ -2924,17 +3612,23 @@ export async function tryProcessRenaveInbound(input: {
       );
       return { handled: true, reply: aptitude.reply };
     }
+    const sensitive = await applyOperatorProfile(
+      input,
+      await decryptRenaveSensitiveState(mock.sensivel_cifrado),
+    );
     const next: PendingRenaveEntry = {
-      phase: "km",
+      phase: "operador_cpf",
       placa: mock.placa,
       origem_pedido: commandOrigin,
       mensagem_pedido_id: commandMessageId,
       renavam: mock.renavam,
       numeroCrv: mock.numeroCrv,
       tipoCrv: mock.tipoCrv,
-      sensivel_cifrado: mock.sensivel_cifrado,
+      sensivel_cifrado: "",
       expires_at: nextExpiry(now),
     };
+    next.phase = entryNextPhase(next, sensitive);
+    next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
     await input.saveAgentStatePatch(
       {
         pending_renave_entrada: next,
@@ -2944,7 +3638,7 @@ export async function tryProcessRenaveInbound(input: {
     );
     return {
       handled: true,
-      reply: `${aptitude.reply}\n\nQual a km atual?`,
+      reply: `${aptitude.reply}\n\n${entryPhasePrompt(next.phase)}`,
     };
   }
 

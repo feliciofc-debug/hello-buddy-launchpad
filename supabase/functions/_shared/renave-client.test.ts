@@ -134,7 +134,10 @@ Deno.test({
           operacao: "solicitarEntradaEstoque",
           params: {},
           body: {
+            cpfOperadorResponsavel: "52998224725",
             dataCompra: "2026-11-06",
+            emailEstabelecimento: "loja@exemplo.com.br",
+            emailVendedor: "vendedor@exemplo.com.br",
             valorCompra: 50000,
             veiculo: {
               placa: "ABC1D23",
@@ -192,7 +195,9 @@ Deno.test({
         operacao: "solicitarSaidaEstoque",
         params: {},
         body: {
+          cpfOperadorResponsavel: "52998224725",
           dataVenda: "2026-11-06",
+          emailEstabelecimento: "loja@exemplo.com.br",
           valorVenda: 60000,
           comprador: {
             numeroDocumento: "52998224725",
@@ -213,8 +218,19 @@ Deno.test({
           },
         },
       }, fetchMock);
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "enviarNotaFiscal",
+        params: {},
+        body: {
+          chaveNotaFiscal: "35261185106037000585550010000000011000000007",
+          evento: "COMPRA",
+          idEstoque: 42,
+        },
+      }, fetchMock);
       assertEquals(calls[0].operacao, "pdfAtpv");
       assertEquals(calls[1].operacao, "solicitarSaidaEstoque");
+      assertEquals(calls[2].operacao, "enviarNotaFiscal");
     }),
 });
 

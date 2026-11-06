@@ -114,7 +114,11 @@ export function buildOperationPath(
   return { path, consumed };
 }
 
-export function selectSerproResponseBody(status: number, body: unknown): unknown {
+export function selectSerproResponseBody(
+  status: number,
+  body: unknown,
+): unknown {
+  if (status >= 200 && status < 300) return body;
   if (!body || typeof body !== "object" || Array.isArray(body)) return {};
   const record = body as Record<string, unknown>;
   if (status === 422) {
@@ -129,7 +133,7 @@ export function selectSerproResponseBody(status: number, body: unknown): unknown
       logIdRastreabilidade: record.logIdRastreabilidade,
     };
   }
-  return body;
+  return {};
 }
 
 export async function callSerpro(input: SerproCall): Promise<SerproResponse> {

@@ -32,6 +32,13 @@ test("erros 400 e 500 expõem somente campos de rastreabilidade previstos", () =
   assert.deepEqual(selectSerproResponseBody(500, upstream), expected);
 });
 
+test("resposta 2xx preserva arrays e objetos do Serpro", () => {
+  const rows = [{ id: 1 }, { id: 2 }];
+  const object = { id: 3 };
+  assert.equal(selectSerproResponseBody(200, rows), rows);
+  assert.equal(selectSerproResponseBody(201, object), object);
+});
+
 test("path params são validados, normalizados e codificados", () => {
   const built = buildOperationPath(
     "/api/pdf-atpv/{placa}/{renavam}",

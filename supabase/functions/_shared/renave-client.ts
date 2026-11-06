@@ -6,6 +6,7 @@ export const RENAVE_OPERATION_NAMES = [
   "consultarEstoquePorId",
   "solicitarEntradaEstoque",
   "solicitarSaidaEstoque",
+  "enviarNotaFiscal",
   "pdfAtpv",
   "termoEntrada",
   "termoSaida",
@@ -51,6 +52,7 @@ type OperationParams = {
   } & OptionalEstablishment;
   solicitarEntradaEstoque: OptionalEstablishment;
   solicitarSaidaEstoque: OptionalEstablishment;
+  enviarNotaFiscal: OptionalEstablishment;
   pdfAtpv: {
     placa: string;
     renavam: string;
@@ -80,7 +82,10 @@ type OperationBody = {
   consultarEstoques: never;
   consultarEstoquePorId: never;
   solicitarEntradaEstoque: {
+    cpfOperadorResponsavel: string;
     dataCompra: string;
+    emailEstabelecimento: string;
+    emailVendedor: string;
     valorCompra: number;
     veiculo: {
       codigoSegurancaCrv: string;
@@ -95,12 +100,15 @@ type OperationBody = {
     };
   };
   solicitarSaidaEstoque: {
+    cpfOperadorResponsavel: string;
     dataVenda: string;
+    emailEstabelecimento: string;
     valorVenda: number;
     comprador: {
       numeroDocumento: string;
       tipoDocumento: "CPF" | "CNPJ";
       nome: string;
+      email?: string;
       endereco: {
         cep: string;
         codigoMunicipio: number;
@@ -115,6 +123,11 @@ type OperationBody = {
       placa: string;
       renavam?: string;
     };
+  };
+  enviarNotaFiscal: {
+    chaveNotaFiscal: string;
+    evento: "COMPRA" | "VENDA";
+    idEstoque: number;
   };
   pdfAtpv: never;
   termoEntrada: never;

@@ -44,6 +44,11 @@ export const RENAVE_OPERATIONS = {
     path: "/api/solicitacoes-saida-estoque",
     params: ["cnpjEstabelecimento"],
   },
+  enviarNotaFiscal: {
+    method: "POST",
+    path: "/api/notas-fiscais",
+    params: ["cnpjEstabelecimento"],
+  },
   pdfAtpv: {
     method: "GET",
     path: "/api/pdf-atpv/{placa}/{renavam}",

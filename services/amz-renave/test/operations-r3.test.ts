@@ -8,6 +8,7 @@ test("RENAVE-3 registra operações e paths previstos pelo Swagger", () => {
       [
         "consultarEstoquePorId",
         "solicitarSaidaEstoque",
+        "enviarNotaFiscal",
         "pdfAtpv",
         "termoEntrada",
         "termoSaida",
@@ -22,6 +23,7 @@ test("RENAVE-3 registra operações e paths previstos pelo Swagger", () => {
     {
       consultarEstoquePorId: "GET /api/estoques/{id}",
       solicitarSaidaEstoque: "POST /api/solicitacoes-saida-estoque",
+      enviarNotaFiscal: "POST /api/notas-fiscais",
       pdfAtpv: "GET /api/pdf-atpv/{placa}/{renavam}",
       termoEntrada: "GET /api/estoques/{idEstoque}/termo-entrada-estoque",
       termoSaida: "GET /api/estoques/{idEstoque}/termo-saida-estoque",
