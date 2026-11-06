@@ -1,0 +1,378 @@
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { resetProcedenciaEncKeyCache } from "./procedencia-enc-crypto.ts";
+import {
+  parseExitDetails,
+  parseRenaveCommand,
+  tryProcessRenaveInbound,
+} from "./renave-inbound.ts";
+import { encryptRenaveSensitiveState } from "./renave-state-crypto.ts";
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
+const OWNER = "5511999999999";
+const NOW = new Date("2026-11-06T15:00:00Z");
+const CPF = "52998224725";
+const PDF = btoa("%PDF-1.4 test");
+const KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+
+function setEnv(): () => void {
+  const previous = {
+    users: Deno.env.get("AMZ_RENAVE_HOM_USER_IDS"),
+    environment: Deno.env.get("AMZ_RENAVE_AMBIENTE"),
+    key: Deno.env.get("PROCEDENCIA_ENC_KEY"),
+  };
+  Deno.env.set("AMZ_RENAVE_HOM_USER_IDS", USER_ID);
+  Deno.env.set("AMZ_RENAVE_AMBIENTE", "hom");
+  Deno.env.set("PROCEDENCIA_ENC_KEY", KEY);
+  resetProcedenciaEncKeyCache();
+  return () => {
+    for (
+      const [name, value] of [
+        ["AMZ_RENAVE_HOM_USER_IDS", previous.users],
+        ["AMZ_RENAVE_AMBIENTE", previous.environment],
+        ["PROCEDENCIA_ENC_KEY", previous.key],
+      ] as const
+    ) {
+      if (value == null) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+    resetProcedenciaEncKeyCache();
+  };
+}
+
+function input(
+  state: Record<string, unknown>,
+  text: string,
+  callRenave: (call: Record<string, unknown>) => Promise<{
+    status: number;
+    body: unknown;
+  }>,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    userId: USER_ID,
+    fromNumber: OWNER,
+    userText: text,
+    interactiveId: null,
+    hasInboundMedia: false,
+    auth: { ownerPhone: OWNER, ownerAltPhones: [], gestores: [] },
+    agentState: state,
+    origem: "texto",
+    mensagemId: "wamid-test",
+    saveAgentStatePatch: async (
+      patch: Record<string, unknown>,
+      current: Record<string, unknown>,
+    ) => {
+      Object.assign(current, patch);
+      return true;
+    },
+    dependencies: { now: () => NOW, callRenave },
+    ...overrides,
+  };
+}
+
+function movementDb(rows: Record<string, unknown>[]) {
+  return {
+    from: (table: string) => ({
+      insert: async (row: Record<string, unknown>) => {
+        assertEquals(table, "renave_movimentos");
+        rows.push(row);
+        return { error: null };
+      },
+    }),
+  };
+}
+
+Deno.test("RENAVE-3 — parser e dados de saída validam sem expor documento", () => {
+  assertEquals(parseRenaveCommand("renave detran ABC1D23")?.kind, "detran");
+  assertEquals(parseRenaveCommand("renave saída ABC1D23")?.kind, "saida");
+  assertEquals(
+    parseRenaveCommand("renave documentos ABC1D23")?.kind,
+    "documentos",
+  );
+  const parsed = parseExitDetails(
+    `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Avenida Rio Branco, número 10, bairro Centro, cidade Rio de Janeiro/RJ, valor 60000, data hoje, código 12345678901`,
+    NOW,
+  );
+  assertEquals(parsed?.documento, CPF);
+  assertEquals(parsed?.dataVenda, "2026-11-06");
+  assertEquals(
+    parseExitDetails(
+      "CPF 11111111111, nome X, CEP 1, rua X, número 1, bairro X, cidade X/RJ, valor 1, data hoje",
+      NOW,
+    ),
+    null,
+  );
+});
+
+Deno.test("RENAVE-3 — fluxo de saída confirmado envia PDFs e grava origem áudio", async () => {
+  const restore = setEnv();
+  const state: Record<string, unknown> = {};
+  const movements: Record<string, unknown>[] = [];
+  const calls: Record<string, unknown>[] = [];
+  try {
+    const secret = await encryptRenaveSensitiveState({
+      documentoProprietario: "",
+      codigoSegurancaCrv: "98765432101",
+    });
+    state.renave_veiculos = {
+      ABC1D23: { sensivel_cifrado: secret },
+    };
+    const callRenave = async (call: Record<string, unknown>) => {
+      calls.push(call);
+      switch (call.operacao) {
+        case "consultarEstoques":
+          return {
+            status: 200,
+            body: [{
+              id: 42,
+              placa: "ABC1D23",
+              renavam: "12345678901",
+              numeroCrv: "123456789012",
+              estado: "CONFIRMADO",
+            }],
+          };
+        case "municipios":
+          return {
+            status: 200,
+            body: [{ id: 3304557, nome: "Rio de Janeiro", uf: "RJ" }],
+          };
+        case "solicitarSaidaEstoque":
+          return { status: 201, body: { estado: "SOLICITADO" } };
+        case "pdfAtpv":
+          return { status: 200, body: { pdfAtpvBase64: PDF } };
+        default:
+          return { status: 200, body: { pdfBase64: PDF } };
+      }
+    };
+    const start = await tryProcessRenaveInbound(
+      input(state, "renave saída ABC1D23", callRenave) as never,
+    );
+    assertStringIncludes(start.reply ?? "", "CPF/CNPJ");
+
+    const details = await tryProcessRenaveInbound(
+      input(
+        state,
+        `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Avenida Rio Branco, número 10, bairro Centro, cidade Rio de Janeiro/RJ, valor 60000, data hoje`,
+        callRenave,
+      ) as never,
+    );
+    assertEquals(
+      details.interactiveButtons?.buttons[0].id,
+      "renave_wa:saida_confirmar",
+    );
+    assertEquals(JSON.stringify(state).includes(CPF), false);
+    assertEquals(JSON.stringify(state).includes("98765432101"), false);
+    assertEquals(JSON.stringify(state).includes("JOAO SILVA"), false);
+    assertEquals(JSON.stringify(state).includes("20040020"), false);
+
+    const confirmed = await tryProcessRenaveInbound(
+      input(state, "Confirmar", callRenave, {
+        interactiveId: "renave_wa:saida_confirmar",
+        origem: "audio",
+        sb: movementDb(movements),
+      }) as never,
+    );
+    assertStringIncludes(confirmed.reply ?? "", "Saída solicitada");
+    assertEquals(confirmed.documents?.length, 4);
+    assertEquals(state.pending_renave_saida, null);
+    assertEquals(
+      (state.renave_veiculos as Record<string, Record<string, unknown>>)
+        .ABC1D23.sensivel_cifrado,
+      null,
+    );
+    assertEquals(movements[0].origem, "audio");
+    assertEquals(movements[0].mensagem_origem_id, "wamid-test");
+    assertEquals(movements[0].solicitado_por, "***9999");
+    const movementText = JSON.stringify(movements);
+    assertEquals(movementText.includes(CPF), false);
+    assertEquals(movementText.includes("98765432101"), false);
+    const request = calls.find((call) =>
+      call.operacao === "solicitarSaidaEstoque"
+    );
+    assert(request);
+    assertEquals(
+      JSON.stringify(request).includes("codigoSegurancaCrv"),
+      true,
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RENAVE-3 — bloqueia estoque não confirmado e resolve município ambíguo", async () => {
+  const restore = setEnv();
+  try {
+    const state: Record<string, unknown> = {};
+    const unconfirmed = await tryProcessRenaveInbound(
+      input(state, "renave saida ABC1D23", async () => ({
+        status: 200,
+        body: [{
+          id: 42,
+          placa: "ABC1D23",
+          renavam: "12345678901",
+          estado: "SOLICITADO",
+        }],
+      })) as never,
+    );
+    assertStringIncludes(unconfirmed.reply ?? "", "não está CONFIRMADO");
+
+    const secret = await encryptRenaveSensitiveState({
+      documentoProprietario: "",
+      codigoSegurancaCrv: "98765432101",
+    });
+    state.renave_veiculos = { ABC1D23: { sensivel_cifrado: secret } };
+    const caller = async (call: Record<string, unknown>) =>
+      call.operacao === "consultarEstoques"
+        ? {
+          status: 200,
+          body: [{
+            id: 42,
+            placa: "ABC1D23",
+            renavam: "12345678901",
+            estado: "CONFIRMADO",
+          }],
+        }
+        : {
+          status: 200,
+          body: [
+            { id: 1, nome: "Bom Jesus", uf: "PI" },
+            { id: 2, nome: "Bom Jesus", uf: "RS" },
+          ],
+        };
+    await tryProcessRenaveInbound(
+      input(state, "renave saida ABC1D23", caller) as never,
+    );
+    const ambiguous = await tryProcessRenaveInbound(
+      input(
+        state,
+        `CPF ${CPF}, nome JOAO SILVA, CEP 20040020, rua Rua Um, número 10, bairro Centro, cidade Bom Jesus/PI, valor 60000, data hoje`,
+        caller,
+      ) as never,
+    );
+    assertStringIncludes(ambiguous.reply ?? "", "mais de um município");
+    const selected = await tryProcessRenaveInbound(
+      input(state, "1", caller) as never,
+    );
+    assertStringIncludes(selected.reply ?? "", "Confirma a saída");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RENAVE-3 — cancelar, expirar e falhar histórico não quebram o fluxo", async () => {
+  const restore = setEnv();
+  try {
+    const cancelState: Record<string, unknown> = {
+      pending_renave_saida: {
+        phase: "dados",
+        placa: "ABC1D23",
+        idEstoque: 42,
+        renavam: "12345678901",
+        sensivel_cifrado: "proc1:cifrado",
+        expires_at: "2026-11-06T15:15:00Z",
+      },
+    };
+    const brokenDb = {
+      from: () => ({
+        insert: () => Promise.reject(new Error("database unavailable")),
+      }),
+    };
+    const cancelled = await tryProcessRenaveInbound(
+      input(cancelState, "cancelar", async () => ({
+        status: 200,
+        body: {},
+      }), { sb: brokenDb }) as never,
+    );
+    assertStringIncludes(cancelled.reply ?? "", "cancelada");
+    assertEquals(cancelState.pending_renave_saida, null);
+
+    const expiredState: Record<string, unknown> = {
+      pending_renave_saida: {
+        phase: "dados",
+        placa: "ABC1D23",
+        idEstoque: 42,
+        renavam: "12345678901",
+        sensivel_cifrado: "proc1:cifrado",
+        expires_at: "2026-11-06T14:59:59Z",
+      },
+    };
+    const expired = await tryProcessRenaveInbound(
+      input(expiredState, "qualquer assunto", async () => ({
+        status: 200,
+        body: {},
+      })) as never,
+    );
+    assertStringIncludes(expired.reply ?? "", "expirou");
+    assertEquals(expiredState.pending_renave_saida, null);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RENAVE-3 — simulação Detran guarda CRV cifrado e registra movimento", async () => {
+  const restore = setEnv();
+  const state: Record<string, unknown> = {};
+  const movements: Record<string, unknown>[] = [];
+  try {
+    const result = await tryProcessRenaveInbound(
+      input(state, "renave detran ABC1D23", async (call) => {
+        if (call.operacao === "mockTransferenciaDetran") {
+          return { status: 201, body: {} };
+        }
+        return {
+          status: 200,
+          body: [{
+            id: 42,
+            placa: "ABC1D23",
+            renavam: "12345678901",
+            numeroCrv: "123456789012",
+            codigoSegurancaCrv: "98765432101",
+            estado: "CONFIRMADO",
+          }],
+        };
+      }, { sb: movementDb(movements) }) as never,
+    );
+    assertStringIncludes(result.reply ?? "", "Detran confirmou");
+    const serialized = JSON.stringify(state);
+    assertEquals(serialized.includes("98765432101"), false);
+    assertStringIncludes(serialized, "proc1:");
+    assertEquals(movements[0].tipo, "detran_simulado");
+    assertEquals(movements[0].estado_estoque, "CONFIRMADO");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RENAVE-3 — processor preserva áudio e entrega documentos fora da IA", async () => {
+  const [gestao, processor, migration] = await Promise.all([
+    Deno.readTextFile(new URL("./gestao-inbound.ts", import.meta.url)),
+    Deno.readTextFile(
+      new URL(
+        "../whatsapp-cloud-inbound-processor/index.ts",
+        import.meta.url,
+      ),
+    ),
+    Deno.readTextFile(
+      new URL(
+        "../../migrations/20261106133000_renave_movimentos.sql",
+        import.meta.url,
+      ),
+    ),
+  ]);
+  assertStringIncludes(gestao, "origem: input.origem");
+  assertStringIncludes(gestao, "mensagemId: input.mensagemId");
+  assertStringIncludes(processor, 'origem: "audio"');
+  assertStringIncludes(processor, "deliverRenaveDocuments({");
+  assertStringIncludes(processor, "sendWhatsAppDocument(");
+  assertStringIncludes(processor, "pending_renave_saida");
+  assertStringIncludes(migration, "CREATE TABLE public.renave_movimentos");
+  assertStringIncludes(migration, "mensagem_origem_id text");
+  assertStringIncludes(migration, "ENABLE ROW LEVEL SECURITY");
+  assertStringIncludes(migration, "user_id = auth.uid()");
+  assertEquals(migration.includes("documento_proprietario"), false);
+  assertEquals(migration.includes("codigo_seguranca"), false);
+});

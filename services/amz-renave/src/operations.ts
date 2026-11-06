@@ -28,10 +28,48 @@ export const RENAVE_OPERATIONS = {
       "cnpjEstabelecimento",
     ],
   },
+  consultarEstoquePorId: {
+    method: "GET",
+    path: "/api/estoques/{id}",
+    params: ["id", "cnpjEstabelecimento"],
+    pathParams: { id: "idEstoque" },
+  },
   solicitarEntradaEstoque: {
     method: "POST",
     path: "/api/solicitacoes-entrada-estoque",
     params: ["cnpjEstabelecimento"],
+  },
+  solicitarSaidaEstoque: {
+    method: "POST",
+    path: "/api/solicitacoes-saida-estoque",
+    params: ["cnpjEstabelecimento"],
+  },
+  pdfAtpv: {
+    method: "GET",
+    path: "/api/pdf-atpv/{placa}/{renavam}",
+    params: ["placa", "renavam", "cnpjEstabelecimento"],
+    pathParams: { placa: "placa", renavam: "renavam" },
+  },
+  termoEntrada: {
+    method: "GET",
+    path: "/api/estoques/{idEstoque}/termo-entrada-estoque",
+    params: ["idEstoque", "cnpjEstabelecimento"],
+    pathParams: { idEstoque: "idEstoque" },
+  },
+  termoSaida: {
+    method: "GET",
+    path: "/api/estoques/{idEstoque}/termo-saida-estoque",
+    params: ["idEstoque", "cnpjEstabelecimento"],
+    pathParams: { idEstoque: "idEstoque" },
+  },
+  crlve: {
+    method: "GET",
+    path: "/api/crlve/{placaVeiculo}/{renavamVeiculo}",
+    params: ["placaVeiculo", "renavamVeiculo", "cnpjEstabelecimento"],
+    pathParams: {
+      placaVeiculo: "placa",
+      renavamVeiculo: "renavam",
+    },
   },
   municipios: {
     method: "GET",
@@ -44,7 +82,15 @@ export const RENAVE_OPERATIONS = {
     params: ["cnpjEstabelecimento"],
     homOnly: true,
   },
+  mockTransferenciaDetran: {
+    method: "POST",
+    path: "/api/veiculos-usados-mock/transferencia-no-detran",
+    params: ["cnpjEstabelecimento"],
+    homOnly: true,
+  },
 } as const;
+
+export type RenavePathParamKind = "placa" | "renavam" | "idEstoque";
 
 export type RenaveOperation = keyof typeof RENAVE_OPERATIONS;
 export type RenaveEnvironment = "hom" | "prod";

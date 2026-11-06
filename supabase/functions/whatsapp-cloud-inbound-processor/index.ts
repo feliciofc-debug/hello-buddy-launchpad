@@ -24327,6 +24327,65 @@ async function sendWhatsAppDocument(
   }
 }
 
+async function deliverRenaveDocuments(input: {
+  userId: string;
+  to: string;
+  documents: Array<{ filename: string; caption: string; base64: string }>;
+}): Promise<void> {
+  for (const document of input.documents) {
+    if (
+      document.base64.length > 20_000_000 ||
+      !document.base64.startsWith("JVBER") ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(document.base64)
+    ) {
+      throw new Error("renave_documento_invalido");
+    }
+    const binary = atob(document.base64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    if (
+      bytes.byteLength > 15_728_640 ||
+      new TextDecoder().decode(bytes.subarray(0, 4)) !== "%PDF"
+    ) {
+      throw new Error("renave_documento_invalido");
+    }
+    const filename = document.filename
+      .replace(/[^a-zA-Z0-9._-]/g, "-")
+      .slice(0, 100);
+    const path =
+      `${input.userId}/renave/${crypto.randomUUID()}-${filename}`;
+    let uploadError: { message: string } | null = null;
+    try {
+      const upload = await sb.storage.from(
+        "gestao-os-documentos",
+      ).upload(path, bytes, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+      uploadError = upload.error;
+    } finally {
+      bytes.fill(0);
+    }
+    if (uploadError) {
+      throw new Error(`renave_documento_upload: ${uploadError.message}`);
+    }
+    const { data, error: signedError } = await sb.storage.from(
+      "gestao-os-documentos",
+    ).createSignedUrl(path, 3600);
+    if (signedError || !data?.signedUrl) {
+      throw new Error(
+        `renave_documento_url: ${signedError?.message || "ausente"}`,
+      );
+    }
+    await sendWhatsAppDocument(
+      input.userId,
+      input.to,
+      document.caption,
+      data.signedUrl,
+      filename,
+    );
+  }
+}
+
 async function deliverGestaoTrocaWhatsAppMessages(input: {
   userId: string;
   to: string;
@@ -24858,6 +24917,7 @@ async function tryProcessGestaoLucroShortcut(input: {
   convId: string;
   hasInboundMedia: boolean;
   agentState?: AgentConvState;
+  origem?: "texto" | "audio";
 }): Promise<{ handled: boolean; preview?: string }> {
   const baseState = input.agentState ??
     migrateVerticalState(
@@ -24870,7 +24930,8 @@ async function tryProcessGestaoLucroShortcut(input: {
         input.row.payload?.contacts?.[0]?.profile?.name ??
         null,
     ) &&
-    !(baseState as Record<string, unknown>).pending_renave_entrada
+    !(baseState as Record<string, unknown>).pending_renave_entrada &&
+    !(baseState as Record<string, unknown>).pending_renave_saida
   ) {
     return { handled: false };
   }
@@ -24884,6 +24945,8 @@ async function tryProcessGestaoLucroShortcut(input: {
     hasInboundMedia: input.hasInboundMedia,
     auth,
     agentState: baseState as Record<string, unknown>,
+    origem: input.origem ?? "texto",
+    mensagemId: input.row.wamid,
     saveAgentStatePatch: async (patch, current) => saveAgentState(
       sb,
       input.convStateIdentity,
@@ -24925,6 +24988,29 @@ async function tryProcessGestaoLucroShortcut(input: {
           "id",
           outMsg.id,
         );
+      }
+      if (gestao.documents?.length) {
+        const documentDeliveryStarted = performance.now();
+        try {
+          await deliverRenaveDocuments({
+            userId: input.userId,
+            to: input.row.from_number,
+            documents: gestao.documents,
+          });
+        } catch {
+          console.warn("[renave-documento] falha", {
+            operacao: "enviarDocumentos",
+            status: 500,
+            duracaoMs: Math.round(
+              performance.now() - documentDeliveryStarted,
+            ),
+          });
+          await sendWhatsApp(
+            input.userId,
+            input.row.from_number,
+            "Não consegui enviar todos os documentos. Envie novamente *renave documentos* com a placa.",
+          );
+        }
       }
     } catch (e) {
       sendError = String((e as Error).message ?? e);
@@ -26278,7 +26364,8 @@ export async function processOne(queueId: string) {
         await loadAgentState(sb, convStateIdentity),
       ).state as AgentConvState;
       if (
-        (ownerGestaoState as Record<string, unknown>).pending_renave_entrada
+        (ownerGestaoState as Record<string, unknown>).pending_renave_entrada ||
+        (ownerGestaoState as Record<string, unknown>).pending_renave_saida
       ) {
         const renavePendingEarly = await tryProcessGestaoLucroShortcut({
           row,
@@ -27023,6 +27110,7 @@ export async function processOne(queueId: string) {
           userText: audioTranscript,
           convId: conv.id,
           hasInboundMedia: false,
+          origem: "audio",
         });
         if (gestaoAudio.handled) {
           stopTypingHeartbeat();
@@ -27067,6 +27155,7 @@ export async function processOne(queueId: string) {
             userText: audioTranscript,
             convId: conv.id,
             hasInboundMedia: false,
+            origem: "audio",
           });
           if (gestaoGestorAudio.handled) {
             stopTypingHeartbeat();

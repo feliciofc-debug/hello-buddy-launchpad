@@ -4,7 +4,12 @@ import { inspectECnpjPfx } from "./certificate.js";
 import type { RenaveConfig } from "./config.js";
 import { isRenaveOperation, RENAVE_OPERATIONS, type RenaveEnvironment } from "./operations.js";
 import { logRenaveRequest } from "./redaction.js";
-import { callSerpro, type SerproCall, type SerproResponse } from "./serpro.js";
+import {
+  buildOperationPath,
+  callSerpro,
+  type SerproCall,
+  type SerproResponse,
+} from "./serpro.js";
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024;
 
@@ -227,10 +232,26 @@ export function createRenaveServer(
           }
           let result: SerproResponse;
           try {
+            const validatedParams = validateParams(
+              body.params,
+              operation.params,
+            );
+            try {
+              buildOperationPath(
+                operation.path,
+                validatedParams,
+                "pathParams" in operation ? operation.pathParams : {},
+              );
+            } catch (error) {
+              throw new HttpError(
+                400,
+                error instanceof Error ? error.message : "Path inválido",
+              );
+            }
             result = await dependencies.callSerpro({
               ambiente,
               operacao: operacaoValue,
-              params: validateParams(body.params, operation.params),
+              params: validatedParams,
               ...(body.body !== undefined ? { body: body.body } : {}),
               ...(opened
                 ? {

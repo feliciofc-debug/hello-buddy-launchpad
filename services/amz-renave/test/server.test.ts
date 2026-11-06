@@ -99,6 +99,36 @@ test("mockVeiculoUsado nunca pode ser chamado em produção", async (context) =>
   });
 });
 
+test("mockTransferenciaDetran também é bloqueado em produção", async (context) => {
+  context.mock.method(console, "info", () => undefined);
+  await withServer(true, async () => ({ status: 201, body: {} }), async (url) => {
+    const response = await post(url, "/renave/chamar", {
+      ambiente: "prod",
+      operacao: "mockTransferenciaDetran",
+      params: {},
+      body: { placa: "ABC1D23" },
+    });
+    assert.equal(response.status, 400);
+  });
+});
+
+test("path params inválidos são rejeitados antes da chamada Serpro", async (context) => {
+  context.mock.method(console, "info", () => undefined);
+  let called = false;
+  await withServer(false, async () => {
+    called = true;
+    return { status: 200, body: {} };
+  }, async (url) => {
+    const response = await post(url, "/renave/chamar", {
+      ambiente: "hom",
+      operacao: "pdfAtpv",
+      params: { placa: "../segredo", renavam: "123" },
+    });
+    assert.equal(response.status, 400);
+    assert.equal(called, false);
+  });
+});
+
 test("homologação chama apenas a operação mapeada sem certificado", async (context) => {
   context.mock.method(console, "info", () => undefined);
   let received: SerproCall | undefined;

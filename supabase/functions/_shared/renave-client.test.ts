@@ -168,6 +168,56 @@ Deno.test({
     }),
 });
 
+Deno.test({
+  name: "RENAVE-3 — cliente tipa path e solicitação de saída",
+  permissions: { env: true },
+  fn: () =>
+    withRenaveEnv(async () => {
+      const calls: Record<string, unknown>[] = [];
+      const fetchMock = ((_input, init) => {
+        calls.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 200, body: {} })),
+        );
+      }) as typeof fetch;
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "pdfAtpv",
+        params: { placa: "ABC1D23", renavam: "12345678901" },
+      }, fetchMock);
+      await chamarRenave({
+        ambiente: "hom",
+        operacao: "solicitarSaidaEstoque",
+        params: {},
+        body: {
+          dataVenda: "2026-11-06",
+          valorVenda: 60000,
+          comprador: {
+            numeroDocumento: "52998224725",
+            tipoDocumento: "CPF",
+            nome: "JOAO SILVA",
+            endereco: {
+              cep: "20040020",
+              codigoMunicipio: 3304557,
+              logradouro: "Avenida Rio Branco",
+              numero: "10",
+              bairro: "Centro",
+            },
+          },
+          veiculo: {
+            placa: "ABC1D23",
+            renavam: "12345678901",
+            codigoSegurancaCrv: "98765432101",
+          },
+        },
+      }, fetchMock);
+      assertEquals(calls[0].operacao, "pdfAtpv");
+      assertEquals(calls[1].operacao, "solicitarSaidaEstoque");
+    }),
+});
+
 Deno.test("RENAVE-1 — timeout do cliente é 35 segundos", async () => {
   const source = await Deno.readTextFile(
     new URL("./renave-client.ts", import.meta.url),

@@ -1,5 +1,10 @@
 import https from "node:https";
-import { RENAVE_OPERATIONS, type RenaveEnvironment, type RenaveOperation } from "./operations.js";
+import {
+  RENAVE_OPERATIONS,
+  type RenaveEnvironment,
+  type RenaveOperation,
+  type RenavePathParamKind,
+} from "./operations.js";
 
 const BASE_URLS: Record<RenaveEnvironment, string> = {
   hom: "https://hom.renave.estaleiro.serpro.gov.br/renave-ws",
@@ -28,12 +33,14 @@ function appendQuery(
   url: URL,
   params: Record<string, unknown>,
   allowedParams: readonly string[],
+  consumedParams: ReadonlySet<string>,
 ): string | undefined {
   let cnpjEstabelecimento: string | undefined;
   for (const [key, raw] of Object.entries(params)) {
     if (!allowedParams.includes(key)) {
       throw new Error(`Parâmetro não permitido: ${key}`);
     }
+    if (consumedParams.has(key)) continue;
     if (raw == null || raw === "") continue;
     if (key === "cnpjEstabelecimento") {
       cnpjEstabelecimento = String(raw);
@@ -51,6 +58,45 @@ function appendQuery(
     }
   }
   return cnpjEstabelecimento;
+}
+
+function normalizePathParam(
+  name: string,
+  kind: RenavePathParamKind,
+  raw: unknown,
+): string {
+  const value = String(raw ?? "").trim();
+  if (kind === "placa" && /^[A-Za-z]{3}[0-9][A-Za-z0-9][0-9]{2}$/.test(value)) {
+    return value.toUpperCase();
+  }
+  if (kind === "renavam" && /^\d{11}$/.test(value)) return value;
+  if (
+    kind === "idEstoque" &&
+    /^\d+$/.test(value) &&
+    Number.isSafeInteger(Number(value)) &&
+    Number(value) > 0
+  ) {
+    return String(Number(value));
+  }
+  throw new Error(`Parâmetro de path inválido: ${name}`);
+}
+
+export function buildOperationPath(
+  template: string,
+  params: Record<string, unknown>,
+  pathParams: Readonly<Record<string, RenavePathParamKind>> = {},
+): { path: string; consumed: Set<string> } {
+  let path = template;
+  const consumed = new Set<string>();
+  for (const [name, kind] of Object.entries(pathParams)) {
+    const token = `{${name}}`;
+    if (!path.includes(token)) throw new Error(`Path inválido: ${name}`);
+    const normalized = normalizePathParam(name, kind, params[name]);
+    path = path.replaceAll(token, encodeURIComponent(normalized));
+    consumed.add(name);
+  }
+  if (/\{[^}]+\}/.test(path)) throw new Error("Parâmetro de path ausente");
+  return { path, consumed };
 }
 
 export function selectSerproResponseBody(status: number, body: unknown): unknown {
@@ -73,8 +119,18 @@ export function selectSerproResponseBody(status: number, body: unknown): unknown
 
 export async function callSerpro(input: SerproCall): Promise<SerproResponse> {
   const operation = RENAVE_OPERATIONS[input.operacao];
-  const url = new URL(`${BASE_URLS[input.ambiente]}${operation.path}`);
-  const cnpj = appendQuery(url, input.params, operation.params);
+  const builtPath = buildOperationPath(
+    operation.path,
+    input.params,
+    "pathParams" in operation ? operation.pathParams : {},
+  );
+  const url = new URL(`${BASE_URLS[input.ambiente]}${builtPath.path}`);
+  const cnpj = appendQuery(
+    url,
+    input.params,
+    operation.params,
+    builtPath.consumed,
+  );
   const payload = operation.method === "POST"
     ? Buffer.from(JSON.stringify(input.body ?? {}), "utf8")
     : undefined;

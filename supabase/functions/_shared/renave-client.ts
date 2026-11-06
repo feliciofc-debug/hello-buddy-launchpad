@@ -3,9 +3,16 @@ export const RENAVE_OPERATION_NAMES = [
   "aptidaoVeiculo",
   "consultarVeiculos",
   "consultarEstoques",
+  "consultarEstoquePorId",
   "solicitarEntradaEstoque",
+  "solicitarSaidaEstoque",
+  "pdfAtpv",
+  "termoEntrada",
+  "termoSaida",
+  "crlve",
   "municipios",
   "mockVeiculoUsado",
+  "mockTransferenciaDetran",
 ] as const;
 
 export type RenaveOperation = typeof RENAVE_OPERATION_NAMES[number];
@@ -39,12 +46,31 @@ type OperationParams = {
     dataHoraRegistroSaidaInicial?: string;
     dataHoraRegistroSaidaFinal?: string;
   } & OptionalEstablishment;
+  consultarEstoquePorId: {
+    id: number;
+  } & OptionalEstablishment;
   solicitarEntradaEstoque: OptionalEstablishment;
+  solicitarSaidaEstoque: OptionalEstablishment;
+  pdfAtpv: {
+    placa: string;
+    renavam: string;
+  } & OptionalEstablishment;
+  termoEntrada: {
+    idEstoque: number;
+  } & OptionalEstablishment;
+  termoSaida: {
+    idEstoque: number;
+  } & OptionalEstablishment;
+  crlve: {
+    placaVeiculo: string;
+    renavamVeiculo: string;
+  } & OptionalEstablishment;
   municipios: {
     nome?: string;
     uf?: string;
   } & OptionalEstablishment;
   mockVeiculoUsado: OptionalEstablishment;
+  mockTransferenciaDetran: OptionalEstablishment;
 };
 
 type OperationBody = {
@@ -52,6 +78,7 @@ type OperationBody = {
   aptidaoVeiculo: never;
   consultarVeiculos: never;
   consultarEstoques: never;
+  consultarEstoquePorId: never;
   solicitarEntradaEstoque: {
     dataCompra: string;
     valorCompra: number;
@@ -67,6 +94,32 @@ type OperationBody = {
       tipoDocumentoProprietarioAtual: "CPF" | "CNPJ";
     };
   };
+  solicitarSaidaEstoque: {
+    dataVenda: string;
+    valorVenda: number;
+    comprador: {
+      numeroDocumento: string;
+      tipoDocumento: "CPF" | "CNPJ";
+      nome: string;
+      endereco: {
+        cep: string;
+        codigoMunicipio: number;
+        logradouro: string;
+        numero: string;
+        bairro: string;
+      };
+    };
+    veiculo: {
+      codigoSegurancaCrv: string;
+      numeroCrv?: string;
+      placa: string;
+      renavam?: string;
+    };
+  };
+  pdfAtpv: never;
+  termoEntrada: never;
+  termoSaida: never;
+  crlve: never;
   municipios: never;
   mockVeiculoUsado: {
     ufJurisdicaoVeiculo: string;
@@ -75,6 +128,9 @@ type OperationBody = {
     jaBaixado?: boolean;
     documentoProprietario?: string;
     nomeProprietario?: string;
+  };
+  mockTransferenciaDetran: {
+    placa: string;
   };
 };
 
