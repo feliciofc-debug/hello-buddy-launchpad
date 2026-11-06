@@ -24,6 +24,24 @@ type RenaveCaller = (
   input: Record<string, unknown>,
 ) => Promise<RenaveResponse>;
 
+type RenaveStateInput = {
+  agentState: Record<string, unknown>;
+  saveAgentStatePatch: (
+    patch: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ) => Promise<boolean>;
+};
+
+async function saveRenaveStatePatch(
+  input: RenaveStateInput,
+  patch: Record<string, unknown>,
+  _legacyCurrent?: Record<string, unknown>,
+): Promise<boolean> {
+  const saved = await input.saveAgentStatePatch(patch, input.agentState);
+  if (saved) Object.assign(input.agentState, patch);
+  return saved;
+}
+
 export type RenaveInteractiveButtons = {
   body: string;
   buttons: { id: string; title: string }[];
@@ -940,7 +958,7 @@ async function saveOperatorProfile(
     emailEstabelecimento?: string;
   },
 ): Promise<void> {
-  await input.saveAgentStatePatch({
+  await saveRenaveStatePatch(input, {
     renave_operador_cifrado: await encryptRenaveOperatorProfile(profile),
   }, input.agentState);
 }
@@ -1538,14 +1556,14 @@ export async function tryProcessRenaveInbound(input: {
 
   const now = input.dependencies?.now?.() ?? new Date();
   const origem = input.origem ?? "texto";
-  const rawPending = input.agentState.pending_renave_entrada;
-  const pending = activePending(rawPending, now);
-  const rawExit = input.agentState.pending_renave_saida;
-  const pendingExit = activePendingExit(rawExit, now);
+  let rawPending = input.agentState.pending_renave_entrada;
+  let pending = activePending(rawPending, now);
+  let rawExit = input.agentState.pending_renave_saida;
+  let pendingExit = activePendingExit(rawExit, now);
   const rawPlateAction = input.agentState.pending_renave_placa;
   const pendingPlateAction = activePendingPlateAction(rawPlateAction, now);
-  const rawInvoice = input.agentState.pending_renave_nota;
-  const pendingInvoice = activePendingInvoice(rawInvoice, now);
+  let rawInvoice = input.agentState.pending_renave_nota;
+  let pendingInvoice = activePendingInvoice(rawInvoice, now);
   const interactive = parseInteractiveAction(
     input.interactiveId || input.userText,
   );
@@ -1553,6 +1571,21 @@ export async function tryProcessRenaveInbound(input: {
     commandFromInteractive(interactive);
   let commandOrigin = origem;
   let commandMessageId = input.mensagemId;
+  if (interactive && command && rawPending && command.kind !== "entrada") {
+    await saveRenaveStatePatch(input, { pending_renave_entrada: null });
+    rawPending = null;
+    pending = null;
+  }
+  if (interactive && command && rawExit && command.kind !== "saida") {
+    await saveRenaveStatePatch(input, { pending_renave_saida: null });
+    rawExit = null;
+    pendingExit = null;
+  }
+  if (interactive && command && rawInvoice && command.kind !== "nota") {
+    await saveRenaveStatePatch(input, { pending_renave_nota: null });
+    rawInvoice = null;
+    pendingInvoice = null;
+  }
   if (!command && pendingPlateAction) {
     const placa = normalizeBrazilianPlate(
       input.userText.toUpperCase().match(
@@ -1569,7 +1602,8 @@ export async function tryProcessRenaveInbound(input: {
         : { kind: "documentos", placa };
       commandOrigin = pendingPlateAction.origem_pedido;
       commandMessageId = pendingPlateAction.mensagem_pedido_id;
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_placa: null },
         input.agentState,
       );
@@ -1584,15 +1618,12 @@ export async function tryProcessRenaveInbound(input: {
 
   if (configuredEnvironment() === "prod") {
     if (rawPending || rawExit || rawPlateAction || rawInvoice) {
-      await input.saveAgentStatePatch(
-        {
-          ...clearSensitivePatch(input.agentState),
-          ...clearExitPatch(),
-          pending_renave_placa: null,
-          pending_renave_nota: null,
-        },
-        input.agentState,
-      );
+      await saveRenaveStatePatch(input, {
+        ...clearSensitivePatch(input.agentState),
+        ...clearExitPatch(),
+        pending_renave_placa: null,
+        pending_renave_nota: null,
+      }, input.agentState);
     }
     return {
       handled: true,
@@ -1601,7 +1632,8 @@ export async function tryProcessRenaveInbound(input: {
   }
 
   if (rawPending && !pending) {
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       clearSensitivePatch(input.agentState),
       input.agentState,
     );
@@ -1611,14 +1643,15 @@ export async function tryProcessRenaveInbound(input: {
     };
   }
   if (rawExit && !pendingExit) {
-    await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+    await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
     return {
       handled: true,
       reply: "O fluxo de saída RENAVE expirou. Envie o comando novamente.",
     };
   }
   if (rawPlateAction && !pendingPlateAction) {
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { pending_renave_placa: null },
       input.agentState,
     );
@@ -1628,7 +1661,8 @@ export async function tryProcessRenaveInbound(input: {
     };
   }
   if (rawInvoice && !pendingInvoice) {
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { pending_renave_nota: null },
       input.agentState,
     );
@@ -1653,7 +1687,8 @@ export async function tryProcessRenaveInbound(input: {
       mensagem_pedido_id: commandMessageId,
       expires_at: nextExpiry(now),
     };
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { pending_renave_placa: next },
       input.agentState,
     );
@@ -1677,7 +1712,8 @@ export async function tryProcessRenaveInbound(input: {
       /^cancelar\b/i.test(input.userText.trim()) ||
       isGestaoNegative(input.userText)
     ) {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_nota: null },
         input.agentState,
       );
@@ -1709,7 +1745,7 @@ export async function tryProcessRenaveInbound(input: {
           // Replace an invalid stale vehicle secret.
         }
       }
-      await input.saveAgentStatePatch({
+      await saveRenaveStatePatch(input, {
         pending_renave_nota: null,
         renave_veiculos: updatedVehicleContexts(
           input.agentState,
@@ -1764,7 +1800,7 @@ export async function tryProcessRenaveInbound(input: {
       },
     });
     if (response.status < 200 || response.status >= 300) {
-      await input.saveAgentStatePatch({
+      await saveRenaveStatePatch(input, {
         pending_renave_nota: null,
         renave_veiculos: updatedVehicleContexts(
           input.agentState,
@@ -1806,7 +1842,7 @@ export async function tryProcessRenaveInbound(input: {
         // Replace an invalid stale vehicle secret.
       }
     }
-    await input.saveAgentStatePatch({
+    await saveRenaveStatePatch(input, {
       pending_renave_nota: code ? null : {
         ...pendingInvoice,
         phase: "codigo_crv",
@@ -1854,7 +1890,7 @@ export async function tryProcessRenaveInbound(input: {
       /^cancelar\b/i.test(input.userText.trim()) ||
       isGestaoNegative(input.userText)
     ) {
-      await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+      await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
       await recordRenaveMovement({
         sb: input.sb,
         userId: input.userId,
@@ -1879,7 +1915,8 @@ export async function tryProcessRenaveInbound(input: {
         phase: "corrigir" as const,
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_saida: next },
         input.agentState,
       );
@@ -1929,7 +1966,8 @@ export async function tryProcessRenaveInbound(input: {
         ...(field === "cep" ? { codigoMunicipio: undefined } : {}),
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_saida: next },
         input.agentState,
       );
@@ -1970,7 +2008,7 @@ export async function tryProcessRenaveInbound(input: {
       ].includes(pendingExit.phase)
     ) {
       if (!pendingExit.sensivel_cifrado) {
-        await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+        await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
         return {
           handled: true,
           reply: "Os dados protegidos da saída expiraram. Recomece o fluxo.",
@@ -2018,7 +2056,8 @@ export async function tryProcessRenaveInbound(input: {
         ) {
           next.phase = "data_custom";
           next.expires_at = nextExpiry(now);
-          await input.saveAgentStatePatch(
+          await saveRenaveStatePatch(
+            input,
             { pending_renave_saida: next },
             input.agentState,
           );
@@ -2138,7 +2177,8 @@ export async function tryProcessRenaveInbound(input: {
         next.tentativas = retry.attempts;
         next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
         next.expires_at = nextExpiry(now);
-        await input.saveAgentStatePatch(
+        await saveRenaveStatePatch(
+          input,
           { pending_renave_saida: next },
           input.agentState,
         );
@@ -2242,7 +2282,8 @@ export async function tryProcessRenaveInbound(input: {
         );
         if (!options.length) {
           next.phase = "cidade";
-          await input.saveAgentStatePatch(
+          await saveRenaveStatePatch(
+            input,
             { pending_renave_saida: next },
             input.agentState,
           );
@@ -2254,7 +2295,8 @@ export async function tryProcessRenaveInbound(input: {
         }
         if (options.length > 1) {
           next.municipios = options.slice(0, 8);
-          await input.saveAgentStatePatch(
+          await saveRenaveStatePatch(
+            input,
             { pending_renave_saida: next },
             input.agentState,
           );
@@ -2272,7 +2314,8 @@ export async function tryProcessRenaveInbound(input: {
         next.codigoMunicipio = options[0].id;
         next.municipios = undefined;
       }
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_saida: next },
         input.agentState,
       );
@@ -2403,7 +2446,8 @@ export async function tryProcessRenaveInbound(input: {
         municipios: options.length === 1 ? undefined : options.slice(0, 8),
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_saida: next },
         input.agentState,
       );
@@ -2453,7 +2497,8 @@ export async function tryProcessRenaveInbound(input: {
         municipios: undefined,
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_saida: next },
         input.agentState,
       );
@@ -2461,7 +2506,7 @@ export async function tryProcessRenaveInbound(input: {
         ? (await decryptRenaveSensitiveState(next.sensivel_cifrado)).comprador
         : null;
       if (!buyer) {
-        await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+        await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
         return {
           handled: true,
           reply:
@@ -2507,7 +2552,7 @@ export async function tryProcessRenaveInbound(input: {
       !pendingExit.dataVenda ||
       !pendingExit.sensivel_cifrado
     ) {
-      await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+      await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
       return {
         handled: true,
         reply: "Os dados da saída expiraram. Envie o comando novamente.",
@@ -2529,7 +2574,7 @@ export async function tryProcessRenaveInbound(input: {
       !buyer.numero ||
       !buyer.bairro
     ) {
-      await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+      await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
       return {
         handled: true,
         reply: "Os dados protegidos da saída são inválidos. Recomece o fluxo.",
@@ -2589,7 +2634,7 @@ export async function tryProcessRenaveInbound(input: {
         reply: "O RENAVE está indisponível agora. Tente novamente.",
       };
     } finally {
-      await input.saveAgentStatePatch(clearExitPatch(), input.agentState);
+      await saveRenaveStatePatch(input, clearExitPatch(), input.agentState);
     }
     await recordRenaveMovement({
       sb: input.sb,
@@ -2609,7 +2654,7 @@ export async function tryProcessRenaveInbound(input: {
     if (result.status < 200 || result.status >= 300) {
       return { handled: true, reply: errorMessage(result) };
     }
-    await input.saveAgentStatePatch({
+    await saveRenaveStatePatch(input, {
       renave_veiculos: updatedVehicleContexts(
         input.agentState,
         pendingExit.placa,
@@ -2650,7 +2695,8 @@ export async function tryProcessRenaveInbound(input: {
       /^cancelar\b/i.test(input.userText.trim()) ||
       isGestaoNegative(input.userText)
     ) {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         clearSensitivePatch(input.agentState),
         input.agentState,
       );
@@ -2676,7 +2722,8 @@ export async function tryProcessRenaveInbound(input: {
         ...crv,
       });
       if (!aptitude.ok || !aptitude.apto) {
-        await input.saveAgentStatePatch(
+        await saveRenaveStatePatch(
+          input,
           { pending_renave_entrada: null },
           input.agentState,
         );
@@ -2699,7 +2746,8 @@ export async function tryProcessRenaveInbound(input: {
       };
       next.phase = entryNextPhase(next, sensitive);
       next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_entrada: next },
         input.agentState,
       );
@@ -2718,7 +2766,8 @@ export async function tryProcessRenaveInbound(input: {
         phase: "corrigir" as const,
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_entrada: next },
         input.agentState,
       );
@@ -2742,7 +2791,8 @@ export async function tryProcessRenaveInbound(input: {
         ...(field === "data" ? { dataCompra: undefined } : {}),
         expires_at: nextExpiry(now),
       };
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_entrada: next },
         input.agentState,
       );
@@ -2836,7 +2886,8 @@ export async function tryProcessRenaveInbound(input: {
       ) {
         next.phase = "data_custom";
         next.expires_at = nextExpiry(now);
-        await input.saveAgentStatePatch(
+        await saveRenaveStatePatch(
+          input,
           { pending_renave_entrada: next },
           input.agentState,
         );
@@ -2887,7 +2938,8 @@ export async function tryProcessRenaveInbound(input: {
         const retry = retryCount(next.tentativas, invalidField[0]);
         next.tentativas = retry.attempts;
         next.expires_at = nextExpiry(now);
-        await input.saveAgentStatePatch(
+        await saveRenaveStatePatch(
+          input,
           { pending_renave_entrada: next },
           input.agentState,
         );
@@ -2908,7 +2960,8 @@ export async function tryProcessRenaveInbound(input: {
       );
       next.phase = entryNextPhase(next, updatedSensitive);
       next.expires_at = nextExpiry(now);
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         { pending_renave_entrada: next },
         input.agentState,
       );
@@ -2973,7 +3026,8 @@ export async function tryProcessRenaveInbound(input: {
       pending.valorCompra == null ||
       !pending.dataCompra
     ) {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         clearSensitivePatch(input.agentState),
         input.agentState,
       );
@@ -2993,7 +3047,8 @@ export async function tryProcessRenaveInbound(input: {
       !validEmail(sensitive.emailEstabelecimento ?? "") ||
       !validEmail(sensitive.emailVendedor ?? "")
     ) {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         clearSensitivePatch(input.agentState),
         input.agentState,
       );
@@ -3047,7 +3102,8 @@ export async function tryProcessRenaveInbound(input: {
         reply: "O RENAVE está indisponível agora. Tente novamente.",
       };
     } finally {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         clearSensitivePatch(input.agentState),
         input.agentState,
       );
@@ -3099,7 +3155,7 @@ export async function tryProcessRenaveInbound(input: {
           base64,
         }];
       }
-      await input.saveAgentStatePatch({
+      await saveRenaveStatePatch(input, {
         renave_veiculos: updatedVehicleContexts(
           input.agentState,
           pending.placa,
@@ -3202,7 +3258,8 @@ export async function tryProcessRenaveInbound(input: {
       sensivel_cifrado: encrypted,
       created_at: now.toISOString(),
     };
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { renave_mock_ultimo: mock },
       input.agentState,
     );
@@ -3308,7 +3365,7 @@ export async function tryProcessRenaveInbound(input: {
       : null;
     const estado = stringValue(stock?.estado) || "CONFIRMADO";
     if (result.status >= 200 && result.status < 300) {
-      await input.saveAgentStatePatch({
+      await saveRenaveStatePatch(input, {
         renave_veiculos: updatedVehicleContexts(
           input.agentState,
           command.placa,
@@ -3397,7 +3454,8 @@ export async function tryProcessRenaveInbound(input: {
       mensagem_pedido_id: commandMessageId,
       expires_at: nextExpiry(now),
     };
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { pending_renave_nota: pending },
       input.agentState,
     );
@@ -3494,7 +3552,8 @@ export async function tryProcessRenaveInbound(input: {
       sensivel_cifrado: sensitive,
       expires_at: nextExpiry(now),
     };
-    await input.saveAgentStatePatch(
+    await saveRenaveStatePatch(
+      input,
       { pending_renave_saida: pending },
       input.agentState,
     );
@@ -3606,7 +3665,8 @@ export async function tryProcessRenaveInbound(input: {
       return { handled: true, reply: aptitude.reply };
     }
     if (!aptitude.apto) {
-      await input.saveAgentStatePatch(
+      await saveRenaveStatePatch(
+        input,
         clearSensitivePatch(input.agentState),
         input.agentState,
       );
@@ -3629,13 +3689,10 @@ export async function tryProcessRenaveInbound(input: {
     };
     next.phase = entryNextPhase(next, sensitive);
     next.sensivel_cifrado = await encryptRenaveSensitiveState(sensitive);
-    await input.saveAgentStatePatch(
-      {
-        pending_renave_entrada: next,
-        renave_mock_ultimo: { ...mock, sensivel_cifrado: null },
-      },
-      input.agentState,
-    );
+    await saveRenaveStatePatch(input, {
+      pending_renave_entrada: next,
+      renave_mock_ultimo: { ...mock, sensivel_cifrado: null },
+    }, input.agentState);
     return {
       handled: true,
       reply: `${aptitude.reply}\n\n${entryPhasePrompt(next.phase)}`,
@@ -3649,7 +3706,8 @@ export async function tryProcessRenaveInbound(input: {
     mensagem_pedido_id: commandMessageId,
     expires_at: nextExpiry(now),
   };
-  await input.saveAgentStatePatch(
+  await saveRenaveStatePatch(
+    input,
     { pending_renave_entrada: next },
     input.agentState,
   );
