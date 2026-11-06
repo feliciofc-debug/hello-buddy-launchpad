@@ -3,6 +3,7 @@ export const RENAVE_OPERATION_NAMES = [
   "aptidaoVeiculo",
   "consultarVeiculos",
   "consultarEstoques",
+  "solicitarEntradaEstoque",
   "municipios",
   "mockVeiculoUsado",
 ] as const;
@@ -38,6 +39,7 @@ type OperationParams = {
     dataHoraRegistroSaidaInicial?: string;
     dataHoraRegistroSaidaFinal?: string;
   } & OptionalEstablishment;
+  solicitarEntradaEstoque: OptionalEstablishment;
   municipios: {
     nome?: string;
     uf?: string;
@@ -50,6 +52,21 @@ type OperationBody = {
   aptidaoVeiculo: never;
   consultarVeiculos: never;
   consultarEstoques: never;
+  solicitarEntradaEstoque: {
+    dataCompra: string;
+    valorCompra: number;
+    veiculo: {
+      codigoSegurancaCrv: string;
+      dataHoraMedicaoHodometro: string;
+      documentoProprietarioAtual: string;
+      numeroCrv?: string;
+      placa: string;
+      quilometragemHodometro: number;
+      renavam?: string;
+      tipoCrv: "AZUL" | "VERDE" | "BRANCO" | "DIGITAL";
+      tipoDocumentoProprietarioAtual: "CPF" | "CNPJ";
+    };
+  };
   municipios: never;
   mockVeiculoUsado: {
     ufJurisdicaoVeiculo: string;
@@ -61,17 +78,20 @@ type OperationBody = {
   };
 };
 
-export type RenaveCall<K extends RenaveOperation> = {
-  ambiente: RenaveEnvironment;
-  operacao: K;
-  params: OperationParams[K];
-  lojaId?: string;
-  selado?: string;
-} & (OperationBody[K] extends never ? {
-  body?: never;
-} : {
-  body: OperationBody[K];
-});
+export type RenaveCall<K extends RenaveOperation> =
+  & {
+    ambiente: RenaveEnvironment;
+    operacao: K;
+    params: OperationParams[K];
+    lojaId?: string;
+    selado?: string;
+  }
+  & (OperationBody[K] extends never ? {
+      body?: never;
+    }
+    : {
+      body: OperationBody[K];
+    });
 
 export type RenaveResponse<T = unknown> = {
   status: number;

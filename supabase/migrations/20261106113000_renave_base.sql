@@ -28,6 +28,7 @@ CREATE TABLE public.renave_operacoes (
     'aptidaoVeiculo',
     'consultarVeiculos',
     'consultarEstoques',
+    'solicitarEntradaEstoque',
     'municipios',
     'mockVeiculoUsado'
   )),

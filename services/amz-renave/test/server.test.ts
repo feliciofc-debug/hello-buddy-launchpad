@@ -122,6 +122,43 @@ test("homologação chama apenas a operação mapeada sem certificado", async (c
   assert.equal(received?.certificate, undefined);
 });
 
+test("solicitação de entrada usa a nova operação POST da whitelist", async (context) => {
+  context.mock.method(console, "info", () => undefined);
+  let received: SerproCall | undefined;
+  const entryBody = {
+    dataCompra: "2026-11-06",
+    valorCompra: 50_000,
+    veiculo: {
+      placa: "ABC1D23",
+      renavam: "12345678901",
+      numeroCrv: "123456789012",
+      codigoSegurancaCrv: "12345678901",
+      tipoCrv: "AZUL",
+      quilometragemHodometro: 10_000,
+      dataHoraMedicaoHodometro: "2026-11-06T12:00:00",
+      documentoProprietarioAtual: "52998224725",
+      tipoDocumentoProprietarioAtual: "CPF",
+    },
+  };
+  await withServer(false, async (input) => {
+    received = input;
+    return { status: 201, body: { id: 42, estado: "SOLICITADO" } };
+  }, async (url) => {
+    const response = await post(url, "/renave/chamar", {
+      ambiente: "hom",
+      operacao: "solicitarEntradaEstoque",
+      params: {},
+      body: entryBody,
+    });
+    assert.deepEqual(await response.json(), {
+      status: 201,
+      body: { id: 42, estado: "SOLICITADO" },
+    });
+  });
+  assert.equal(received?.operacao, "solicitarEntradaEstoque");
+  assert.deepEqual(received?.body, entryBody);
+});
+
 test("produção abre o certificado só durante a chamada e zera buffers", async (context) => {
   context.mock.method(console, "info", () => undefined);
   const keyring = testKeyring();

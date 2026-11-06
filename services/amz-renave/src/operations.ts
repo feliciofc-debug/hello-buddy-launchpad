@@ -28,6 +28,11 @@ export const RENAVE_OPERATIONS = {
       "cnpjEstabelecimento",
     ],
   },
+  solicitarEntradaEstoque: {
+    method: "POST",
+    path: "/api/solicitacoes-entrada-estoque",
+    params: ["cnpjEstabelecimento"],
+  },
   municipios: {
     method: "GET",
     path: "/api/municipios",
